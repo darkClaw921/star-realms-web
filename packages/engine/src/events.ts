@@ -1,5 +1,5 @@
+import type { AbilitySlot, AcquireDest } from './effects'
 import type { CardDefId, CardIid, Faction, PlayerId, Zone } from './ids'
-import type { AbilitySlot } from './effects'
 
 /**
  * WHAT HAPPENED. Events are the causal script the UI animates from and the game
@@ -16,7 +16,7 @@ export type GameEvent =
   | { e: 'DRAW'; player: PlayerId; n: number; defs: CardDefId[] | null }
   | { e: 'DISCARD'; player: PlayerId; iid: CardIid | null; def: CardDefId | null }
   | { e: 'SCRAP'; from: Zone; owner: PlayerId | null; iid: CardIid | null; def: CardDefId | null }
-  | { e: 'ACQUIRE'; player: PlayerId; def: CardDefId; dest: 'discard' | 'deck_top'; cost: number }
+  | { e: 'ACQUIRE'; player: PlayerId; def: CardDefId; dest: AcquireDest; cost: number }
   | { e: 'TRADE_ROW_REFILL'; def: CardDefId | null; slot: number }
   /** Dimensional Horror: a card was swallowed by a tentacle. */
   | { e: 'TENTACLE_FED'; faction: Faction; def: CardDefId }

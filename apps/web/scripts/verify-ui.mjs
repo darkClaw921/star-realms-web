@@ -276,21 +276,40 @@ async function main() {
       })
       const before = await deckSize()
       const toggles = await page.$$eval('.sets .switch input', (e) => e.length)
-      record('наборы карт переключаются', toggles === 2 && before === 80,
+      record('наборы карт переключаются', toggles === 3 && before === 80,
         `переключателей ${toggles}, колода ${before}`)
 
       // Последний включённый набор выключить нельзя -- иначе колода пуста.
       const coreLocked = await page.$eval('.sets .switch input', (e) => e.disabled)
       record('последний набор выключить нельзя', coreLocked === true, `заблокирован: ${coreLocked}`)
 
+      // Каждый набор -- ровно 80 карт, поэтому размер колоды прямо считает,
+      // сколько наборов реально доехало до раздачи.
       await page.evaluate(() => {
         const boxes = [...document.querySelectorAll('.sets .switch input')]
         if (boxes[1] && !boxes[1].checked) boxes[1].click()
       })
       await sleep(400)
-      const after = await deckSize()
-      record('Frontiers удваивает торговую колоду', after === 160, `${before} → ${after}`)
-      shots.push(await shot(page, 'sets', 'Наборы карт в настройках. Frontiers включается и выключается; состав читается только при раздаче новой партии.'))
+      const withFrontiers = await deckSize()
+      record('Frontiers удваивает торговую колоду', withFrontiers === 160,
+        `${before} → ${withFrontiers}`)
+
+      await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll('.sets .switch input')]
+        if (boxes[2] && !boxes[2].checked) boxes[2].click()
+      })
+      await sleep(400)
+      const withColonyWars = await deckSize()
+      record('Colony Wars добавляет третьи 80 карт', withColonyWars === 240,
+        `${withFrontiers} → ${withColonyWars}`)
+
+      // И выключается обратно, иначе следующая проверка поедет на 240 картах.
+      await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll('.sets .switch input')]
+        if (boxes[2] && boxes[2].checked) boxes[2].click()
+      })
+      await sleep(400)
+      shots.push(await shot(page, 'sets', 'Наборы карт в настройках. Frontiers и Colony Wars включаются и выключаются; состав читается только при раздаче новой партии.'))
 
       // Настройка обязана дойти до новой партии, а не только до панели.
       await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })

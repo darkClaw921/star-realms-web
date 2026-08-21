@@ -11,12 +11,15 @@ export type PromptKind =
   | 'COPY_SHIP'
   | 'DISCARD_THEN_DRAW'
   | 'SCRAP_THEN_DRAW'
-  | 'TOPDECK_ACQUIRED'
+  | 'REDIRECT_ACQUIRED'
   // ── Frontiers ─────────────────────────────────────────────────────────────
   | 'SCRAP_ROW_FOR_COMBAT'
   | 'SCRAP_FOR_COMBAT'
   | 'TOPDECK_BASE'
   | 'DISCARD_FOR_COMBAT'
+  // ── Colony Wars ───────────────────────────────────────────────────────────
+  | 'COPY_BASE'
+  | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =
   /** `owner` is null for shared zones (the trade row), which belong to nobody. */

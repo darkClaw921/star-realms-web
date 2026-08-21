@@ -20,3 +20,4 @@ data/
 
 # Verification output: the screenshots contain the same copyrighted card art.
 reports/
+.forge-worktrees/

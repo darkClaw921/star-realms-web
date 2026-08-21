@@ -61,8 +61,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     factionPlayedThisTurn: emptyFactionCounts(),
     allyUnlocked: [],
     doubleAllyUnlocked: [],
-    pendingTopdeck: 0,
-    pendingTopdeckBase: 0,
+    pendingRedirects: [],
     scrappedThisTurn: 0,
     returnAtEndOfTurn: [],
   }

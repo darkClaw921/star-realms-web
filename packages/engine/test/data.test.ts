@@ -135,3 +135,69 @@ describe('Frontiers data integrity', () => {
     for (const c of frontiers) expect(core.has(c.id)).toBe(false)
   })
 })
+
+
+/**
+ * Star Realms: Colony Wars.
+ *
+ * A standalone base set rather than an add-on, so the same 80/20-per-faction
+ * shape as the core set -- but it ships its own Scouts, Vipers and Explorers,
+ * which we deliberately do NOT duplicate. Enabling it therefore adds exactly the
+ * trade deck, which is what the combined-count check pins down.
+ */
+describe('Colony Wars data integrity', () => {
+  const cw = [...CARDS.values()]
+    .filter((c) => c.role === 'trade_deck' && c.set === 'colony-wars')
+
+  it('has exactly 43 distinct trade-deck cards', () => {
+    expect(cw).toHaveLength(43)
+  })
+
+  it('has exactly 80 copies, 20 per faction', () => {
+    expect(tradeDeckComposition(undefined, ['colony-wars'])).toHaveLength(80)
+    const byFaction: Partial<Record<Faction, number>> = {}
+    for (const c of cw) byFaction[c.faction] = (byFaction[c.faction] ?? 0) + c.copies
+    expect(byFaction).toEqual({
+      trade_federation: 20,
+      blob: 20,
+      star_empire: 20,
+      machine_cult: 20,
+    })
+  })
+
+  it('adds only its trade deck, never a second set of starters', () => {
+    expect(tradeDeckComposition(undefined, ['core', 'colony-wars'])).toHaveLength(160)
+    expect(cw.some((c) => c.role !== 'trade_deck')).toBe(false)
+  })
+
+  it('gives every card an ability and printed text', () => {
+    for (const c of cw) {
+      expect(c.primary.length + c.ally.length + c.scrap.length + c.triggers.length,
+        `${c.name} does nothing`).toBeGreaterThan(0)
+      expect(c.text.primary.length, c.name).toBeGreaterThan(0)
+      if (c.text.ally) expect(c.ally.length, c.name).toBeGreaterThan(0)
+      if (c.text.scrap) expect(c.scrap.length, c.name).toBeGreaterThan(0)
+    }
+  })
+
+  it('gives bases a defense and ships none', () => {
+    for (const c of cw) {
+      if (c.type === 'ship') expect(c.defense, c.name).toBeNull()
+      else expect(c.defense, c.name).toBeGreaterThan(0)
+    }
+  })
+
+  it('has no id colliding with any other set', () => {
+    const others = new Set(
+      [...CARDS.values()].filter((c) => c.set !== 'colony-wars').map((c) => c.id),
+    )
+    for (const c of cw) expect(others.has(c.id), c.name).toBe(false)
+  })
+
+  it('carries the four acquire-to-hand triggers, one per faction', () => {
+    const withTrigger = cw.filter((c) => c.triggers.some((t) => t.on === 'ACQUIRE_SELF'))
+    expect(withTrigger.map((c) => c.faction).sort()).toEqual(
+      ['blob', 'machine_cult', 'star_empire', 'trade_federation'],
+    )
+  })
+})

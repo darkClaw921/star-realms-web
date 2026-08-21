@@ -4,7 +4,7 @@ import { TENTACLE_FACTIONS } from './boss'
 import { cardDef, EXPLORER, SCOUT, VIPER } from './cards/registry'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
-import type { Effect, EffectBranch } from './effects'
+import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
   allyCountFor, canAttackFace, effectiveDefId, factionsOf, findInPlay, isBase,
@@ -204,31 +204,71 @@ function recomputeAlly(d: D, pid: PlayerId, ev: GameEvent[]): void {
 
 function acquire(
   d: D, pid: PlayerId, inst: CardInstance, cost: number,
-  dest: 'discard' | 'deck_top', ev: GameEvent[],
+  dest: AcquireDest, ev: GameEvent[],
 ): void {
   const p = d.players[pid]
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
-  if (dest === 'deck_top') {
-    p.deck.unshift(inst)
-    return
-  }
+  if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
+  if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
   p.discard.push(inst)
-  // Freighter / Central Office redirect ships; Frontiers' Long Hauler redirects
-  // bases. Either way the acquisition is offered, never forced.
-  const isShip = cardDef(inst.def).type === 'ship'
-  const armed = isShip ? p.pendingTopdeck > 0 : p.pendingTopdeckBase > 0
-  if (armed) {
-    pushChoice(d, {
-      id: mintId(d) as ChoiceId,
-      actor: pid,
-      prompt: 'TOPDECK_ACQUIRED',
-      source: null,
-      label: `Put ${cardDef(inst.def).name} on top of your deck?`,
-      min: 0,
-      max: 1,
-      options: [{ o: 'CARD', iid: inst.iid, def: inst.def, zone: 'discard', owner: pid }],
-    })
+  fireAcquireSelf(d, pid, inst, ev)
+  offerRedirect(d, pid, inst)
+}
+
+/**
+ * "When you acquire this card, if you've played a Blob card this turn, you may
+ * put this card directly into your hand."
+ *
+ * Fires on the card being acquired rather than on anything already in play,
+ * which is why it cannot go through the same loop as Fleet HQ. The condition and
+ * the "you may" ride the ordinary effect machinery, so this hook stays three
+ * lines and the interesting part stays data.
+ */
+function fireAcquireSelf(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): void {
+  const triggers = cardDef(inst.def).triggers.filter((t) => t.on === 'ACQUIRE_SELF')
+  if (triggers.length === 0) return
+  for (const t of triggers) {
+    ev.push({ e: 'ABILITY_USED', player: pid, iid: inst.iid, def: inst.def, slot: 'trigger' })
+    pushEffects(d, t.effects, { controller: pid, source: inst.iid, slot: 'trigger' })
   }
+}
+
+/**
+ * Spend one armed redirect on the card just acquired, if any matches.
+ *
+ * Multiple armed redirects stack and the player picks which to spend, so this
+ * asks even when the redirect itself is mandatory: what is mandatory is that ONE
+ * of them is consumed, not which. With a single mandatory match there is nothing
+ * to decide and the degenerate choice auto-resolves.
+ */
+function offerRedirect(d: D, pid: PlayerId, inst: CardInstance): void {
+  const p = d.players[pid]
+  const type = cardDef(inst.def).type
+  const isShip = type === 'ship'
+  const idxs: number[] = []
+  p.pendingRedirects.forEach((r, i) => {
+    if (r.filter === 'ship' && !isShip) return
+    if (r.filter === 'base' && isShip) return
+    idxs.push(i)
+  })
+  if (idxs.length === 0) return
+  const dests = idxs.map((i) => p.pendingRedirects[i]!.dest)
+  const mandatory = idxs.some((i) => !p.pendingRedirects[i]!.optional)
+  const name = cardDef(inst.def).name
+  pushChoice(d, {
+    id: mintId(d) as ChoiceId,
+    actor: pid,
+    prompt: 'REDIRECT_ACQUIRED',
+    source: null,
+    label: `Where does ${name} go?`,
+    min: mandatory ? 1 : 0,
+    max: 1,
+    options: dests.map((dst, i) => ({
+      o: 'BRANCH' as const,
+      index: i,
+      label: dst === 'hand' ? 'Into your hand' : 'On top of your deck',
+    })),
+  }, { c: 'REDIRECT', iid: inst.iid, dests, redirects: idxs })
 }
 
 function destroyBase(
@@ -513,9 +553,58 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
-    case 'TOPDECK_NEXT_ACQUIRED': {
-      if (effect.filter === 'base') p.pendingTopdeckBase += 1
-      else p.pendingTopdeck += 1
+    case 'REDIRECT_NEXT_ACQUIRED': {
+      p.pendingRedirects.push({ ...effect.redirect })
+      return
+    }
+
+    case 'MOVE_SELF_TO_HAND': {
+      const src = ctx.source
+      if (!src) return
+      // The card is wherever the acquisition just put it -- normally the discard
+      // pile, but a stacked redirect may already have topdecked it.
+      const from = p.discard.findIndex((c) => c.iid === src)
+      const inst = from >= 0
+        ? (p.discard.splice(from, 1)[0] as CardInstance)
+        : (() => {
+            const i = p.deck.findIndex((c) => c.iid === src)
+            return i >= 0 ? (p.deck.splice(i, 1)[0] as CardInstance) : null
+          })()
+      if (!inst) return
+      p.hand.push(inst)
+      ev.push({ e: 'ACQUIRE', player: me, def: inst.def, dest: 'hand', cost: 0 })
+      return
+    }
+
+    case 'DISCARD_FOR_TRADE_OR_COMBAT': {
+      const opts = cardOpts(p.hand as CardInstance[], 'hand', me)
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'hand is empty' }); return }
+      pushChoice(d, makeChoice(d, me, 'DISCARD_FOR_TRADE_OR_COMBAT',
+        `Discard up to ${effect.max} cards`, 0,
+        Math.min(effect.max, opts.length), opts, ctx.source),
+        { c: 'DISCARD_RESOURCE', per: effect.per })
+      return
+    }
+
+    case 'COPY_BASE': {
+      const src = ctx.source
+      // "Any base in play" -- both sides. Copying an enemy outpost is a real and
+      // intended play, so the option list is not filtered to your own side.
+      const opts: ChoiceOption[] = []
+      for (const pid of PLAYERS) {
+        for (const c of d.players[pid].inPlay) {
+          if (c.iid === src) continue
+          if (!isBase(c)) continue
+          opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'inPlay', owner: pid })
+        }
+      }
+      if (opts.length === 0) {
+        // Same rule as the Needle: the tower still enters play, as a plain
+        // Machine Cult base with no abilities. Never block the play.
+        ev.push({ e: 'FIZZLE', label: 'no base to copy' })
+        return
+      }
+      pushChoice(d, makeChoice(d, me, 'COPY_BASE', 'Copy a base in play', 1, 1, opts, src))
       return
     }
 
@@ -536,10 +625,14 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
   }
 }
 
-function evalCondition(d: D, me: PlayerId, cond: { c: 'BASES_IN_PLAY_AT_LEAST'; n: number }): boolean {
+function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
   switch (cond.c) {
     case 'BASES_IN_PLAY_AT_LEAST':
       return d.players[me].inPlay.filter(isBase).length >= cond.n
+    case 'OPPONENT_HAS_BASE':
+      return d.players[opponentOf(me)].inPlay.some(isBase)
+    case 'FACTION_PLAYED_THIS_TURN':
+      return d.players[me].factionPlayedThisTurn[cond.faction] >= cond.n
   }
 }
 
@@ -717,17 +810,56 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
-    case 'TOPDECK_ACQUIRED': {
+    case 'REDIRECT_ACQUIRED': {
       const o = selected[0]
-      if (!o || o.o !== 'CARD') return
-      const idx = p.discard.findIndex((x) => x.iid === o.iid)
+      if (!o || o.o !== 'BRANCH' || cont?.c !== 'REDIRECT') return
+      const dest = cont.dests[o.index]
+      const armed = cont.redirects[o.index]
+      if (dest === undefined || armed === undefined) return
+      const idx = p.discard.findIndex((x) => x.iid === cont.iid)
       if (idx < 0) return
       const inst = p.discard.splice(idx, 1)[0] as CardInstance
-      p.deck.unshift(inst)
-      // Consume the counter the acquisition actually armed.
-      if (cardDef(inst.def).type === 'ship') p.pendingTopdeck = Math.max(0, p.pendingTopdeck - 1)
-      else p.pendingTopdeckBase = Math.max(0, p.pendingTopdeckBase - 1)
-      ev.push({ e: 'ACQUIRE', player: me, def: inst.def, dest: 'deck_top', cost: 0 })
+      if (dest === 'hand') p.hand.push(inst)
+      else p.deck.unshift(inst)
+      // Consume exactly the redirect that was chosen, not merely one of the
+      // matching ones: they can differ in destination, and spending the wrong
+      // one silently changes where the NEXT acquisition lands.
+      p.pendingRedirects.splice(armed, 1)
+      ev.push({ e: 'ACQUIRE', player: me, def: inst.def, dest, cost: 0 })
+      return
+    }
+
+    case 'DISCARD_FOR_TRADE_OR_COMBAT': {
+      const per = cont?.c === 'DISCARD_RESOURCE' ? cont.per : 2
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, 'hand', o.iid)
+        if (!inst) continue
+        p.discard.push(inst)
+        ev.push({ e: 'DISCARD', player: me, iid: inst.iid, def: inst.def })
+        // One choice per card discarded, so a mixed split is legal -- which is
+        // what "gain 2 Trade or 2 Combat for EACH card" says.
+        pushEffects(d, [{
+          k: 'CHOOSE_ONE',
+          branches: [
+            { label: `{trade:${per}}`, then: [{ k: 'GAIN_TRADE', n: per }] },
+            { label: `{combat:${per}}`, then: [{ k: 'GAIN_COMBAT', n: per }] },
+          ],
+        }], ctx)
+      }
+      return
+    }
+
+    case 'COPY_BASE': {
+      const o = selected[0]
+      if (!o || o.o !== 'CARD') return
+      const tower = c.source ? p.inPlay.find((x) => x.iid === c.source) : undefined
+      if (!tower) return
+      tower.copiedDef = o.def
+      ev.push({ e: 'COPY_SHIP', player: me, iid: tower.iid, copied: o.def })
+      // A base's primary is activated, not resolved on play, so unlike the
+      // Needle nothing is pushed here: the tower simply now HAS that base's
+      // abilities, and the player activates them when they choose.
       return
     }
 
@@ -821,12 +953,21 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     queued.push(...def.primary)
     card.used.primary = true
   }
+  // The card's own on-play triggers (Stealth Tower). Deliberately NOT its
+  // primary: a base's primary is an activated ability, and folding the two
+  // together would spend the tower's activation on the copying.
+  for (const t of def.triggers) {
+    if (t.on !== 'PLAY_SELF') continue
+    queued.push(...t.effects)
+  }
   // Triggered abilities of cards ALREADY in play (Fleet HQ).
   const on = def.type === 'ship' ? 'PLAY_SHIP' : 'PLAY_BASE'
   for (const other of p.inPlay) {
     if (other.iid === inst.iid) continue
     for (const t of cardDef(effectiveDefId(other)).triggers) {
       if (t.on !== on) continue
+      // Colony Wars' Command Center fires only on Star Empire ships.
+      if (t.faction && t.faction !== def.faction) continue
       queued.push(...t.effects)
       ev.push({ e: 'ABILITY_USED', player: me, iid: other.iid, def: other.def, slot: 'trigger' })
     }
@@ -942,9 +1083,13 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.shipsPlayedThisTurn = []
   p.allyUnlocked = []
   p.doubleAllyUnlocked = []
-  p.pendingTopdeck = 0
-  p.pendingTopdeckBase = 0
+  p.pendingRedirects = []
   p.scrappedThisTurn = 0
+  // Stealth Tower copies a base "until your turn ends", so the copy is dropped
+  // HERE rather than at the start of your next turn. The difference is not
+  // cosmetic: a copied outpost left standing would shield you through the
+  // opponent's attack, which is exactly the turn the printed wording excludes.
+  for (const c of p.inPlay) c.copiedDef = null
 
   // A deck boss draws what its challenge card says, not the standard five.
   const bossHand = d.boss && d.boss.kind === 'deck' && me === bossSeat(d) ? d.boss.handSize : 0
@@ -959,14 +1104,12 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.shipsPlayedThisTurn = []
   next.allyUnlocked = []
   next.doubleAllyUnlocked = []
-  next.pendingTopdeck = 0
-  next.pendingTopdeckBase = 0
+  next.pendingRedirects = []
   next.scrappedThisTurn = 0
   for (const c of next.inPlay) {
     c.used = { primary: false, ally: false, doubleAlly: false, scrap: false }
     c.playedThisTurn = false
-    // A Stealth Needle never survives a turn (it is a ship), so no copy state
-    // can leak across turns; bases have none.
+    // Copy state is cleared when its own turn ends, not here -- see above.
   }
   // A scenario's per-turn funding is granted like any other gain: at the start
   // of the turn, spendable by the normal rules, and lost at end of turn if

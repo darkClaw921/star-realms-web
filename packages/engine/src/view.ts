@@ -1,3 +1,4 @@
+import type { AcquireRedirect } from './effects'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import type { GameEvent } from './events'
 import type { BossState } from './boss'
@@ -50,7 +51,11 @@ export interface SelfView {
   readonly combat: number
   readonly allyUnlocked: readonly Faction[]
   readonly doubleAllyUnlocked: readonly Faction[]
-  readonly pendingTopdeck: number
+  /**
+   * Armed acquisition redirects. Public to the owner only, and only because the
+   * UI has to explain why a bought card went somewhere unexpected.
+   */
+  readonly pendingRedirects: readonly AcquireRedirect[]
   readonly factionPlayedThisTurn: Readonly<Record<Faction, number>>
 }
 
@@ -168,7 +173,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       combat: meState.combat,
       allyUnlocked: [...meState.allyUnlocked],
       doubleAllyUnlocked: [...meState.doubleAllyUnlocked],
-      pendingTopdeck: meState.pendingTopdeck,
+      pendingRedirects: meState.pendingRedirects.map((r) => ({ ...r })),
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
     },
     opponent: {

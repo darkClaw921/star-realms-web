@@ -25,12 +25,18 @@ const FIELDS = '&_fields=slug,title,source_url,media_details'
 const BASE_API = 'https://www.starrealms.com/wp-json/wp/v2/media?media_type=image' + FIELDS
 
 /**
- * The two upload batches that hold the card faces.
+ * The upload batches that hold the card faces, one per set.
  *
  * Base set: April 2015, exactly 49 items and nothing else in the window, so one
  * page is the whole set. Frontiers: October 2018, mixed in with a year of other
  * uploads, so it is paged through and filtered by the publisher's own
- * `SRFRN_Card_` naming.
+ * `SRFRN_Card_` naming. Colony Wars: a single day, 19 August 2016 -- 43 faces at
+ * 427x600, plus one unrelated convention banner that the name filter drops.
+ *
+ * Colony Wars was uploaded three more times (2015 at 225x308, 2017 at 300x420,
+ * 2018 as foil variants), and the 2016 batch is the one worth taking: it is the
+ * only one large enough that the cropped illustration still clears our 320px
+ * output without upscaling.
  */
 const SOURCES = [
   {
@@ -52,6 +58,21 @@ const SOURCES = [
     // with a set prefix rather than by the printed card name.
     id: (title: string): string =>
       title.replace('SRFRN_Card_', '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
+  {
+    set: 'colony-wars',
+    url: `${BASE_API}&per_page=100&after=2016-08-18T00:00:00&before=2016-08-20T00:00:00`,
+    pages: 1,
+    expect: 43,
+    // Bare CamelCase names, so anything with a digit, dash or entity in it is
+    // not a card -- which is exactly the one convention banner in the window.
+    // WordPress appends " (1)" on a re-upload; that is part of the title, not
+    // of the name.
+    keep: (title: string): boolean => /^[A-Z][A-Za-z]*( \(\d+\))?$/.test(title),
+    id: (title: string): string =>
+      title.replace(/ \(\d+\)$/, '')
         .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
         .toLowerCase(),
   },

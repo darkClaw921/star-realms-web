@@ -380,7 +380,7 @@ export const FRONTIERS: Record<string, Spec> = {
     name: 'Long Hauler', faction: 'trade_federation', cost: 4, type: 'ship',
     defense: null, copies: 2, role: 'trade_deck',
     primary: [trade(3)], ally: [trade(2)],
-    scrap: [{ k: 'TOPDECK_NEXT_ACQUIRED', filter: 'base', min: 1 }],
+    scrap: [{ k: 'REDIRECT_NEXT_ACQUIRED', redirect: { filter: 'base', dest: 'deck_top', optional: false } }],
     text: {
       primary: '{trade:3}', ally: '{trade:2}',
       scrap: 'Put the next base you acquire this turn on top of your deck.',

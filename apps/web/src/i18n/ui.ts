@@ -75,7 +75,11 @@ export const UI = {
   setsName: 'Наборы карт',
   setsHint: 'Влияет только на НОВЫЕ партии: менять состав торговой колоды посреди игры — ' +
     'значит менять правила на ходу. Последний включённый набор выключить нельзя.',
-  setName: { core: 'Базовый набор', frontiers: 'Frontiers' } as Record<string, string>,
+  setName: {
+    core: 'Базовый набор',
+    frontiers: 'Frontiers',
+    'colony-wars': 'Colony Wars',
+  } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
   // приключения Frontiers
@@ -215,18 +219,25 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
     case 'CHOOSE_BRANCH':
       return 'Выберите одно'
     case 'ACQUIRE_FREE':
-      return 'Получите корабль бесплатно'
+      return 'Получите карту бесплатно'
     case 'COPY_SHIP':
       return 'Скопируйте корабль, разыгранный в этот ход'
     case 'DISCARD_THEN_DRAW':
       return `Сбросьте до ${n} карт, затем доберите столько же`
     case 'SCRAP_THEN_DRAW':
       return `Утилизируйте до ${n} карт, затем доберите по одной за каждую`
-    case 'TOPDECK_ACQUIRED':
+    case 'REDIRECT_ACQUIRED':
+      // Формулировка не называет направление: их может быть два сразу — на верх
+      // колоды и в руку, — и выбирает игрок.
       return sourceName
-        ? `Положить «${sourceName}» на верх колоды?`
-        : 'Положить купленный корабль на верх колоды?'
+        ? `Куда отправить «${sourceName}»?`
+        : 'Куда отправить купленную карту?'
     case 'MAY':
       return 'Применить свойство?'
+    // ── Colony Wars ────────────────────────────────────────────────────────
+    case 'COPY_BASE':
+      return 'Скопируйте любую базу в игре'
+    case 'DISCARD_FOR_TRADE_OR_COMBAT':
+      return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }
 }

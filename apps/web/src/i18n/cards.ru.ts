@@ -1,4 +1,5 @@
 import type { CardDefId, Faction } from '@sr/engine'
+import { COLONY_WARS_RU } from './colonyWars.ru'
 import { FRONTIERS_RU } from './frontiers.ru'
 
 /**
@@ -120,7 +121,7 @@ const CORE_RU: Record<string, CardRu> = {
 }
 
 /** Обе таблицы в одной: карта ищется по идентификатору независимо от набора. */
-const CARDS_RU: Record<string, CardRu> = { ...CORE_RU, ...FRONTIERS_RU }
+const CARDS_RU: Record<string, CardRu> = { ...CORE_RU, ...FRONTIERS_RU, ...COLONY_WARS_RU }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */
 export const BRANCH_RU: Record<string, string> = {

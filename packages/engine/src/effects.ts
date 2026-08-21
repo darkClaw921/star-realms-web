@@ -15,12 +15,20 @@ import type { CardDefId, Faction, Zone } from './ids'
  * VERSIONED: bump EFFECT_VOCABULARY_VERSION when the shape of any variant
  * changes, so stored replays can be refused rather than silently misread.
  */
-export const EFFECT_VOCABULARY_VERSION = 1
+export const EFFECT_VOCABULARY_VERSION = 2
 
 /** Conditions evaluated against the state at resolution time. */
 export type Condition =
   /** Embassy Yacht: "If you have two or more bases in play". Outposts are bases. */
   | { c: 'BASES_IN_PLAY_AT_LEAST'; n: number }
+  /** Colony Wars' Lancer: "If an opponent controls a base". Outposts are bases. */
+  | { c: 'OPPONENT_HAS_BASE' }
+  /**
+   * Colony Wars' acquire-to-hand cards: "if you've played a Blob card this turn".
+   * Reads the same counter Blob World does, so a Stealth Needle copy does not
+   * satisfy it -- the copy is not a card played.
+   */
+  | { c: 'FACTION_PLAYED_THIS_TURN'; faction: Faction; n: number }
 
 /** Counters that PER can multiply an effect by. */
 export type CounterRef =
@@ -31,8 +39,28 @@ export type CounterRef =
    */
   | { counter: 'faction_played_this_turn'; faction: Faction }
 
-/** Where an acquired card is routed. Acquisition is not hard-wired to the discard pile. */
-export type AcquireDest = 'discard' | 'deck_top'
+/**
+ * Where an acquired card is routed. Acquisition is not hard-wired to the discard
+ * pile: Blob Carrier tops the deck, and Colony Wars routes cards straight into
+ * hand, which is a real tempo difference and not a reskin of topdecking.
+ */
+export type AcquireDest = 'discard' | 'deck_top' | 'hand'
+
+/**
+ * An armed "put the next card you acquire this turn somewhere other than the
+ * discard pile" effect.
+ *
+ * One shape rather than a counter per destination, because Colony Wars adds a
+ * third axis (ship / base / either) and a second destination (hand), and the
+ * cross-product of counters would be six fields that must all be reset in the
+ * same two places.
+ */
+export interface AcquireRedirect {
+  readonly filter: 'ship' | 'base' | 'any'
+  readonly dest: 'deck_top' | 'hand'
+  /** The printed text says "you may". Freighter does; Factory World does not. */
+  readonly optional: boolean
+}
 
 export type Effect =
   // ---- resource gains -------------------------------------------------------
@@ -57,8 +85,11 @@ export type Effect =
    * Machine Base restricts zones to ['hand'] only.
    */
   | { k: 'SCRAP_FROM_ZONES'; zones: readonly Zone[]; min: number; max: number }
-  /** Battle Pod / Blob Destroyer. min:0 when the text says "you may". */
-  | { k: 'SCRAP_TRADE_ROW'; min: 0 | 1; max: 1 }
+  /**
+   * Battle Pod / Blob Destroyer. min:0 when the text says "you may".
+   * Colony Wars' Ravager scraps up to TWO, which is why max is not fixed at 1.
+   */
+  | { k: 'SCRAP_TRADE_ROW'; min: number; max: number }
   /**
    * Brain World: "Scrap up to two cards from your hand and/or discard pile.
    * Draw a card for each card scrapped this way." The draw count is coupled to
@@ -76,11 +107,12 @@ export type Effect =
   /** Blob Carrier: "Acquire any ship for free and put it on top of your deck." */
   | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest }
   /**
-   * Freighter / Central Office. Arms a pending redirection consumed by the next
-   * qualifying acquisition. Multiple copies STACK (official ruling): each
-   * acquisition consumes exactly one, and unused ones expire at end of turn.
+   * Freighter / Central Office / Factory World. Arms a pending redirection
+   * consumed by the next qualifying acquisition. Multiple copies STACK (official
+   * ruling): each acquisition consumes exactly one, and unused ones expire at
+   * end of turn.
    */
-  | { k: 'TOPDECK_NEXT_ACQUIRED'; filter: 'ship' | 'base'; min: 0 | 1 }
+  | { k: 'REDIRECT_NEXT_ACQUIRED'; redirect: AcquireRedirect }
 
   // ---- Stealth Needle -------------------------------------------------------
   /**
@@ -90,6 +122,12 @@ export type Effect =
    * Machine Cult ship with no abilities -- never block the play.
    */
   | { k: 'COPY_SHIP' }
+  /**
+   * Colony Wars' Stealth Tower. Same idea as the Needle, one axis different in
+   * each direction: it copies a BASE, the base may be ANY base in play including
+   * the opponent's, and the base need not have been played this turn.
+   */
+  | { k: 'COPY_BASE' }
 
   // ---- control flow ---------------------------------------------------------
   /** The printed "OR" on Trading Post, Barter World, Blob World, Patrol Mech, ... */
@@ -119,6 +157,19 @@ export type Effect =
   | { k: 'COMBAT_PER_SCRAPPED'; per: number }
   /** Mobile Market: at end of turn it comes back from the scrap heap. */
   | { k: 'RETURN_SELF_AT_END_OF_TURN' }
+
+  // ── Colony Wars ───────────────────────────────────────────────────────────
+  /**
+   * "You may put this card directly into your hand" on the card just acquired.
+   * Only ever reached from an ACQUIRE_SELF trigger, where ctx.source is the
+   * freshly acquired instance sitting in the discard pile.
+   */
+  | { k: 'MOVE_SELF_TO_HAND' }
+  /**
+   * Supply Depot: "Discard up to 2 cards. Gain 2 Trade or 2 Combat for each card
+   * discarded this way." The choice is per card, so a mixed split is legal.
+   */
+  | { k: 'DISCARD_FOR_TRADE_OR_COMBAT'; max: number; per: number }
 
   // ── Frontiers Challenges: the script bosses ───────────────────────────────
   // A boss turn is pushed onto the resolution stack like any other effect, so a
@@ -162,14 +213,28 @@ export interface EffectBranch {
  * and so does not fit a once-per-turn activated slot.
  */
 export interface Trigger {
-  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'ACQUIRE'
+  /**
+   * PLAY_SHIP / PLAY_BASE fire on OTHER cards entering play, watched by a card
+   * already there (Fleet HQ).
+   *
+   * The two SELF forms fire on the card itself, and exist because a base has no
+   * on-play slot at all: its `primary` is an activated ability the player spends
+   * a click on. PLAY_SELF is how Stealth Tower copies "after it enters play"
+   * (publisher FAQ) while leaving its primary free -- so the copied base's own
+   * ability is still available that turn, which is the whole point of copying an
+   * outpost. ACQUIRE_SELF fires on the card being bought, for Colony Wars'
+   * "when you acquire this card" clause.
+   */
+  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF'
+  /** Colony Wars' Command Center fires only on ships of one faction. */
+  readonly faction?: Faction
   readonly effects: readonly Effect[]
 }
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
 export type AbilitySlot = 'primary' | 'ally' | 'doubleAlly' | 'scrap' | 'trigger'
 
-/** Copy-source for Stealth Needle; null on every other card. */
+/** Copy-source for Stealth Needle and Stealth Tower; null on every other card. */
 export interface CopyState {
   readonly copiedDef: CardDefId
 }

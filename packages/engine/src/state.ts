@@ -1,5 +1,5 @@
 import type { CardDefId, CardInstance, CardIid, Faction, PlayerId } from './ids'
-import type { AbilitySlot, AcquireDest, Effect, EffectBranch } from './effects'
+import type { AbilitySlot, AcquireDest, AcquireRedirect, Effect, EffectBranch } from './effects'
 import type { PendingChoice } from './choices'
 import type { RngState } from './rng'
 import type { BossState } from './boss'
@@ -69,13 +69,12 @@ export interface PlayerState {
    */
   shipsPlayedThisTurn: CardInstance[]
   /**
-   * Armed "put the next ship you acquire this turn on top of your deck" effects.
-   * These STACK (official ruling): each qualifying acquisition consumes one, and
-   * unused ones expire at end of turn.
+   * Armed "put the next card you acquire this turn somewhere else" effects, in
+   * the order they were armed. These STACK (official ruling): each qualifying
+   * acquisition consumes exactly one, the player picks which when more than one
+   * matches, and unused ones expire at end of turn.
    */
-  pendingTopdeck: number
-  /** Frontiers: same, for the next BASE acquired (Long Hauler). */
-  pendingTopdeckBase: number
+  pendingRedirects: AcquireRedirect[]
   /** Cards this player has scrapped this turn. Reclamation Station reads it. */
   scrappedThisTurn: number
   /** Cards that return from the scrap heap to the discard pile at end of turn. */
@@ -100,6 +99,14 @@ export type ChoiceCont =
   | { c: 'BRANCHES'; branches: readonly EffectBranch[] }
   | { c: 'ACQUIRE'; dest: AcquireDest }
   | { c: 'MAY'; then: readonly Effect[] }
+  /**
+   * Which armed redirect to spend on the card just acquired. `dests` is parallel
+   * to the choice's BRANCH options, and `redirects` indexes back into the
+   * player's armed list so exactly the chosen one is consumed.
+   */
+  | { c: 'REDIRECT'; iid: CardIid; dests: readonly AcquireDest[]; redirects: readonly number[] }
+  /** One card discarded for Supply Depot; the branch decides trade or combat. */
+  | { c: 'DISCARD_RESOURCE'; per: number }
 
 /** One item on the resolution stack. Both variants are plain JSON. */
 export type ResolutionFrame =
