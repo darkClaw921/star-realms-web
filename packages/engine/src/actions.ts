@@ -19,6 +19,10 @@ export type Action =
   | { t: 'BUY_CARD'; card: CardIid }
   | { t: 'BUY_EXPLORER' }
   | { t: 'ATTACK_PLAYER'; amount: number }
+  /** Gambit: "you may reveal any Gambits ... during your Main Phase". */
+  | { t: 'REVEAL_GAMBIT'; card: CardIid }
+  /** United: claim a mission whose objective is currently met. */
+  | { t: 'CLAIM_MISSION'; card: CardIid }
   | { t: 'ATTACK_BASE'; base: CardIid }
   | { t: 'RESOLVE_CHOICE'; choiceId: ChoiceId; selected: readonly ChoiceOption[] }
   /** Challenges only: scrap the whole trade row. Once per challenge. */

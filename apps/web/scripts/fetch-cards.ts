@@ -88,6 +88,28 @@ const SOURCES = [
     },
   },
   {
+    // Gambits and Missions. Their faces were uploaded under bare lowercase
+    // names, so like United they are matched against the ids we already have.
+    set: 'gambits-and-missions',
+    url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
+    pages: 1,
+    // The same day also carries United's ships and bases, matched by the source
+    // above; both match here, and both are the same faces.
+    expect: 48,
+    keep: (title: string): boolean => SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
+    // The original Gambit set, uploaded one card at a time under its own name.
+    set: 'gambit-set',
+    url: `${BASE_API}&per_page=100&search=SRGAM`,
+    pages: 2,
+    expect: 12,
+    keep: (title: string): boolean =>
+      /^SRGAM/.test(title) && SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
     // The Frontiers Kickstarter promos, under two prefixes across two years.
     set: 'frontiers-promos',
     url: `${BASE_API}&per_page=100&search=FRN`,
@@ -132,6 +154,16 @@ const SOURCES = [
     id: (): string => 'mercenary-garrison',
   },
   {
+    // Unlikely Alliance was never re-uploaded under a pack prefix; the only
+    // face for it is the original bare-name file.
+    set: 'gambit-single',
+    url: `${BASE_API}&per_page=100&search=UnlikelyAlliance`,
+    pages: 1,
+    expect: 1,
+    keep: (title: string): boolean => title === 'UnlikelyAlliance',
+    id: (): string => 'unlikely-alliance',
+  },
+  {
     // Stragglers: cards the batch above them does not contain. Crisis' Supernova
     // is the one such card -- it is absent from the May 2015 upload and only
     // appears in the smaller December 2017 gallery re-upload. Listed by name
@@ -161,10 +193,12 @@ const SOURCES = [
     set: 'united',
     url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
     pages: 1,
-    expect: 24,
-    // The whole United release landed on one day, named in squashed lowercase.
-    // Missions are in the same batch and are dropped here simply by not
-    // matching a card we have -- see SQUASHED_IDS.
+    // The whole United release landed on one day, named in squashed lowercase
+    // with no separators to split on, and Gambits and Missions landed with it.
+    // Word boundaries are recovered by matching against the ids we already
+    // have, which also means a card we have not implemented fails to match
+    // rather than inventing an id nothing will look up.
+    expect: 47,
     keep: (title: string): boolean => SQUASHED_IDS.has(title.toLowerCase()),
     id: (title: string): string => SQUASHED_IDS.get(title.toLowerCase()) ?? title,
   },

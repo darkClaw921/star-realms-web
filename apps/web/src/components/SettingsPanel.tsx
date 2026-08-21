@@ -121,6 +121,24 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
             <p className="setting__hint">{UI.setsHint}</p>
           </div>
 
+          {/* Dealt at setup, so like the sets these only affect the NEXT game. */}
+          <Slider
+            name={UI.gambitsName}
+            hint={UI.gambitsHint}
+            value={settings.gambits}
+            limits={LIMITS.gambits}
+            format={(v) => String(v)}
+            onChange={(v) => set('gambits', v)}
+          />
+          <Slider
+            name={UI.missionsName}
+            hint={UI.missionsHint}
+            value={settings.missions}
+            limits={LIMITS.missions}
+            format={(v) => String(v)}
+            onChange={(v) => set('missions', v)}
+          />
+
           <div>
             <div className="setting__head">
               <span className="setting__name">{UI.preview}</span>

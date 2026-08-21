@@ -51,8 +51,13 @@ describe('base-set data integrity', () => {
   it('gives every card something to do', () => {
     for (const c of CARDS.values()) {
       const hasSomething =
-        c.primary.length > 0 || c.ally.length > 0 || c.scrap.length > 0 ||
-        c.triggers.length > 0 || c.factionWildcard
+        c.primary.length > 0 || c.ally.length > 0 || c.ally2.length > 0 ||
+        c.ally3.length > 0 || c.ally4.length > 0 || c.doubleAlly.length > 0 ||
+        c.scrap.length > 0 || c.triggers.length > 0 || c.factionWildcard ||
+        // Some cards do their work by existing: Energy Shield soaks damage,
+        // Veteran Pilots and Black Market are read where they apply.
+        c.damageReduction !== undefined || (c.onReveal?.length ?? 0) > 0 ||
+        c.objective !== undefined || c.removeOnDestroy === true
       expect(hasSomething, `${c.name} does nothing`).toBe(true)
     }
   })

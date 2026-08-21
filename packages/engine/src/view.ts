@@ -58,12 +58,39 @@ export interface SelfView {
    */
   readonly pendingRedirects: readonly AcquireRedirect[]
   readonly factionPlayedThisTurn: Readonly<Record<Faction, number>>
+  /**
+   * Your own face-down gambits and missions. Shown to you and to nobody else:
+   * an opponent who knew them would play around them, which is the whole reason
+   * they are dealt face down.
+   */
+  readonly gambits: readonly CardInstance[]
+  readonly missions: readonly CardInstance[]
+  /** Revealed gambits and completed missions are public. */
+  readonly gambitsInPlay: readonly CardInstance[]
+  readonly missionsDone: readonly CardDefId[]
+  /**
+   * Per-turn history a mission objective reads. Yours and public to you, and
+   * present in the view for one reason: legality has to be decidable from the
+   * view alone, and "can I claim this mission" is a legality question.
+   */
+  readonly shipsPlayedThisTurn: readonly CardInstance[]
+  readonly alliesUsedThisTurn: readonly {
+    readonly def: CardDefId
+    readonly slot: 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly'
+  }[]
+  readonly gainedThisTurn: { readonly trade: number; readonly combat: number; readonly authority: number }
 }
 
 /** The other side. Counts where the physical game shows only a card back. */
 export interface OpponentView {
   readonly authority: number
   readonly handCount: number
+  /** Face-down counts only, exactly as the physical game shows. */
+  readonly gambitCount: number
+  readonly missionCount: number
+  /** Face up, so public. */
+  readonly gambitsInPlay: readonly CardInstance[]
+  readonly missionsDone: readonly CardDefId[]
   readonly discard: readonly CardInstance[]
   readonly inPlay: readonly InPlayCardView[]
   readonly deckCount: number
@@ -178,11 +205,22 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       allyUnlocked: [...meState.allyUnlocked],
       doubleAllyUnlocked: [...meState.doubleAllyUnlocked],
       pendingRedirects: meState.pendingRedirects.map((r) => ({ ...r })),
+      gambits: meState.gambits.map((c) => ({ iid: c.iid, def: c.def })),
+      missions: meState.missions.map((c) => ({ iid: c.iid, def: c.def })),
+      gambitsInPlay: meState.gambitsInPlay.map((c) => ({ iid: c.iid, def: c.def })),
+      missionsDone: [...meState.missionsDone],
+      shipsPlayedThisTurn: meState.shipsPlayedThisTurn.map((c) => ({ iid: c.iid, def: c.def })),
+      alliesUsedThisTurn: meState.alliesUsedThisTurn.map((u) => ({ def: u.def, slot: u.slot })),
+      gainedThisTurn: { ...meState.gainedThisTurn },
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
     },
     opponent: {
       authority: oppState.authority,
       handCount: oppState.hand.length,
+      gambitCount: oppState.gambits.length,
+      missionCount: oppState.missions.length,
+      gambitsInPlay: oppState.gambitsInPlay.map((c) => ({ iid: c.iid, def: c.def })),
+      missionsDone: [...oppState.missionsDone],
       discard: oppState.discard.map((c) => ({ iid: c.iid, def: c.def })),
       inPlay: oppState.inPlay.map(viewInPlay),
       deckCount: oppState.deck.length,

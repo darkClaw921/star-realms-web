@@ -315,6 +315,24 @@ export type Effect =
    * the rest of the game as if it were still in the row.
    */
   | { k: 'SET_ASIDE_FROM_ROW'; min: 0 | 1 }
+
+  // ── Gambits ───────────────────────────────────────────────────────────────
+  /** Wild Gambit: take a gambit at random from the pile nobody was dealt. */
+  | { k: 'DRAW_GAMBIT'; n: number }
+  /** Black Market: widen the trade row and give its revealer the discount. */
+  | { k: 'OPEN_BLACK_MARKET' }
+  /** Hidden Base: put a token card into play from outside any deck. */
+  | { k: 'DEPLOY_TOKEN'; def: string }
+  /** Triumphant Return: pay a scrapped card's cost to take it into hand. */
+  | { k: 'BUY_FROM_SCRAP_HEAP'; min: 0 | 1 }
+
+  // ── Missions ──────────────────────────────────────────────────────────────
+  /**
+   * Convert's reward: reveal the top three, one to hand, one to the discard
+   * pile, one back on top. Three destinations, so it is three prompts in one
+   * effect rather than a reuse of the two-way scry.
+   */
+  | { k: 'REVEAL_THREE_SPLIT' }
   /**
    * Re-fill the trade row, resolving any event that turns up. Pushed by the
    * refill itself when an event appears, so that the event can ask a question
@@ -392,6 +410,8 @@ export interface Trigger {
   readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF' | 'SCRAP_OWN'
   /** Colony Wars' Command Center fires only on ships of one faction. */
   readonly faction?: Faction
+  /** Veteran Pilots fires only on one specific card. */
+  readonly cardId?: CardDefId
   readonly effects: readonly Effect[]
 }
 

@@ -1,4 +1,4 @@
-import { EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
+import { CARDS, EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
 import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
@@ -25,6 +25,18 @@ export interface MatchSetup {
    * an existing caller keeps dealing exactly the game it dealt before.
    */
   readonly sets?: readonly SetId[] | undefined
+  /**
+   * Gambits dealt face down to each player, from the gambit sets that are
+   * switched on. Zero -- the default -- means playing without gambits at all,
+   * which is what the printed rule leaves you to choose.
+   */
+  readonly gambitsPerPlayer?: number | undefined
+  /**
+   * Missions dealt face down to each player. Three is the printed number, and
+   * completing all of yours wins the game, so this doubles as switching the
+   * alternate win condition on.
+   */
+  readonly missionsPerPlayer?: number | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -63,6 +75,11 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     doubleAllyUnlocked: [],
     pendingRedirects: [],
     phantomFactions: [],
+    gambits: [],
+    gambitsInPlay: [],
+    missions: [],
+    missionsDone: [],
+    gainedThisTurn: { trade: 0, combat: 0, authority: 0 },
     alliesUsedThisTurn: [],
     scrappedThisTurn: 0,
     returnAtEndOfTurn: [],
@@ -126,6 +143,44 @@ export function createGame(setup: MatchSetup): GameState {
     }
   }
 
+  // Gambits and missions are dealt from their own piles, never shuffled into
+  // the trade deck. Both are secret, so both are dealt before anything public.
+  let unclaimedGambits: CardInstance[] = []
+  const enabled = new Set<SetId>(setup.sets ?? ['core'])
+  const sideCards = (role: 'gambit' | 'mission'): CardDefId[] => {
+    const out: CardDefId[] = []
+    for (const def of CARDS.values()) {
+      if (def.role !== role || !enabled.has(def.set)) continue
+      for (let i = 0; i < def.copies; i++) out.push(def.id)
+    }
+    return out
+  }
+
+  const gambitCount = setup.gambitsPerPlayer ?? 0
+  if (gambitCount > 0) {
+    ;[unclaimedGambits, rng] = mintAll(rng, sideCards('gambit'))
+    ;[unclaimedGambits, rng] = shuffle(rng, unclaimedGambits)
+    for (const pid of PLAYERS) {
+      for (let i = 0; i < gambitCount; i++) {
+        const c = unclaimedGambits.shift()
+        if (c) players[pid].gambits.push(c)
+      }
+    }
+  }
+
+  const missionCount = setup.missionsPerPlayer ?? 0
+  if (missionCount > 0) {
+    let pool: CardInstance[]
+    ;[pool, rng] = mintAll(rng, sideCards('mission'))
+    ;[pool, rng] = shuffle(rng, pool)
+    for (const pid of PLAYERS) {
+      for (let i = 0; i < missionCount; i++) {
+        const c = pool.shift()
+        if (c) players[pid].missions.push(c)
+      }
+    }
+  }
+
   const tradeRow: (CardInstance | null)[] = []
   for (let i = 0; i < TRADE_ROW_SIZE; i++) tradeRow.push(tradeDeck.shift() ?? null)
 
@@ -157,6 +212,10 @@ export function createGame(setup: MatchSetup): GameState {
     explorerPile: EXPLORER_PILE_SIZE,
     scrapHeap: [],
     setAside: [],
+    unclaimedGambits,
+    extraRowSlots: 0,
+    blackMarketOwner: null,
+    blackMarketUsedThisTurn: false,
     resolution: [],
     rng,
     winner: null,

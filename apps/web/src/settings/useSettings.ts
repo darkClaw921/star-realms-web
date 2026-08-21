@@ -24,13 +24,25 @@ export interface Settings {
    * перестала бы воспроизводиться.
    */
   sets: readonly SetId[]
+  /**
+   * Gambits dealt face down to each player, and missions dealt to each. Both are
+   * separate from `sets` because owning the cards and playing with them are
+   * different decisions: the printed gambit rule says "choose a number of them
+   * to be dealt", and zero is a legitimate choice.
+   */
+  gambits: number
+  missions: number
 }
 
-export const DEFAULTS: Settings = { cardScale: 1, textScale: 1, sets: ['core'] }
+export const DEFAULTS: Settings = {
+  cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0,
+}
 
 export const LIMITS = {
   cardScale: { min: 0.7, max: 1.6, step: 0.05 },
   textScale: { min: 0.85, max: 1.4, step: 0.05 },
+  gambits: { min: 0, max: 3, step: 1 },
+  missions: { min: 0, max: 3, step: 1 },
 } as const
 
 const KEY = 'sr:settings'
@@ -47,6 +59,8 @@ export function sanitize(raw: unknown): Settings {
     textScale: clamp(Number(o.textScale) || DEFAULTS.textScale,
       LIMITS.textScale.min, LIMITS.textScale.max),
     sets: sanitizeSets(o.sets),
+    gambits: clamp(Math.round(Number(o.gambits) || 0), LIMITS.gambits.min, LIMITS.gambits.max),
+    missions: clamp(Math.round(Number(o.missions) || 0), LIMITS.missions.min, LIMITS.missions.max),
   }
 }
 

@@ -37,7 +37,13 @@ function Play(): React.JSX.Element {
 
   // Sets are read ONCE, when the match is created. Reading them live would let
   // a settings change rewrite the trade deck mid-game.
-  const sets = useMemo(() => readSettings().sets, [])
+  // Same for gambits and missions: they are dealt at setup, so a change made
+  // mid-match must not reach into the game already on the table.
+  const dealt = useMemo(() => {
+    const st = readSettings()
+    return { sets: st.sets, gambits: st.gambits, missions: st.missions }
+  }, [])
+  const sets = dealt.sets
 
   // One seed per mount. Deliberately not derived from the URL so a refresh deals
   // a new game rather than replaying the same one.
@@ -56,8 +62,12 @@ function Play(): React.JSX.Element {
       // A challenge is played on the Frontiers trade deck regardless of the
       // player's own set choice -- that is what the challenge is built for.
       sets: challenge ? challenge.sets : mission ? undefined : sets,
+      // A challenge or a mission is a fixed setup; gambits and missions belong
+      // to the ordinary game the player configured.
+      gambitsPerPlayer: challenge || mission ? 0 : dealt.gambits,
+      missionsPerPlayer: challenge || mission ? 0 : dealt.missions,
     }),
-    [seed, mode, difficulty, mission, challenge, sets],
+    [seed, mode, difficulty, mission, challenge, sets, dealt],
   )
   const { snapshot, client } = useMatch(factory)
 

@@ -1,7 +1,7 @@
 import type { Action } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef } from './cards/registry'
-import { costFor } from './helpers'
+import { costFor, objectiveMet } from './helpers'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
 import type { InPlayCardView, PlayerView } from './view'
@@ -89,6 +89,17 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
       out.push({ t: 'BUY_CARD', card: c.iid })
     }
   }
+  // "You may reveal any Gambits ... during your Main Phase."
+  for (const g of me.gambits) out.push({ t: 'REVEAL_GAMBIT', card: g.iid })
+  // A mission is claimable only while its objective actually holds, so the
+  // legality check IS the objective check -- there is no second rule to drift.
+  for (const m of me.missions) {
+    const obj = cardDef(m.def).objective
+    if (obj && objectiveMet(me, obj)) {
+      out.push({ t: 'CLAIM_MISSION', card: m.iid })
+    }
+  }
+
   for (const c of v.setAside) {
     // Bought exactly as a row card is, so it goes through the same price.
     if (costFor(cardDef(c.def), me.inPlay) <= me.trade) out.push({ t: 'BUY_CARD', card: c.iid })

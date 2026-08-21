@@ -1,6 +1,7 @@
 import { cardDef } from './cards/registry'
-import type { CardDef } from './cards/types'
+import type { CardDef, MissionObjective } from './cards/types'
 import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
+import { FACTIONS } from './ids'
 import { opponentOf } from './ids'
 import type { GameState, InPlayCard, PlayerState } from './state'
 
@@ -142,4 +143,88 @@ export function findInPlay(s: GameState, iid: CardIid): { owner: PlayerId; card:
     if (card) return { owner: pid, card }
   }
   return null
+}
+
+/** Which faction a given ally slot is pinned to, if any. */
+export function allySlotFaction(
+  def: CardDef, slot: 'ally' | 'ally2' | 'ally3' | 'ally4',
+): Faction | undefined {
+  switch (slot) {
+    case 'ally': return def.allyFaction
+    case 'ally2': return def.ally2Faction
+    case 'ally3': return def.ally3Faction
+    case 'ally4': return def.ally4Faction
+  }
+}
+
+/**
+ * Is this mission's objective currently satisfied?
+ *
+ * Read off state the engine already keeps, which is the reason two of these
+ * added per-turn counters rather than being approximated: a mission that is
+ * "nearly" checkable is a mission that fires at the wrong moment.
+ */
+export interface ObjectiveContext {
+  readonly inPlay: readonly (Pick<InPlayCard, 'def' | 'copiedDef'>
+    & Partial<Pick<InPlayCard, 'chosenFaction'>>)[]
+  readonly shipsPlayedThisTurn: readonly { readonly def: CardDefId }[]
+  readonly alliesUsedThisTurn: readonly {
+    readonly def: CardDefId
+    readonly slot: 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly'
+  }[]
+  readonly gainedThisTurn: { readonly trade: number; readonly combat: number; readonly authority: number }
+}
+
+export function objectiveMet(p: ObjectiveContext, o: MissionObjective): boolean {
+  const inPlayFactions = (pred: (c: Pick<InPlayCard, 'def' | 'copiedDef'>) => boolean): Faction[] => {
+    const out: Faction[] = []
+    for (const c of p.inPlay) {
+      if (!pred(c)) continue
+      for (const f of factionsOf(c)) if (f !== 'unaligned' && !out.includes(f)) out.push(f)
+    }
+    return out
+  }
+  const countOf = (f: Faction, pred: (c: Pick<InPlayCard, 'def'>) => boolean): number =>
+    p.inPlay.filter((c) => pred(c) && factionsOf(c).includes(f)).length
+
+  switch (o.o) {
+    case 'ALLY_FACTIONS_THIS_TURN': {
+      const seen = new Set<Faction>()
+      for (const u of p.alliesUsedThisTurn) {
+        const def = cardDef(u.def)
+        const pinned = allySlotFaction(def, u.slot === 'doubleAlly' ? 'ally' : u.slot)
+        for (const f of pinned ? [pinned] : [def.faction, def.faction2]) {
+          if (f && f !== 'unaligned') seen.add(f)
+        }
+      }
+      return seen.size >= o.n
+    }
+    case 'SHIPS_PLAYED_THIS_TURN':
+      return p.shipsPlayedThisTurn.length >= o.n
+    case 'SHIP_FACTIONS_PLAYED_THIS_TURN': {
+      const seen = new Set<Faction>()
+      for (const c of p.shipsPlayedThisTurn) {
+        const def = cardDef(c.def)
+        for (const f of [def.faction, def.faction2]) {
+          if (f && f !== 'unaligned') seen.add(f)
+        }
+      }
+      return seen.size >= o.n
+    }
+    case 'BASES_SAME_FACTION':
+      return FACTIONS.some((f) => f !== 'unaligned' && countOf(f, isBase) >= o.n)
+    case 'BASE_FACTIONS':
+      return inPlayFactions(isBase).length >= o.n
+    case 'CARDS_SAME_FACTION_IN_PLAY':
+      return FACTIONS.some((f) => f !== 'unaligned' && countOf(f, () => true) >= o.n)
+    case 'OUTPOSTS_IN_PLAY':
+      return p.inPlay.filter(isOutpost).length >= o.n
+    case 'SHIP_PLAYED_WITH_BASE':
+      return p.shipsPlayedThisTurn.some((c) => factionsOf({ ...c, copiedDef: null }).includes(o.faction))
+        && p.inPlay.some((c) => isBase(c) && factionsOf(c).includes(o.faction))
+    case 'GAINED_THIS_TURN':
+      return p.gainedThisTurn.trade >= o.trade
+        && p.gainedThisTurn.combat >= o.combat
+        && p.gainedThisTurn.authority >= o.authority
+  }
 }

@@ -66,6 +66,10 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
       return `${card(e.def)} стыкуется и остаётся в руке игрока ${who(e.player)}`
     case 'SET_ASIDE':
       return `${card(e.def)} отложена — её можно купить до конца партии`
+    case 'GAMBIT_REVEALED':
+      return `${who(e.player)} раскрывает гамбит ${card(e.def)}`
+    case 'MISSION_COMPLETE':
+      return `${who(e.player)} выполняет миссию ${card(e.def)}`
     case 'TENTACLE_FED':
       return `${TENTACLE_RU[e.faction] ?? e.faction} поглощает ${card(e.def)}`
     case 'TENTACLE_HIT':

@@ -95,6 +95,9 @@ export const UI = {
     'promo-1': 'Промо-набор 1',
     'promo-year-2': 'Промо-набор второго года',
     'frontiers-promos': 'Frontiers: промо с Kickstarter',
+    gambits: 'Гамбиты',
+    'cosmic-gambits': 'Cosmic Gambit',
+    missions: 'United: Миссии',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -102,6 +105,21 @@ export const UI = {
   setAside: 'Отложено',
   setAsideTitle: (name: string): string =>
     `«${name}» отложена — её можно купить до конца партии`,
+
+  // гамбиты и миссии
+  gambitFaceDown: 'Гамбит (закрыт)',
+  gambitRevealed: 'Гамбит раскрыт',
+  revealGambit: (name: string): string => `Раскрыть гамбит «${name}»`,
+  missionOpen: 'Миссия',
+  claimMission: (name: string): string => `Выполнить миссию «${name}»`,
+  missionPending: (name: string): string => `«${name}» — задача ещё не выполнена`,
+  missionsDone: (done: number, total: number): string => `Миссий выполнено: ${done} из ${total}`,
+  gambitsName: 'Гамбиты',
+  gambitsHint: 'Сколько гамбитов раздать каждому игроку в начале партии. ' +
+    'Нужен включённый набор с гамбитами.',
+  missionsName: 'Миссии',
+  missionsHint: 'Сколько миссий раздать каждому игроку. Выполнив все свои миссии, ' +
+    'вы побеждаете — это второе условие победы. Нужен включённый набор «United: Миссии».',
 
   // приключения Frontiers
   modeChallenges: 'Приключения',
@@ -287,6 +305,11 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return 'Переложите карту из стопки сброса соперника в свою'
     case 'SET_ASIDE_FROM_ROW':
       return 'Отложите карту из торгового ряда — её можно будет купить до конца партии'
+    // ── Гамбиты и миссии ───────────────────────────────────────────────────
+    case 'BUY_FROM_SCRAP_HEAP':
+      return 'Заплатите стоимость карты из утиля и возьмите её в руку'
+    case 'REVEAL_SPLIT':
+      return 'Разложите открытые карты: в руку, в сброс и на верх колоды'
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

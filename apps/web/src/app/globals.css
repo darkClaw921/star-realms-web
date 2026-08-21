@@ -286,6 +286,14 @@ button { font: inherit; color: inherit; }
 }
 .card.is-base .card__faction--2 { right: 19cqi; }
 
+/* A thin strip for gambits and missions: they are few, and they must not steal
+ * height from the board. Scrolls sideways like every other row. */
+.band--sides {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--rule);
+  padding: 6px 0;
+}
+
 .card__body {
   position: relative;
   z-index: 1;

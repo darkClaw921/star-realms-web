@@ -33,6 +33,9 @@ export type PromptKind =
   | 'DISCARD_TO_HAND'
   | 'STEAL_FROM_DISCARD'
   | 'SET_ASIDE_FROM_ROW'
+  // ── Gambits and Missions ──────────────────────────────────────────────────
+  | 'BUY_FROM_SCRAP_HEAP'
+  | 'REVEAL_SPLIT'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

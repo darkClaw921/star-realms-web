@@ -55,6 +55,8 @@ export function Board({
     let playAll = false
     let canMulligan = false
     const tentacleCards = new Set<string>()
+    const revealGambit = new Set<string>()
+    const claimMission = new Set<string>()
     for (const a of legal) {
       switch (a.t) {
         case 'PLAY_CARD': play.add(a.card); break
@@ -66,6 +68,8 @@ export function Board({
         case 'END_TURN': endTurn = true; break
         case 'MULLIGAN_ROW': canMulligan = true; break
         case 'ATTACK_TENTACLE': tentacleCards.add(a.card); break
+        case 'REVEAL_GAMBIT': revealGambit.add(a.card); break
+        case 'CLAIM_MISSION': claimMission.add(a.card); break
         case 'ACTIVATE': {
           const set = activate.get(a.card) ?? new Set<string>()
           set.add(a.slot)
@@ -77,7 +81,7 @@ export function Board({
     }
     return {
       play, buy, attack, activate, buyExplorer, endTurn, maxFace, playAll,
-      canMulligan, tentacleCards,
+      canMulligan, tentacleCards, revealGambit, claimMission,
     }
   }, [legal])
 
@@ -285,6 +289,60 @@ export function Board({
           )}
         </div>
       </section>
+
+      {/* ── gambits and missions ─────────────────────────────────────────── */}
+      {(v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
+        || v.me.missions.length > 0 || v.me.missionsDone.length > 0) && (
+        <section className="band band--sides">
+          <div className="row row--scroll">
+            {v.me.gambits.map((c) => (
+              <div key={c.iid} className="zone">
+                <Card
+                  def={c.def}
+                  playable={idx.revealGambit.has(c.iid)}
+                  dimmed={!idx.revealGambit.has(c.iid) && myTurn}
+                  onClick={idx.revealGambit.has(c.iid)
+                    ? () => onAction({ t: 'REVEAL_GAMBIT', card: c.iid as CardIid })
+                    : undefined}
+                  title={UI.revealGambit(nameOf(c.def))}
+                />
+                <span className="eyebrow">{UI.gambitFaceDown}</span>
+              </div>
+            ))}
+            {v.me.gambitsInPlay.map((c) => (
+              <div key={c.iid} className="zone">
+                <Card def={c.def} title={nameOf(c.def)} />
+                <span className="eyebrow">{UI.gambitRevealed}</span>
+              </div>
+            ))}
+            {v.me.missions.map((c) => (
+              <div key={c.iid} className="zone">
+                <Card
+                  def={c.def}
+                  playable={idx.claimMission.has(c.iid)}
+                  dimmed={!idx.claimMission.has(c.iid) && myTurn}
+                  onClick={idx.claimMission.has(c.iid)
+                    ? () => onAction({ t: 'CLAIM_MISSION', card: c.iid as CardIid })
+                    : undefined}
+                  title={idx.claimMission.has(c.iid)
+                    ? UI.claimMission(nameOf(c.def))
+                    : UI.missionPending(nameOf(c.def))}
+                />
+                <span className="eyebrow">{UI.missionOpen}</span>
+              </div>
+            ))}
+            {/* Completed missions are the win track, so the count is the point. */}
+            {v.me.missionsDone.length > 0 && (
+              <div className="zone">
+                <span className="eyebrow">
+                  {UI.missionsDone(v.me.missionsDone.length,
+                    v.me.missionsDone.length + v.me.missions.length)}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── my board ─────────────────────────────────────────────────────── */}
       <section className="band band--board">

@@ -2,17 +2,17 @@ import { produce, type Draft } from 'immer'
 import type { Action, Command } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef, EXPLORER, SCOUT, VIPER } from './cards/registry'
-import type { CardDef } from './cards/types'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
-  allyCountFor, canAttackFace, costFor, effectiveDefId, factionsOf, findInPlay, isBase,
-  isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets,
+  allySlotFaction, allyCountFor, canAttackFace, costFor, effectiveDefId, factionsOf,
+  findInPlay, isBase,
+  isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets, objectiveMet,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
-import { FACTIONS, opponentOf, PLAYERS } from './ids'
+import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
 import { nextHex, nextInt, shuffle } from './rng'
 import {
   EXPLORER_COST, HAND_SIZE, TRADE_ROW_SIZE, emptyFactionCounts,
@@ -63,6 +63,9 @@ function gain(d: D, pid: PlayerId, what: 'trade' | 'combat' | 'authority', n: nu
   if (what === 'trade') p.trade += n
   else if (what === 'combat') p.combat += n
   else p.authority += n
+  // Diversify asks what you GAINED, not what you still have, so a spent point
+  // still counts. Losses are not negative gains and are not counted.
+  if (n > 0) p.gainedThisTurn[what] += n
   ev.push({ e: 'GAIN', player: pid, what, n })
 }
 
@@ -84,6 +87,13 @@ function checkWin(d: D, ev: GameEvent[]): void {
   for (const pid of PLAYERS) {
     if (d.players[pid].authority <= 0) {
       win(d, opponentOf(pid), ev)
+      return
+    }
+    // United's Missions are a second, positive win condition: completing all of
+    // the ones you were dealt wins outright, whatever the authority track says.
+    const p = d.players[pid]
+    if (p.missionsDone.length > 0 && p.missions.length === 0) {
+      win(d, pid, ev)
       return
     }
   }
@@ -163,8 +173,23 @@ function drawCards(d: D, pid: PlayerId, n: number, ev: GameEvent[]): CardDefId[]
  * a fresh REFILL_TRADE_ROW onto the resolution stack, and lets settle() come
  * back to the remaining slots once the event has fully resolved.
  */
+/**
+ * How much incoming face damage this player shrugs off.
+ *
+ * Only Energy Shield grants it, and only against attacks on the player -- the
+ * card is explicit that bases do not benefit.
+ */
+function shieldOf(d: D, pid: PlayerId): number {
+  let n = 0
+  for (const g of d.players[pid].gambitsInPlay) n += cardDef(g.def).damageReduction ?? 0
+  return n
+}
+
 function refillTradeRow(d: D, ev: GameEvent[]): void {
-  for (let i = 0; i < TRADE_ROW_SIZE; i++) {
+  // Black Market widens the row permanently, for everyone.
+  const width = TRADE_ROW_SIZE + d.extraRowSlots
+  while (d.tradeRow.length < width) d.tradeRow.push(null)
+  for (let i = 0; i < width; i++) {
     if (d.tradeRow[i]) continue
     const c = d.tradeDeck.shift() ?? null
     if (c && cardDef(c.def).type === 'event') {
@@ -383,6 +408,12 @@ function destroyBase(
   // demolishing your own outpost.
   if (destroyer !== owner) d.basesDestroyed[destroyer] += 1
   p.inPlay.splice(idx, 1)
+  if (cardDef(card.def).removeOnDestroy) {
+    // Secret Outpost: a token, not a card you own. Destroyed means gone.
+    d.scrapHeap.push({ iid: card.iid, def: card.def })
+    ev.push({ e: 'BASE_DESTROYED', owner, iid: card.iid, def: card.def, by })
+    return
+  }
   // Destroyed bases go to their OWNER'S discard pile, not the scrap heap --
   // they cycle back into that player's deck.
   p.discard.push({ iid: card.iid, def: card.def })
@@ -814,6 +845,55 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       pushChoice(d, makeChoice(d, me, 'SET_ASIDE_FROM_ROW',
         'Set a trade row card aside; anyone may acquire it for the rest of the game',
         effect.min, 1, opts, ctx.source))
+      return
+    }
+
+    case 'DRAW_GAMBIT': {
+      for (let i = 0; i < effect.n; i++) {
+        if (d.unclaimedGambits.length === 0) break
+        const [pick, next] = nextInt(d.rng, d.unclaimedGambits.length)
+        d.rng = next as Draft<GameState>['rng']
+        p.gambits.push(d.unclaimedGambits.splice(pick, 1)[0] as CardInstance)
+      }
+      return
+    }
+
+    case 'OPEN_BLACK_MARKET': {
+      d.extraRowSlots += 1
+      d.blackMarketOwner = me
+      refillTradeRow(d, ev)
+      return
+    }
+
+    case 'DEPLOY_TOKEN': {
+      const inst = { iid: mintId(d, 12) as CardIid, def: asDefId(effect.def) }
+      enterPlay(d, me, inst, ev)
+      // A token's on-play triggers fire like any card's -- Secret Outpost picks
+      // its faction that way.
+      for (const t of cardDef(inst.def).triggers) {
+        if (t.on !== 'PLAY_SELF') continue
+        pushEffects(d, t.effects, { controller: me, source: inst.iid, slot: 'trigger' })
+      }
+      return
+    }
+
+    case 'BUY_FROM_SCRAP_HEAP': {
+      const opts: ChoiceOption[] = d.scrapHeap
+        .filter((c) => costFor(cardDef(c.def), p.inPlay) <= p.trade)
+        .map((c) => ({ o: 'CARD' as const, iid: c.iid, def: c.def, zone: 'scrapHeap' as Zone, owner: null }))
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing affordable in the scrap heap' }); return }
+      pushChoice(d, makeChoice(d, me, 'BUY_FROM_SCRAP_HEAP',
+        "Pay a scrapped card's cost to take it into your hand", effect.min, 1, opts, ctx.source))
+      return
+    }
+
+    case 'REVEAL_THREE_SPLIT': {
+      if (p.deck.length < 3) reshuffle(d, me, ev)
+      const looked = (p.deck as CardInstance[]).slice(0, 3)
+      if (looked.length === 0) { ev.push({ e: 'FIZZLE', label: 'deck is empty' }); return }
+      pushChoice(d, makeChoice(d, me, 'REVEAL_SPLIT',
+        'Put one of these into your hand', 1, 1, cardOpts(looked, 'deck', me), ctx.source),
+        { c: 'REVEAL_SPLIT', iids: looked.map((c) => c.iid), dest: 'hand' })
       return
     }
 
@@ -1341,6 +1421,42 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'BUY_FROM_SCRAP_HEAP': {
+      const o = selected[0]
+      if (!o || o.o !== 'CARD') return
+      const idx = d.scrapHeap.findIndex((x) => x.iid === o.iid)
+      if (idx < 0) return
+      const inst = d.scrapHeap[idx] as CardInstance
+      const price = costFor(cardDef(inst.def), p.inPlay)
+      if (p.trade < price) return
+      p.trade -= price
+      d.scrapHeap.splice(idx, 1)
+      p.hand.push(inst)
+      ev.push({ e: 'ACQUIRE', player: me, def: inst.def, dest: 'hand', cost: price })
+      return
+    }
+
+    case 'REVEAL_SPLIT': {
+      const o = selected[0]
+      if (!o || o.o !== 'CARD' || cont?.c !== 'REVEAL_SPLIT') return
+      const idx = p.deck.findIndex((x) => x.iid === o.iid)
+      if (idx < 0) return
+      const inst = p.deck.splice(idx, 1)[0] as CardInstance
+      if (cont.dest === 'hand') p.hand.push(inst)
+      else p.discard.push(inst)
+      const rest = cont.iids.filter((x) => x !== o.iid)
+      if (cont.dest === 'hand' && rest.length > 1) {
+        // Two left and two destinations: the third needs no prompt, because it
+        // is already on top of the deck and staying there.
+        const remaining = (p.deck as CardInstance[]).filter((c) => rest.includes(c.iid))
+        pushChoice(d, makeChoice(d, me, 'REVEAL_SPLIT',
+          'Put one of these into your discard pile; the other stays on top',
+          1, 1, cardOpts(remaining, 'deck', me), c.source),
+          { c: 'REVEAL_SPLIT', iids: rest, dest: 'discard' })
+      }
+      return
+    }
+
     case 'SET_ASIDE_FROM_ROW': {
       const o = selected[0]
       if (!o || o.o !== 'CARD') return
@@ -1544,31 +1660,23 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     if (t.on !== 'PLAY_SELF') continue
     queued.push(...t.effects)
   }
-  // Triggered abilities of cards ALREADY in play (Fleet HQ).
+  // Triggered abilities of cards ALREADY in play (Fleet HQ), and of revealed
+  // gambits, which watch from beside the board rather than on it.
   const on = def.type === 'ship' ? 'PLAY_SHIP' : 'PLAY_BASE'
-  for (const other of p.inPlay) {
+  const watchers = [...p.inPlay, ...p.gambitsInPlay]
+  for (const other of watchers) {
     if (other.iid === inst.iid) continue
-    for (const t of cardDef(effectiveDefId(other)).triggers) {
+    for (const t of cardDef(effectiveDefId({ ...other, copiedDef: null })).triggers) {
       if (t.on !== on) continue
-      // Colony Wars' Command Center fires only on Star Empire ships.
-      if (t.faction && t.faction !== def.faction) continue
+      // Colony Wars' Command Center fires only on Star Empire ships; Veteran
+      // Pilots fires only on Vipers.
+      if (t.faction && t.faction !== def.faction && t.faction !== def.faction2) continue
+      if (t.cardId && t.cardId !== inst.def) continue
       queued.push(...t.effects)
       ev.push({ e: 'ABILITY_USED', player: me, iid: other.iid, def: other.def, slot: 'trigger' })
     }
   }
   if (queued.length > 0) pushEffects(d, queued, ctx)
-}
-
-/** Which faction a given ally slot is pinned to, if any. */
-export function allySlotFaction(
-  def: CardDef, slot: 'ally' | 'ally2' | 'ally3' | 'ally4',
-): Faction | undefined {
-  switch (slot) {
-    case 'ally': return def.allyFaction
-    case 'ally2': return def.ally2Faction
-    case 'ally3': return def.ally3Faction
-    case 'ally4': return def.ally4Faction
-  }
 }
 
 function activate(
@@ -1658,9 +1766,16 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   const inst = d.tradeRow[idx] as CardInstance
   // High Alert prices some cards against your board, so the price is computed
   // here rather than read off the card -- see costFor.
-  const cost = costFor(cardDef(inst.def), p.inPlay)
+  let cost = costFor(cardDef(inst.def), p.inPlay)
+  // Black Market: one point off, once per turn, for whoever revealed it, and
+  // only from the slots the Black Market itself added.
+  const fromMarket = idx >= TRADE_ROW_SIZE
+    && d.blackMarketOwner === me
+    && !d.blackMarketUsedThisTurn
+  if (fromMarket) cost = Math.max(0, cost - 1)
   if (p.trade < cost) throw new IllegalActionError('not enough trade')
   p.trade -= cost
+  if (fromMarket) d.blackMarketUsedThisTurn = true
   d.tradeRow[idx] = null
   acquire(d, me, inst, cost, 'discard', ev)
   refillTradeRow(d, ev)
@@ -1737,6 +1852,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.scrappedThisTurn = 0
   p.phantomFactions = []
   p.alliesUsedThisTurn = []
+  p.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
   // Stealth Tower copies a base "until your turn ends", so the copy is dropped
   // HERE rather than at the start of your next turn. The difference is not
   // cosmetic: a copied outpost left standing would shield you through the
@@ -1760,6 +1876,16 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.scrappedThisTurn = 0
   next.phantomFactions = []
   next.alliesUsedThisTurn = []
+  next.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
+  d.blackMarketUsedThisTurn = false
+  // Frontier Fleet and its kind: an ongoing gambit that pays at the start of
+  // every one of your turns, so it is granted here rather than by an action.
+  for (const g of next.gambitsInPlay) {
+    const turnStart = cardDef(g.def).primary
+    if (turnStart.length > 0) {
+      pushEffects(d, turnStart, { controller: d.activePlayer, source: g.iid, slot: 'primary' })
+    }
+  }
   for (const c of next.inPlay) {
     c.used = {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
@@ -2182,9 +2308,52 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       }
       if (action.amount < 1 || action.amount > p.combat) throw new IllegalActionError('invalid combat amount')
       p.combat -= action.amount
-      d.players[target].authority -= action.amount
-      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target, n: action.amount })
-      ev.push({ e: 'AUTHORITY_LOST', player: target, n: action.amount })
+      // Energy Shield reduces damage to the PLAYER, not to their bases, so the
+      // reduction lives here and not in the base-attack path.
+      const shield = shieldOf(d, target)
+      const dealt = Math.max(0, action.amount - shield)
+      d.players[target].authority -= dealt
+      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target, n: dealt })
+      ev.push({ e: 'AUTHORITY_LOST', player: target, n: dealt })
+      return
+    }
+
+    case 'REVEAL_GAMBIT': {
+      const p = d.players[me]
+      const idx = p.gambits.findIndex((c) => c.iid === action.card)
+      if (idx < 0) throw new IllegalActionError('not one of your gambits')
+      const inst = p.gambits.splice(idx, 1)[0] as CardInstance
+      const def = cardDef(inst.def)
+      ev.push({ e: 'GAMBIT_REVEALED', player: me, iid: inst.iid, def: inst.def })
+      // An ongoing gambit stays face up and keeps applying; a one-shot pays out
+      // and is gone. Which it is, is whether it has a scrap ability -- the
+      // printed trash icon.
+      if (def.scrap.length > 0) {
+        d.scrapHeap.push(inst)
+      } else {
+        p.gambitsInPlay.push(inst)
+      }
+      const onReveal = def.onReveal ?? []
+      const body = def.scrap.length > 0 ? def.scrap : []
+      if (onReveal.length + body.length > 0) {
+        pushEffects(d, [...onReveal, ...body], { controller: me, source: inst.iid, slot: 'scrap' })
+      }
+      return
+    }
+
+    case 'CLAIM_MISSION': {
+      const p = d.players[me]
+      const idx = p.missions.findIndex((c) => c.iid === action.card)
+      if (idx < 0) throw new IllegalActionError('not one of your missions')
+      const inst = p.missions[idx] as CardInstance
+      const def = cardDef(inst.def)
+      if (!def.objective || !objectiveMet(p, def.objective)) {
+        throw new IllegalActionError('objective not met')
+      }
+      p.missions.splice(idx, 1)
+      p.missionsDone.push(inst.def)
+      ev.push({ e: 'MISSION_COMPLETE', player: me, def: inst.def })
+      pushEffects(d, def.primary, { controller: me, source: inst.iid, slot: 'primary' })
       return
     }
 

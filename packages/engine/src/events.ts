@@ -34,6 +34,10 @@ export type GameEvent =
   | { e: 'DOCKED'; player: PlayerId; iid: CardIid; def: CardDefId }
   /** Patience Rewarded: a trade row card is now buyable for the rest of the game. */
   | { e: 'SET_ASIDE'; def: CardDefId }
+  /** Gambit: a face-down card is now face up and applying. */
+  | { e: 'GAMBIT_REVEALED'; player: PlayerId; iid: CardIid; def: CardDefId }
+  /** United: a mission's objective was met and its reward claimed. */
+  | { e: 'MISSION_COMPLETE'; player: PlayerId; def: CardDefId }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }

@@ -161,8 +161,10 @@ async function main() {
       b?.click()
     })
     await sleep(500)
+    // Два ползунка отображения (размер карты и текста) плюс два раздачи
+    // (гамбиты и миссии).
     const sliders = await page.$$eval('input[type=range]', (els) => els.length)
-    record('панель настроек открывается', sliders === 2, `ползунков: ${sliders}`)
+    record('панель настроек открывается', sliders === 4, `ползунков: ${sliders}`)
     shots.push(await shot(page, 'settings', 'Настройки отображения. Предпросмотр показывает настоящие карты, включая самую многословную в наборе, — на ней и видно, когда текст перестаёт помещаться.'))
 
     await page.evaluate(() => {
@@ -299,6 +301,11 @@ async function main() {
         ['Промо-набор 1', 15],
         ['Промо-набор второго года', 9],
         ['Frontiers: промо с Kickstarter', 40],
+        // Gambits and Missions are dealt from their own piles, so they add
+        // nothing to the trade deck -- which is exactly what this asserts.
+        ['Гамбиты', 0],
+        ['Cosmic Gambit', 0],
+        ['United: Миссии', 0],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>
@@ -357,6 +364,61 @@ async function main() {
       const backText = await textOf(page, '.band--market .zone__head')
       const backDeck = Number((backText.match(/(\d+)/) ?? [])[1] ?? 0)
       record('выключение возвращает базовый набор', backDeck < 80, `в колоде: ${backDeck}`)
+    }
+
+    // ── 2b-bis. гамбиты и миссии ──────────────────────────────────────────
+    {
+      // Раздаются из собственных стопок, поэтому включаются числом, а не
+      // переключателем набора: «сколько раздать каждому».
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({
+            ...raw, sets: ['core', 'gambits', 'cosmic-gambits', 'missions'],
+            gambits: 2, missions: 3,
+          }))
+        } catch { /* */ }
+      })
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.band--sides .card', { timeout: 10000 })
+      await sleep(900)
+
+      const sideLabels = await page.$$eval('.band--sides .zone .eyebrow',
+        (els) => els.map((e) => (e.textContent ?? '').trim()))
+      const gambitCount = sideLabels.filter((t) => t === 'Гамбит (закрыт)').length
+      const missionCount = sideLabels.filter((t) => t === 'Миссия').length
+      record('гамбиты и миссии раздаются на стол',
+        gambitCount === 2 && missionCount === 3,
+        `гамбитов ${gambitCount}, миссий ${missionCount}`)
+
+      // Раскрытие гамбита -- обычное действие своего хода.
+      const revealed = await page.evaluate(() => {
+        const zones = [...document.querySelectorAll('.band--sides .zone')]
+        const z = zones.find((x) => (x.querySelector('.eyebrow')?.textContent ?? '').includes('закрыт')
+          && x.querySelector('.card.is-playable'))
+        if (!z) return false
+        z.querySelector('.card')?.click()
+        return true
+      })
+      await sleep(700)
+      const after = await page.$$eval('.band--sides .zone .eyebrow',
+        (els) => els.map((e) => (e.textContent ?? '').trim()))
+      record('гамбит раскрывается кликом',
+        revealed && after.filter((t) => t === 'Гамбит (закрыт)').length === 1,
+        `было 2, стало ${after.filter((t) => t === 'Гамбит (закрыт)').length}`)
+      shots.push(await shot(page, 'gambits',
+        'Гамбиты и миссии. Гамбиты раздаются закрытыми и раскрываются в свой ход; ' +
+        'миссия становится доступной ровно тогда, когда её задача выполнена, ' +
+        'а выполнив все свои миссии, игрок выигрывает партию.'))
+
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({
+            ...raw, sets: ['core'], gambits: 0, missions: 0,
+          }))
+        } catch { /* */ }
+      })
     }
 
     // ── 2c. кампания ──────────────────────────────────────────────────────

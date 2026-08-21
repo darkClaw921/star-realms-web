@@ -2,7 +2,19 @@ import { asDefId, type CardDefId, type CardType, type Faction } from '../ids'
 import type { Effect, Trigger } from '../effects'
 
 /** How a card enters the game. Only `trade_deck` cards are shuffled into the trade deck. */
-export type CardRole = 'trade_deck' | 'starter' | 'explorer'
+export type CardRole =
+  | 'trade_deck'
+  | 'starter'
+  | 'explorer'
+  /**
+   * Gambit: dealt face down at setup, never shuffled into anything. Revealed at
+   * the start of the game or during your main phase.
+   */
+  | 'gambit'
+  /** United: three dealt face down to each player; completing all three wins. */
+  | 'mission'
+  /** A card that only ever enters play from another card. Secret Outpost. */
+  | 'token'
 
 /**
  * Which product a card comes from.
@@ -31,6 +43,9 @@ export type SetId =
   | 'promo-1'
   | 'promo-year-2'
   | 'frontiers-promos'
+  | 'gambits'
+  | 'cosmic-gambits'
+  | 'missions'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -51,6 +66,33 @@ export interface CardText {
   readonly doubleAlly?: string
   readonly scrap: string
 }
+
+/**
+ * A mission's objective, as data.
+ *
+ * Evaluated against the player's own state at the end of every action, so each
+ * one has to be answerable from what the engine already tracks -- which is why
+ * two of them added per-turn counters rather than being approximated.
+ */
+export type MissionObjective =
+  /** Ally: ally abilities from two different factions in the same turn. */
+  | { o: 'ALLY_FACTIONS_THIS_TURN'; n: number }
+  /** Armada: play seven or more ships in the same turn. */
+  | { o: 'SHIPS_PLAYED_THIS_TURN'; n: number }
+  /** Unite: three ships from DIFFERENT factions in the same turn. */
+  | { o: 'SHIP_FACTIONS_PLAYED_THIS_TURN'; n: number }
+  /** Colonize: two or more bases of the same faction in play. */
+  | { o: 'BASES_SAME_FACTION'; n: number }
+  /** Rule: bases from two or more factions in play. */
+  | { o: 'BASE_FACTIONS'; n: number }
+  /** Influence: three ships and/or bases of the same faction in play. */
+  | { o: 'CARDS_SAME_FACTION_IN_PLAY'; n: number }
+  /** Defend: two or more outposts in play. */
+  | { o: 'OUTPOSTS_IN_PLAY'; n: number }
+  /** Convert / Dominate / Exterminate / Monopolize: a ship beside its own base. */
+  | { o: 'SHIP_PLAYED_WITH_BASE'; faction: Faction }
+  /** Diversify: gain this much trade AND combat AND authority in one turn. */
+  | { o: 'GAINED_THIS_TURN'; trade: number; combat: number; authority: number }
 
 export interface CardDef {
   readonly id: CardDefId
@@ -88,6 +130,21 @@ export interface CardDef {
    * can be activated -- it is a property of the card that the end of turn reads.
    */
   readonly docking?: Faction
+  /**
+   * Gambits: what happens when the card is revealed, before anything else. An
+   * ongoing gambit has none -- it simply starts applying.
+   */
+  readonly onReveal?: readonly Effect[]
+  /** Missions: the objective that claims the card, and what claiming it pays. */
+  readonly objective?: MissionObjective
+  /** Cosmic Gambit's Secret Outpost: destroyed means gone, not discarded. */
+  readonly removeOnDestroy?: boolean
+  /**
+   * Energy Shield: how much damage this card soaks off an attack on its OWNER.
+   * Its own field rather than a reuse of `defense`, which means "what an attack
+   * has to get through to destroy this card" and belongs to bases alone.
+   */
+  readonly damageReduction?: number
   readonly role: CardRole
   /** Ships: resolved immediately and mandatorily on play. Bases: activatable once per turn. */
   readonly primary: readonly Effect[]

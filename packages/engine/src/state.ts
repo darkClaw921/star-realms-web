@@ -112,6 +112,23 @@ export interface PlayerState {
    * they are cleared with the rest of the per-turn bookkeeping.
    */
   phantomFactions: Faction[]
+  /**
+   * Gambit cards dealt to this player and not yet revealed. Secret to their
+   * owner: an opponent who knew them would play around them, and the whole
+   * point of dealing them face down is that they cannot.
+   */
+  gambits: CardInstance[]
+  /** Revealed gambits that keep applying. One-shots never land here. */
+  gambitsInPlay: CardInstance[]
+  /** Missions dealt to this player and not yet completed. Secret, like gambits. */
+  missions: CardInstance[]
+  /** Missions completed. Completing all of them wins the game outright. */
+  missionsDone: CardDefId[]
+  /**
+   * Resources gained this turn, for Diversify -- which asks what you GAINED,
+   * not what you still have, so a spent trade point still counts.
+   */
+  gainedThisTurn: { trade: number; combat: number; authority: number }
   /** Cards that return from the scrap heap to the discard pile at end of turn. */
   returnAtEndOfTurn: CardIid[]
 }
@@ -152,6 +169,8 @@ export type ChoiceCont =
   | { c: 'OWN_FACTION'; iid: CardIid }
   /** Midgate Station: the resource is worth the discards plus this. */
   | { c: 'DISCARD_PLUS'; plus: number }
+  /** Convert's reward: which of the three revealed cards still need a home. */
+  | { c: 'REVEAL_SPLIT'; iids: readonly CardIid[]; dest: 'hand' | 'discard' }
   /** Needle Lancer: the ally abilities on offer, parallel to the branch options. */
   | { c: 'COPY_ALLY'; used: readonly { def: CardDefId; slot: string }[] }
 
@@ -187,6 +206,17 @@ export interface GameState {
    * refills, and these do neither.
    */
   setAside: CardInstance[]
+  /** Gambits nobody was dealt. Wild Gambit deals itself more from here. */
+  unclaimedGambits: CardInstance[]
+  /**
+   * Cosmic Gambit's Black Market: extra trade row slots, and who may buy from
+   * them a point cheaper. The slots are public and shared; only the discount
+   * belongs to one player.
+   */
+  extraRowSlots: number
+  blackMarketOwner: PlayerId | null
+  /** The Black Market discount is once per turn, not once per purchase. */
+  blackMarketUsedThisTurn: boolean
   /** LIFO. Index 0 is the next thing to do. */
   resolution: ResolutionFrame[]
   /** SERVER ONLY. Must never appear in any PlayerView, event, log or error. */

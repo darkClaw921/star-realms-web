@@ -22,6 +22,10 @@ export interface LocalOptions {
   readonly boss?: BossState | undefined
   /** Card sets in the trade deck. Read once, at deal time. */
   readonly sets?: readonly SetId[] | undefined
+  /** Gambits dealt face down to each player. Zero means playing without them. */
+  readonly gambitsPerPlayer?: number | undefined
+  /** Missions dealt to each player. Completing all of yours wins the game. */
+  readonly missionsPerPlayer?: number | undefined
 }
 
 /**
@@ -48,6 +52,8 @@ export class LocalMatchClient implements MatchClient {
       scenario: opts.scenario,
       boss: opts.boss,
       sets: opts.sets,
+      gambitsPerPlayer: opts.gambitsPerPlayer,
+      missionsPerPlayer: opts.missionsPerPlayer,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()
