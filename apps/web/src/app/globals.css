@@ -401,6 +401,108 @@ button { font: inherit; color: inherit; }
   padding: 0.8cqi 1.6cqi;
 }
 
+/* ── press-and-hold to enlarge ──────────────────────────────────────────── */
+/* The duration is the JS HOLD_MS. If one changes the other must follow: the bar
+ * filling is the player's only evidence that the hold is being counted. */
+.card__hold {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  height: 2.2cqi;
+  width: 0;
+  background: var(--authority);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--authority) 70%, transparent);
+  pointer-events: none;
+}
+.card.is-holding .card__hold { animation: card-hold 600ms linear forwards; }
+@keyframes card-hold { from { width: 0; } to { width: 100%; } }
+
+/* ── the enlarged card ──────────────────────────────────────────────────── */
+.preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 14px;
+  padding: 20px;
+  background: rgba(3, 5, 8, 0.82);
+  backdrop-filter: blur(3px);
+  animation: preview-in 160ms ease both;
+}
+@keyframes preview-in { from { opacity: 0; } to { opacity: 1; } }
+
+.preview__stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  /* Perspective belongs to the stage, not the card: on the card itself every
+   * rotation would get its own vanishing point and the tilt would read flat. */
+  perspective: 1300px;
+}
+
+/* cqi again, so the enlarged face is the same composition at a larger size
+ * rather than a second layout that can drift from the real one. */
+.preview__slot {
+  container-type: inline-size;
+  width: min(84vw, 48vh);
+}
+.preview__slot--base { width: min(92vw, 96vh); }
+
+.preview__card {
+  --rx: 0deg;
+  --ry: 0deg;
+  --gx: 50%;
+  --gy: 50%;
+  width: 100%;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
+  transform-style: preserve-3d;
+  transition: transform 90ms ease-out;
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.95),
+              0 0 0 1px color-mix(in srgb, var(--fc) 45%, transparent);
+  cursor: zoom-out;
+}
+
+/* A highlight that tracks the pointer. It is what makes the rotation read as a
+ * physical surface catching light rather than a picture being skewed. */
+.preview__glare {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(38% 30% at var(--gx) var(--gy),
+    rgba(255, 255, 255, 0.16) 0%, transparent 70%);
+}
+
+.preview__bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.preview__hint {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* Touch has no pointer to follow, so the instruction would be a lie. */
+@media (hover: none) {
+  .preview__hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview { animation: none; }
+  .preview__card { transform: none; transition: none; }
+  .preview__glare { display: none; }
+}
+
 /* ── inline resource glyphs in card text ────────────────────────────────── */
 .glyph {
   display: inline-flex;

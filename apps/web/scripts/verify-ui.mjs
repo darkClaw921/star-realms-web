@@ -103,6 +103,19 @@ async function main() {
     const handCount = await page.$$eval('.band:last-of-type .card', (els) => els.length)
     record('первый игрок получает 3 карты', handCount === 3, `на руке: ${handCount}`)
 
+    // Короткий клик обязан по-прежнему делать ход. Подавление клика после
+    // удержания легко расширить на все клики сразу и не заметить этого.
+    {
+      const inPlayBefore = await page.$$eval('.band--board .card', (els) => els.length)
+      await page.click('.band:last-of-type .card')
+      await sleep(500)
+      const inPlayAfter = await page.$$eval('.band--board .card', (els) => els.length)
+      const handAfter = await page.$$eval('.band:last-of-type .card', (els) => els.length)
+      record('короткий клик разыгрывает карту',
+        inPlayAfter === inPlayBefore + 1 && handAfter === handCount - 1,
+        `в игре ${inPlayBefore}→${inPlayAfter}, на руке ${handCount}→${handAfter}`)
+    }
+
     // Play a few turns and let the bot answer.
     let turns = 0
     for (let i = 0; i < 14; i++) {
@@ -195,6 +208,54 @@ async function main() {
 
     // Возвращаем значения по умолчанию, чтобы остальные снимки были эталонными.
     await page.evaluate(() => { try { localStorage.removeItem('sr:settings') } catch { /* */ } })
+
+    // ── 3a. просмотр карты по удержанию ───────────────────────────────────
+    // Проверяется за одним экраном, а не против бота: там между ходами ничего
+    // не происходит само, поэтому изменение торгового ряда можно приписать
+    // именно нашему жесту, а не покупке соперника.
+    await page.goto(`${BASE}/play?mode=hotseat`, { waitUntil: 'networkidle2' })
+    await page.waitForSelector('.band--market .card', { timeout: 10000 })
+    await sleep(900)
+    {
+      const slotLabel = () => page.$eval('.band--market .card-slot .card',
+        (el) => el.getAttribute('aria-label') ?? '')
+      const cardBefore = await slotLabel()
+
+      const box = await page.$eval('.band--market .card-slot .card', (el) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      })
+      await page.mouse.move(box.x, box.y)
+      await page.mouse.down()
+      await sleep(900)
+      await page.mouse.up()
+      await sleep(250)
+
+      const opened = await page.$$eval('.preview', (els) => els.length)
+      record('удержание открывает большую карту', opened === 1, `окон: ${opened}`)
+
+      // Наклон: курсор в противоположные углы, угол поворота меняет знак.
+      await page.mouse.move(60, 60)
+      await sleep(120)
+      const tiltA = await page.$eval('.preview__card', (el) => el.style.getPropertyValue('--ry'))
+      await page.mouse.move(1500, 900)
+      await sleep(120)
+      const tiltB = await page.$eval('.preview__card', (el) => el.style.getPropertyValue('--ry'))
+      const a = parseFloat(tiltA), b = parseFloat(tiltB)
+      record('карта наклоняется от курсора',
+        Number.isFinite(a) && Number.isFinite(b) && a < 0 && b > 0, `${tiltA} → ${tiltB}`)
+
+      shots.push(await shot(page, 'card-preview', 'Карта, открытая удержанием. Поверхность наклоняется от курсора; композиция та же, что на столе, просто крупнее.'))
+
+      await page.keyboard.press('Escape')
+      await sleep(250)
+      const closed = await page.$$eval('.preview', (els) => els.length)
+      record('Esc закрывает просмотр', closed === 0, `окон: ${closed}`)
+
+      const cardAfter = await slotLabel()
+      record('удержание не покупает карту', cardAfter === cardBefore,
+        cardAfter === cardBefore ? 'слот не изменился' : `${cardBefore} → ${cardAfter}`)
+    }
 
     // ── 3. hot-seat pass screen ───────────────────────────────────────────
     await page.goto(`${BASE}/play?mode=hotseat`, { waitUntil: 'networkidle2' })

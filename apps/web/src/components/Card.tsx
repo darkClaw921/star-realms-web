@@ -1,11 +1,13 @@
 'use client'
 
-import { memo, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { cardDef, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 import { cardRu, FACTION_RU } from '@/i18n/cards.ru'
 import { CardText, speak } from './cardText'
+import { CardPreview } from './CardPreview'
 import { FACTION_VAR, FactionMark, Icon, type IconName } from './Icons'
+import { useHold } from './useHold'
 
 /**
  * Condense an effect tree into icon chips, for card sizes where prose is
@@ -145,6 +147,27 @@ export interface CardProps {
   quiet?: boolean | undefined
 }
 
+/**
+ * One spoken form of a card, reused for the accessible name, for tooltips and
+ * for the preview dialog's label. Derived from the same structured text the
+ * card renders, so the two can never drift apart.
+ */
+export function cardLabel(def: CardDefId): string {
+  const c = cardDef(def)
+  const ru = cardRu(def)
+  const text = ru ?? c.text
+  return [
+    ru?.name ?? c.name,
+    c.role === 'starter' ? '' : `стоимость ${c.cost}`,
+    FACTION_RU[c.faction],
+    c.type === 'outpost' ? `аванпост, оборона ${c.defense}`
+      : c.type === 'base' ? `база, оборона ${c.defense}` : 'корабль',
+    speak(text.primary),
+    text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
+    text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
+  ].filter(Boolean).join('. ')
+}
+
 export function Card({
   def, onClick, playable, selected, dimmed, title, quiet,
 }: CardProps): React.JSX.Element {
@@ -161,18 +184,9 @@ export function Card({
   ].filter(Boolean).join(' ')
 
   const ru = cardRu(def)
-  const text = ru ?? c.text
-  // One spoken form, reused for the accessible name and for tooltips.
-  const label = [
-    ru?.name ?? c.name,
-    c.role === 'starter' ? '' : `стоимость ${c.cost}`,
-    FACTION_RU[c.faction],
-    c.type === 'outpost' ? `аванпост, оборона ${c.defense}`
-      : c.type === 'base' ? `база, оборона ${c.defense}` : 'корабль',
-    speak(text.primary),
-    text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
-    text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
-  ].filter(Boolean).join('. ')
+  const label = cardLabel(def)
+  const [preview, setPreview] = useState(false)
+  const hold = useHold(useCallback(() => setPreview(true), []))
 
   const style = {
     '--fc': FACTION_VAR[c.faction],
@@ -183,15 +197,26 @@ export function Card({
     <div className={`card-slot${isBase ? ' card-slot--base' : ''}`}>
       <button
         type="button"
-        className={cls}
+        className={`${cls}${hold.holding ? ' is-holding' : ''}`}
         style={style}
         onClick={onClick}
-        disabled={!onClick}
+        // Never disabled: a card with no move still has something to show, and a
+        // disabled button receives no pointer events at all, so holding it would
+        // silently do nothing.
         aria-label={label}
+        aria-haspopup="dialog"
         title={title ?? (ru?.name ?? c.name)}
+        {...hold.handlers}
       >
         <CardFrame def={def} quiet={quiet} />
+        {/* The fill is the whole affordance: without it a hold that has not
+          * completed yet is indistinguishable from a click that did nothing. */}
+        <span className="card__hold" aria-hidden="true" />
       </button>
+
+      {preview && (
+        <CardPreview def={def} label={label} onClose={() => setPreview(false)} />
+      )}
     </div>
   )
 }

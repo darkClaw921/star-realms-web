@@ -51,6 +51,10 @@ export const UI = {
   inPlay: 'В игре',
   log: 'Журнал',
   handEmpty: 'Рука пуста',
+
+  // просмотр карты
+  previewHint: 'Двигайте мышью, чтобы наклонить карту',
+  previewClose: 'Закрыть',
   playAllShips: 'Разыграть все корабли',
   endTurn: 'Завершить ход',
   quit: 'Выйти',
