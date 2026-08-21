@@ -83,10 +83,10 @@ const SOURCES = [
     set: 'united',
     url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
     pages: 1,
-    expect: 16,
+    expect: 24,
     // The whole United release landed on one day, named in squashed lowercase.
-    // Heroes and Missions are in the same batch and are dropped here simply by
-    // not matching a card we have -- see SQUASHED_IDS.
+    // Missions are in the same batch and are dropped here simply by not
+    // matching a card we have -- see SQUASHED_IDS.
     keep: (title: string): boolean => SQUASHED_IDS.has(title.toLowerCase()),
     id: (title: string): string => SQUASHED_IDS.get(title.toLowerCase()) ?? title,
   },

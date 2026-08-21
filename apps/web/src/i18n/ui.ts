@@ -85,6 +85,7 @@ export const UI = {
     'crisis-events': 'Crisis: События',
     'united-assault': 'United: Штурм',
     'united-command': 'United: Командование',
+    'united-heroes': 'United: Герои',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 

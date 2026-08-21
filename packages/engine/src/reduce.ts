@@ -260,9 +260,18 @@ function acquire(
  * lines and the interesting part stays data.
  */
 function fireAcquireSelf(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): void {
-  const triggers = cardDef(inst.def).triggers.filter((t) => t.on === 'ACQUIRE_SELF')
-  if (triggers.length === 0) return
-  for (const t of triggers) {
+  const def = cardDef(inst.def)
+  // A HERO's primary happens when you acquire it, not when you activate it --
+  // per the publisher FAQ, "you only use the primary ability at that moment, so
+  // you do not get to use it every turn". Crisis' Heroes have no primary at all,
+  // so this is uniform across both sets rather than a United special case. The
+  // matching half of the rule is in legal.ts, which never offers it.
+  if (def.type === 'hero' && def.primary.length > 0) {
+    ev.push({ e: 'ABILITY_USED', player: pid, iid: inst.iid, def: inst.def, slot: 'primary' })
+    pushEffects(d, def.primary, { controller: pid, source: inst.iid, slot: 'primary' })
+  }
+  for (const t of def.triggers) {
+    if (t.on !== 'ACQUIRE_SELF') continue
     ev.push({ e: 'ABILITY_USED', player: pid, iid: inst.iid, def: inst.def, slot: 'trigger' })
     pushEffects(d, t.effects, { controller: pid, source: inst.iid, slot: 'trigger' })
   }
@@ -1260,6 +1269,9 @@ function activate(
   }
   if (slot === 'primary' && cardDef(card.def).type === 'ship') {
     throw new IllegalActionError('a ship primary resolves on play')
+  }
+  if (slot === 'primary' && cardDef(card.def).type === 'hero') {
+    throw new IllegalActionError('a hero primary resolves on acquisition')
   }
 
   card.used[slot] = true

@@ -289,6 +289,7 @@ async function main() {
         ['Crisis: События', 12],
         ['United: Штурм', 12],
         ['United: Командование', 12],
+        ['United: Герои', 12],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>

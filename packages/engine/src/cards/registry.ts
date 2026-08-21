@@ -6,6 +6,7 @@ import { CRISIS_BASES, CRISIS_FLEETS } from './crisis'
 import { CRISIS_EVENTS } from './crisisEvents'
 import { CRISIS_HEROES } from './crisisHeroes'
 import { UNITED_ASSAULT, UNITED_COMMAND } from './united'
+import { UNITED_HEROES } from './unitedHeroes'
 import { FRONTIERS } from './frontiers'
 
 /**
@@ -382,6 +383,7 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(CRISIS_EVENTS, 'crisis-events'),
   ...buildDefs(UNITED_ASSAULT, 'united-assault'),
   ...buildDefs(UNITED_COMMAND, 'united-command'),
+  ...buildDefs(UNITED_HEROES, 'united-heroes'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -423,5 +425,5 @@ export function tradeDeckComposition(
 export const ALL_SETS: readonly SetId[] = [
   'core', 'frontiers', 'colony-wars',
   'crisis-bases', 'crisis-fleets', 'crisis-heroes', 'crisis-events',
-  'united-assault', 'united-command',
+  'united-assault', 'united-command', 'united-heroes',
 ]

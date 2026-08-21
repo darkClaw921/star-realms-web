@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CARDS, tradeDeckComposition } from '../src/cards/registry'
 import { asDefId } from '../src/ids'
-import { byDef, choose, handIid, inPlay, legalFor, pending, playIid, run, scenario } from './scenario'
+import {
+  byDef, choose, handIid, inPlay, legalFor, pending, playIid, rowIid, run, scenario,
+} from './scenario'
 
 const D = asDefId
 
@@ -147,5 +149,52 @@ describe('Coalition Messenger', () => {
     expect(pending(st)).toBeNull()
     expect(st.players.p1.deck[0]?.def).toBe(D('ram'))
     expect(st.players.p1.discard.some((c) => c.def === D('command-ship'))).toBe(true)
+  })
+})
+
+describe('United: Heroes', () => {
+  const heroes = [...CARDS.values()].filter((c) => c.set === 'united-heroes')
+
+  it('is eight cards in twelve copies, all of type hero', () => {
+    // The pack is sold as thirteen cards; the thirteenth is the rules card,
+    // which is not a card you can draw.
+    expect(heroes).toHaveLength(8)
+    expect(tradeDeckComposition(undefined, ['united-heroes'])).toHaveLength(12)
+    expect(heroes.every((c) => c.type === 'hero')).toBe(true)
+  })
+
+  it('grants a faction ally on both halves', () => {
+    for (const c of heroes) {
+      expect(c.primary.some((e) => e.k === 'GAIN_ALLY'), c.name).toBe(true)
+      expect(c.scrap.some((e) => e.k === 'GAIN_ALLY'), c.name).toBe(true)
+    }
+  })
+
+  it('resolves its primary once, when acquired', () => {
+    const s = scenario({
+      me: { hand: [], inPlay: [inPlay('cutter')], trade: 5 },
+      tradeRow: ['chairman-haygan', 'ram', 'scout', 'viper', 'explorer'],
+    })
+    const st = run(s, { t: 'BUY_CARD', card: rowIid(s, 'chairman-haygan') }).state
+    expect(st.players.p1.authority).toBe(54)
+    expect(st.players.p1.allyUnlocked).toContain('trade_federation')
+    // In play, and its primary is spent -- a Hero's primary is not a base's.
+    expect(st.players.p1.inPlay.some((c) => c.def === D('chairman-haygan'))).toBe(true)
+    expect(legalFor(st, 'p1').some(
+      (a) => a.t === 'ACTIVATE' && a.slot === 'primary'
+        && a.card === playIid(st, 'p1', 'chairman-haygan'),
+    )).toBe(false)
+  })
+
+  it('still holds its scrap ability for a later turn', () => {
+    const s = scenario({
+      me: { hand: [], inPlay: [inPlay('chairman-haygan')] },
+    })
+    const st = run(s, {
+      t: 'ACTIVATE', card: playIid(s, 'p1', 'chairman-haygan'), slot: 'scrap',
+    }).state
+    expect(st.players.p1.authority).toBe(54)
+    expect(st.players.p1.allyUnlocked).toContain('trade_federation')
+    expect(st.players.p1.inPlay).toHaveLength(0)
   })
 })

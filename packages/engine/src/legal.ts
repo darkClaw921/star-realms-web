@@ -48,8 +48,10 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     const printed = cardDef(card.def)
     const eff = cardDef(card.copiedDef ?? card.def)
 
-    // A ship's primary resolved on play; only bases can be activated.
-    if (!card.used.primary && printed.type !== 'ship' && eff.primary.length > 0) {
+    // A ship's primary resolved on play and a Hero's on acquisition; only a
+    // base's primary is something the player spends a click on.
+    if (!card.used.primary && printed.type !== 'ship' && printed.type !== 'hero'
+        && eff.primary.length > 0) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'primary' })
     }
     if (!card.used.ally && eff.ally.length > 0

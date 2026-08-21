@@ -21,6 +21,7 @@ export type SetId =
   | 'crisis-events'
   | 'united-assault'
   | 'united-command'
+  | 'united-heroes'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
