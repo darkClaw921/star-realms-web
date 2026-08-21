@@ -1,7 +1,7 @@
 import { produce, type Draft } from 'immer'
 import type { Action, Command } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
-import { cardDef, EXPLORER } from './cards/registry'
+import { cardDef, EXPLORER, SCOUT, VIPER } from './cards/registry'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
 import type { Effect, EffectBranch } from './effects'
@@ -12,7 +12,7 @@ import {
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { FACTIONS, opponentOf, PLAYERS } from './ids'
-import { nextHex, shuffle } from './rng'
+import { nextHex, nextInt, shuffle } from './rng'
 import {
   EXPLORER_COST, HAND_SIZE, TRADE_ROW_SIZE, emptyFactionCounts,
   type CardInstance, type ChoiceCont, type EffectCtx, type GameState, type InPlayCard,
@@ -104,8 +104,14 @@ function checkWin(d: D, ev: GameEvent[]): void {
       if (d.players[hero].authority >= sc.objective.n) win(d, hero, ev)
       return
     case 'DESTROY_TENTACLES': {
+      // "If all of the tentacles are reduced to zero cards, the players win!"
+      // Simultaneously empty, not cumulatively cleared: an emptied tentacle
+      // regrows the next time a card of its colour is added.
       const b = d.boss
-      if (b && TENTACLE_FACTIONS.every((f) => b.tentaclesDestroyed.includes(f))) win(d, hero, ev)
+      if (!b) return
+      if (b.tentaclesEverFed && TENTACLE_FACTIONS.every((f) => b.tentacles[f].length === 0)) {
+        win(d, hero, ev)
+      }
       return
     }
   }
@@ -339,10 +345,55 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
     case 'BOSS_ATTACK': { bossAttacks(d, ev); return }
-    case 'BOSS_ASSIMILATE': { automatonsStep(d, ev); return }
+    case 'BOSS_ASSIMILATE': { automatonsStep(d, ev, ctx); return }
+    case 'BOSS_GROW': { if (d.boss) d.boss.assimilation += 1; return }
     case 'BOSS_NEMESIS_STEP': { nemesisStep(d, ev, ctx); return }
     case 'BOSS_HORROR_STEP': { horrorStep(d, ev, ctx); return }
     case 'BOSS_PIRATE_STEP': { pirateStep(d, ev, ctx); return }
+
+    case 'DESTROY_BASE_OR_COMBAT': {
+      // "destroys target base or gains N": the boss only takes the combat when
+      // there is genuinely no base to shoot.
+      const targets = legalDestroyTargets(d as unknown as GameState, me)
+      if (targets.length === 0) { gain(d, me, 'combat', effect.n, ev); return }
+      pushEffects(d, [{ k: 'DESTROY_BASE', min: 1, max: 1 }], ctx)
+      return
+    }
+
+    case 'TOPDECK_RANDOM_FROM_HAND': {
+      // Random, so the engine picks -- and it picks from the seeded stream, not
+      // from Math.random, or the replay would diverge.
+      const foe = opponentOf(me)
+      const fp = d.players[foe]
+      for (let i = 0; i < effect.n && fp.hand.length > 0; i++) {
+        let idx: number
+        ;[idx, d.rng] = nextInt(d.rng, fp.hand.length) as [number, typeof d.rng]
+        const inst = fp.hand.splice(idx, 1)[0] as CardInstance
+        fp.deck.unshift(inst)
+        ev.push({ e: 'TOPDECK', player: foe, iid: inst.iid, def: inst.def })
+      }
+      return
+    }
+
+    case 'TOPDECK_STARTER': {
+      const foe = opponentOf(me)
+      const fp = d.players[foe]
+      const opts: ChoiceOption[] = [
+        ...cardOpts(fp.hand.filter((c) => isStarter(c.def)), 'hand', foe),
+        ...cardOpts(fp.discard.filter((c) => isStarter(c.def)), 'discard', foe),
+      ]
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'no starter card to top-deck' }); return }
+      pushChoice(d, makeChoice(d, foe, 'TOPDECK_BASE', 'Put a Scout or Viper on top of your deck',
+        1, 1, opts, ctx.source))
+      return
+    }
+
+    case 'DESTROY_ALL_ENEMY_BASES': {
+      const foe = opponentOf(me)
+      const bases = d.players[foe].inPlay.filter((c) => isBase(c))
+      for (const b of bases) destroyBase(d, foe, b as InPlayCard, 'effect', ev, me)
+      return
+    }
 
     case 'IF': {
       if (evalCondition(d, me, effect.cond)) pushEffects(d, effect.then, ctx)
@@ -895,7 +946,9 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.pendingTopdeckBase = 0
   p.scrappedThisTurn = 0
 
-  if (!scriptBoss) drawCards(d, me, HAND_SIZE, ev)
+  // A deck boss draws what its challenge card says, not the standard five.
+  const bossHand = d.boss && d.boss.kind === 'deck' && me === bossSeat(d) ? d.boss.handSize : 0
+  if (!scriptBoss) drawCards(d, me, bossHand > 0 ? bossHand : HAND_SIZE, ev)
 
   d.activePlayer = opponentOf(me)
   d.turn += 1
@@ -962,6 +1015,8 @@ function endTurn(d: D, ev: GameEvent[]): void {
 
 const BOSS_CTX = (d: D): EffectCtx =>
   ({ controller: bossSeat(d), source: null, slot: 'primary' })
+
+const isStarter = (def: CardDefId): boolean => def === SCOUT || def === VIPER
 
 function bossSeat(d: D): PlayerId {
   // Solo: the player is p1 and the boss p2. The scenario's hero is the player.
@@ -1048,23 +1103,51 @@ function bossAttacks(d: D, ev: GameEvent[]): void {
   }
 }
 
-/** Automatons: it assimilates captured technology and grows every turn. */
-function automatonsStep(d: D, ev: GameEvent[]): void {
+/**
+ * Automatons, from the challenge card:
+ *
+ *   "On its turn, the Boss plays the top card of the trade deck. Then, if the
+ *    total cost of the cards it played that turn is lower than the Assimilation
+ *    Count, it plays the next card off the top of the trade deck. It will
+ *    continue this process until the total cost of the cards played is equal to
+ *    or greater than the Assimilation Count. After the Boss attacks, add 1 to
+ *    the Assimilation Count."
+ *
+ * The cards are PLAYED, so their primaries resolve for the boss -- which is why
+ * this pushes them through the normal play path rather than dropping them into
+ * play. The count going up after the attack is what makes each turn heavier
+ * than the last.
+ */
+function automatonsStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
   const b = d.boss
   if (!b) return
   const me = bossSeat(d)
-  // Take the far card into play: the armada incorporates salvaged hardware.
-  const card = takeFarthest(d)
-  if (card) {
-    d.players[me].inPlay.push({
-      iid: card.iid, def: card.def, copiedDef: null,
-      used: { primary: false, ally: false, doubleAlly: false, scrap: false }, playedThisTurn: false,
-    })
-    ev.push({ e: 'PLAY_CARD', player: me, iid: card.iid, def: card.def })
+  let spent = 0
+  let guard = 0
+  do {
+    const next = d.tradeDeck.shift()
+    if (!next) break
+    spent += cardDef(next.def).cost
+    playCardFor(d, me, next, ev, ctx)
+  } while (spent < b.assimilation && guard++ < 40)
+}
+
+/** Puts a card into play for a side and resolves what playing it does. */
+function playCardFor(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[], ctx: EffectCtx): void {
+  const p = d.players[pid]
+  const def = cardDef(inst.def)
+  p.inPlay.push({
+    iid: inst.iid, def: inst.def, copiedDef: null,
+    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+    playedThisTurn: true,
+  })
+  ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })
+  if (def.type === 'ship') {
+    p.shipsPlayedThisTurn.push({ iid: inst.iid, def: inst.def })
+    p.factionPlayedThisTurn[def.faction] += 1
+    pushEffects(d, def.primary, { ...ctx, controller: pid, source: inst.iid })
   }
-  b.assimilation += 1
-  gain(d, me, 'combat', b.assimilation, ev)
-  refillTradeRow(d, ev)
+  recomputeAlly(d, pid, ev)
 }
 
 /**
@@ -1093,24 +1176,77 @@ function nemesisStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
   pushEffects(d, nemesisAbility(faction), ctx)
 }
 
+/**
+ * The Nemesis Beast's faction table, exactly as printed on the challenge card.
+ * Every entry is "for each player", which at one player is once.
+ *
+ *   yellow -- Each player discards two cards.
+ *   green  -- For each player, the Boss destroys target base or gains 3 combat.
+ *   red    -- Each player puts a random card in their hand on top of their deck.
+ *   blue   -- For each player, the Boss gains 5 authority.
+ */
 function nemesisAbility(faction: Faction): Effect[] {
   switch (faction) {
-    // Star Empire wrecks your hand.
-    case 'star_empire': return [{ k: 'OPPONENT_DISCARD', n: 1 }]
-    // Machine Cult blows up your bases.
-    case 'machine_cult': return [{ k: 'DESTROY_BASE', min: 1, max: 1 }]
-    // Trade Federation heals it.
-    case 'trade_federation': return [{ k: 'GAIN_AUTHORITY', n: 4 }]
-    // Blob just grows.
-    case 'blob': return [{ k: 'GAIN_COMBAT', n: 4 }]
+    case 'star_empire': return [{ k: 'OPPONENT_DISCARD', n: 2 }]
+    case 'blob': return [{ k: 'DESTROY_BASE_OR_COMBAT', n: 3 }]
+    case 'machine_cult': return [{ k: 'TOPDECK_RANDOM_FROM_HAND', n: 1 }]
+    case 'trade_federation': return [{ k: 'GAIN_AUTHORITY', n: 5 }]
     default: return []
   }
 }
 
 /**
- * Dimensional Horror: the far card joins a tentacle pile of its own faction,
- * cards of that faction keep joining as they are revealed, the boss gains an
- * ability for the colour it fed, and its combat equals the longest tentacle.
+ * The Dimensional Horror's faction table, as printed:
+ *
+ *   yellow -- You discard two cards.
+ *   green  -- The Boss gains 3 combat.
+ *   red    -- Put a Scout or Viper from your hand or discard pile on top of
+ *             your deck.
+ *   blue   -- The Boss destroys all of your bases.
+ */
+function horrorAbility(faction: Faction): Effect[] {
+  switch (faction) {
+    case 'star_empire': return [{ k: 'OPPONENT_DISCARD', n: 2 }]
+    case 'blob': return [{ k: 'GAIN_COMBAT', n: 3 }]
+    case 'machine_cult': return [{ k: 'TOPDECK_STARTER', n: 1 }]
+    case 'trade_federation': return [{ k: 'DESTROY_ALL_ENEMY_BASES' }]
+    default: return []
+  }
+}
+
+/**
+ * The Pirates' table keys off the revealed card's faction AND cost:
+ *
+ *   yellow -- attacks with 2x the cost; that player discards two cards
+ *   green  -- attacks with 3x the cost
+ *   red    -- attacks with 2x the cost of the highest-cost card
+ *   blue   -- attacks with, and gains authority equal to, 2x the cost
+ */
+function pirateAbility(faction: Faction, cost: number, highest: number): Effect[] {
+  switch (faction) {
+    case 'star_empire':
+      return [{ k: 'GAIN_COMBAT', n: 2 * cost }, { k: 'OPPONENT_DISCARD', n: 2 }]
+    case 'blob': return [{ k: 'GAIN_COMBAT', n: 3 * cost }]
+    case 'machine_cult': return [{ k: 'GAIN_COMBAT', n: 2 * highest }]
+    case 'trade_federation':
+      return [{ k: 'GAIN_COMBAT', n: 2 * cost }, { k: 'GAIN_AUTHORITY', n: 2 * cost }]
+    default: return []
+  }
+}
+
+/**
+ * Dimensional Horror, per its challenge card:
+ *
+ *   1. take the trade row card furthest from the deck into its own colour's
+ *      tentacle;
+ *   2. refill the row, and any replacement of that same colour is swallowed too;
+ *   3. the boss gains the ability of the colour it fed, once, however many
+ *      cards went in;
+ *   4. it gains combat equal to the number of cards in the LONGEST tentacle;
+ *   5. it attacks.
+ *
+ * A card that is not a single faction is scrapped and replaced from the top of
+ * the trade deck instead of being swallowed, per the card's special rules.
  */
 function horrorStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
   const b = d.boss
@@ -1119,19 +1255,37 @@ function horrorStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
   const card = takeFarthest(d)
   let fed: Faction | null = null
   if (card) {
-    fed = tentacleFor(d, cardDef(card.def).faction)
-    b.tentacles[fed as Faction].push({ iid: card.iid, def: card.def })
-    ev.push({ e: 'SCRAP', owner: null, iid: card.iid, def: card.def, from: 'tradeRow' })
+    const f = cardDef(card.def).faction
+    if (f === 'unaligned') {
+      // Not a single faction: scrap it and feed the trade deck's top card.
+      toScrapHeap(d, card, 'tradeRow', null, ev)
+      const sub = d.tradeDeck.shift()
+      if (sub) {
+        fed = cardDef(sub.def).faction
+        if (fed === 'unaligned') { toScrapHeap(d, sub, 'tradeRow', null, ev); fed = null }
+        else {
+          b.tentacles[fed].push({ iid: sub.iid, def: sub.def })
+          b.tentaclesEverFed = true
+          ev.push({ e: 'TENTACLE_FED', faction: fed, def: sub.def })
+        }
+      }
+    } else {
+      fed = f
+      b.tentacles[f].push({ iid: card.iid, def: card.def })
+      b.tentaclesEverFed = true
+      ev.push({ e: 'TENTACLE_FED', faction: f, def: card.def })
+    }
   }
 
-  // Refill; a replacement of the same faction is swallowed too.
+  // Refill; a replacement of the fed colour goes straight into the tentacle.
   let guard = 0
   while (d.tradeRow.some((c) => c === null) && d.tradeDeck.length > 0 && guard++ < 20) {
     const next = d.tradeDeck.shift()
     if (!next) break
-    if (fed && cardDef(next.def).faction === fed && !b.tentaclesDestroyed.includes(fed)) {
-      b.tentacles[fed as Faction].push({ iid: next.iid, def: next.def })
-      ev.push({ e: 'SCRAP', owner: null, iid: next.iid, def: next.def, from: 'tradeRow' })
+    if (fed && cardDef(next.def).faction === fed) {
+      b.tentacles[fed].push({ iid: next.iid, def: next.def })
+      b.tentaclesEverFed = true
+      ev.push({ e: 'TENTACLE_FED', faction: fed, def: next.def })
       continue
     }
     const slot = d.tradeRow.findIndex((c) => c === null)
@@ -1140,52 +1294,36 @@ function horrorStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
     ev.push({ e: 'TRADE_ROW_REFILL', slot, def: next.def })
   }
 
+  // "It gains the ability only once regardless of the number of cards added."
+  if (fed) pushEffects(d, horrorAbility(fed), ctx)
   gain(d, me, 'combat', longestTentacle(d), ev)
-  if (fed) pushEffects(d, nemesisAbility(fed), ctx)
-}
-
-/** Unaligned cards have no tentacle of their own; they feed the longest one. */
-function tentacleFor(d: D, faction: Faction): Faction {
-  const b = d.boss
-  if (!b) return faction
-  const alive = TENTACLE_FACTIONS.filter((f) => !b.tentaclesDestroyed.includes(f))
-  if (faction !== 'unaligned' && !b.tentaclesDestroyed.includes(faction)) return faction
-  return [...alive].sort((x, y) => b.tentacles[y].length - b.tentacles[x].length)[0] ?? 'unaligned'
 }
 
 function longestTentacle(d: D): number {
   const b = d.boss
   if (!b) return 0
-  return Math.max(0, ...TENTACLE_FACTIONS
-    .filter((f) => !b.tentaclesDestroyed.includes(f))
-    .map((f) => b.tentacles[f].length))
+  return Math.max(0, ...TENTACLE_FACTIONS.map((f) => b.tentacles[f].length))
 }
 
 /**
- * Pirates of the Dark Star: the revealed card's faction and cost decide what is
- * done to you. Rulebook gives the procedure; the table itself is on the card,
- * so this one is ours, built around cost as severity.
+ * Pirates of the Dark Star, per its challenge card: scrap the far trade row
+ * card, reveal its replacement, and the replacement's faction and cost decide
+ * what is done to you. The raid IS the attack, so the combat it gains is spent
+ * by the ordinary boss attack that follows.
  */
 function pirateStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
   const card = takeFarthest(d)
-  if (card) {
-    d.scrapHeap.push({ iid: card.iid, def: card.def })
-    ev.push({ e: 'SCRAP', owner: null, iid: card.iid, def: card.def, from: 'tradeRow' })
-  }
+  if (card) toScrapHeap(d, card, 'tradeRow', null, ev)
   refillTradeRow(d, ev)
 
   const revealed = d.tradeRow[farthestRowIndex(d)] ?? d.tradeRow.find((c) => c !== null)
   if (!revealed) return
   const def = cardDef(revealed.def)
-  const severity = Math.max(1, def.cost)
-  const raid: Effect[] = def.faction === 'star_empire'
-    ? [{ k: 'OPPONENT_DISCARD', n: 1 }, { k: 'GAIN_COMBAT', n: severity }]
-    : def.faction === 'machine_cult'
-      ? [{ k: 'DESTROY_BASE', min: 1, max: 1 }, { k: 'GAIN_COMBAT', n: severity }]
-      : def.faction === 'trade_federation'
-        ? [{ k: 'GAIN_AUTHORITY', n: severity }, { k: 'GAIN_COMBAT', n: severity }]
-        : [{ k: 'GAIN_COMBAT', n: severity + 2 }]
-  pushEffects(d, raid, ctx)
+  // "2x the cost of the highest-cost card" -- of the trade row, which is the
+  // only set of cards the challenge has in front of it.
+  const highest = Math.max(0, ...d.tradeRow.filter((c) => c !== null)
+    .map((c) => cardDef((c as CardInstance).def).cost))
+  pushEffects(d, pirateAbility(def.faction, def.cost, highest), ctx)
 }
 
 /** The Order of Play for whichever boss is in the game. */
@@ -1194,7 +1332,8 @@ function bossOrderOfPlay(d: D): Effect[] {
   if (!b) return []
   switch (b.id) {
     case 'automatons':
-      return [{ k: 'BOSS_ASSIMILATE' }, { k: 'BOSS_ATTACK' }]
+      // "After the Boss attacks, add 1 to the Assimilation Count."
+      return [{ k: 'BOSS_ASSIMILATE' }, { k: 'BOSS_ATTACK' }, { k: 'BOSS_GROW' }]
     case 'nemesis-beast':
       return [{ k: 'BOSS_NEMESIS_STEP' }, { k: 'BOSS_ATTACK' }]
     case 'dimensional-horror':
@@ -1302,21 +1441,21 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
     }
 
     case 'ATTACK_TENTACLE': {
+      // "Players may destroy cards in a tentacle by spending Combat equal to
+      // that card's cost." One card at a time, any number of attacks per turn.
       const b = d.boss
       if (!b || b.id !== 'dimensional-horror') throw new IllegalActionError('no tentacles to attack')
-      if (b.tentaclesDestroyed.includes(action.faction)) throw new IllegalActionError('already destroyed')
       const pile = b.tentacles[action.faction]
-      // A tentacle's defense is the printed cost of what it has swallowed --
-      // the piles are laid out cost-visible precisely so this can be read off.
-      const defense = pile.reduce((n, c) => n + cardDef(c.def).cost, 0)
-      if (pile.length === 0) throw new IllegalActionError('that tentacle is not in play')
+      const idx = pile.findIndex((c) => c.iid === action.card)
+      if (idx < 0) throw new IllegalActionError('that card is not in that tentacle')
+      const inst = pile[idx] as CardInstance
+      const cost = cardDef(inst.def).cost
       const attacker = d.players[me]
-      if (attacker.combat < defense) throw new IllegalActionError('not enough combat')
-      attacker.combat -= defense
-      b.tentaclesDestroyed.push(action.faction)
-      for (const c of pile) d.scrapHeap.push({ iid: c.iid, def: c.def })
-      b.tentacles[action.faction] = []
-      ev.push({ e: 'TENTACLE_DESTROYED', faction: action.faction, defense })
+      if (attacker.combat < cost) throw new IllegalActionError('not enough combat')
+      attacker.combat -= cost
+      pile.splice(idx, 1)
+      toScrapHeap(d, inst, 'tradeRow', null, ev)
+      ev.push({ e: 'TENTACLE_HIT', faction: action.faction, def: inst.def, cost })
       return
     }
 

@@ -5,26 +5,23 @@ import type { Objective, ScenarioSetup } from './scenario'
  * The eight solo/co-op Challenges from Star Realms: Frontiers, as a one-player
  * game against the Boss.
  *
- * WHAT IS OFFICIAL HERE, AND WHAT IS NOT -- this distinction matters, so it is
- * written down rather than left to be guessed at:
+ * All of it is the published rules. Setups, difficulty levels, Order of Play
+ * and the Boss Attacks targeting algorithm come from the Frontiers rulebook
+ * (pages 21-40). The per-faction ability tables and each boss's own rules text
+ * come from the oversized Challenge Cards, read off the publisher's own scans
+ * of the card faces and backs.
  *
- * Official, taken from the Frontiers rulebook (pages 21-40): the eight
- * challenges and their names; every setup (boss authority per player, player
- * authority, personal decks); the four difficulty levels and exactly what they
- * change; the Boss Order of Play for each challenge; the Boss Attacks targeting
- * algorithm; and the once-per-challenge trade row mulligan.
+ * Two deviations remain, both forced and both small:
  *
- * NOT official, and reconstructed here: the per-faction ability tables. Those
- * are printed on the oversized Challenge Cards themselves and are not published
- * in the rulebook or anywhere else public, so they could not be reproduced
- * faithfully. Ours are written to match the published descriptions of what each
- * boss does, and are marked as ours in the UI. They are the one part of a
- * challenge that is not the real thing.
+ * Solo only. Every "per player" number is taken at one player, and the
+ * multi-player clauses ("for each player beyond the first", Hydra teams) are
+ * not implemented because there is no second player to implement them for.
  *
- * Four challenges also call for cards that only exist in the Frontiers box
- * (Spike Cluster, Hive Queen, Hammerhead, Transit Nexus and so on). This is a
- * base-set build, so those decks are rebuilt from the base cards of the same
- * faction. The boss's rules are unchanged; only the card pool differs.
+ * Frontiers-only cards do not exist in this base-set build, so the four
+ * challenges that call for a specific Frontiers deck (Blob Assault's ten-card
+ * Blob deck, and the Machine Cult / Star Empire / Trade Federation decks) get a
+ * deck of base-set cards of the same faction instead. Their rules are
+ * unchanged; only the card pool differs.
  */
 
 export type BossId =
@@ -74,13 +71,25 @@ export type BossKind = 'deck' | 'script'
 export interface BossState {
   readonly id: BossId
   readonly kind: BossKind
-  /** Automatons: the growing armada. Also the boss's combat each turn. */
+  /** Automatons: the growing armada. It plays cards until it matches this. */
   assimilation: number
+  /** Deck bosses: cards drawn per turn, from the challenge card. */
+  handSize: number
   /** Nemesis Beast: cards scrapped face down. Combat equals how many there are. */
   facedown: CardInstance[]
-  /** Dimensional Horror: one pile per faction; destroy them all to win. */
+  /**
+   * Dimensional Horror: one pile per faction. Cards are destroyed individually
+   * by spending combat equal to THAT CARD's cost, and the players win when all
+   * four piles are empty at once. An empty tentacle regrows as soon as a card
+   * of its colour is added again, so there is no permanent "destroyed" state.
+   */
   tentacles: Record<Faction, CardInstance[]>
-  tentaclesDestroyed: Faction[]
+  /**
+   * True once anything has ever been fed to a tentacle. Without it, "every
+   * tentacle is empty" would be true on turn one, before the Horror has grown
+   * any, and the players would win instantly.
+   */
+  tentaclesEverFed: boolean
   /** Boss turns still to be skipped, from the difficulty level. */
   graceTurns: number
   /** Expert only: the boss's first turn counts double. */
@@ -92,15 +101,16 @@ export interface BossState {
 }
 
 export function newBossState(
-  id: BossId, kind: BossKind, level: ChallengeLevel,
+  id: BossId, kind: BossKind, level: ChallengeLevel, handSize = 0,
 ): BossState {
   return {
     id,
     kind,
     assimilation: 0,
+    handSize,
     facedown: [],
     tentacles: { trade_federation: [], blob: [], star_empire: [], machine_cult: [], unaligned: [] },
-    tentaclesDestroyed: [],
+    tentaclesEverFed: false,
     graceTurns: skipsFor(level),
     headStart: headStartFor(level),
     mulliganUsed: false,
@@ -115,6 +125,14 @@ export const TENTACLE_FACTIONS: readonly Faction[] =
 export interface ChallengeSpec {
   readonly id: BossId
   readonly kind: BossKind
+  /**
+   * Deck bosses only: cards drawn at the start of each of the boss's turns, at
+   * one player. Printed on each challenge card:
+   *   Blob Assault      -- plays the top card of its deck (so: one)
+   *   Madness / Freedom -- players plus one (so: two)
+   *   Defy the Empire   -- five, plus two per extra player (so: five)
+   */
+  readonly handSize?: number
   /** Boss authority for a solo game. Rulebook values, "per player" x1. */
   readonly bossAuthority: number
   readonly playerAuthority: number
@@ -189,7 +207,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
 
   // ── deck bosses: they hold a hand and play it ───────────────────────────
   {
-    id: 'blob-assault', kind: 'deck',
+    id: 'blob-assault', kind: 'deck', handSize: 1,
     bossAuthority: 40, playerAuthority: 40,
     // The challenge removes every Blob card from the trade deck and gives them
     // to the boss.
@@ -197,7 +215,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF, ...EMPIRE, ...CULT],
   },
   {
-    id: 'madness-of-the-machine', kind: 'deck',
+    id: 'madness-of-the-machine', kind: 'deck', handSize: 2,
     bossAuthority: 40, playerAuthority: 60,
     // Rulebook: the player's deck is 7 Scouts and 1 Viper, and the boss's deck
     // is the Machine Cult cards plus 4 Scouts and 4 Vipers.
@@ -206,7 +224,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF, ...BLOB, ...EMPIRE],
   },
   {
-    id: 'defy-the-empire', kind: 'deck',
+    id: 'defy-the-empire', kind: 'deck', handSize: 5,
     bossAuthority: 40, playerAuthority: 50,
     // "The Boss and each player start with a standard Personal Deck", and the
     // boss additionally acquires from its own Star Empire decks. Here the two
@@ -216,7 +234,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF, ...BLOB, ...CULT],
   },
   {
-    id: 'cost-of-freedom', kind: 'deck',
+    id: 'cost-of-freedom', kind: 'deck', handSize: 2,
     bossAuthority: 40, playerAuthority: 30,
     bossDeck: [...std(), ...TF],
     tradeDeckOnly: [...BLOB, ...EMPIRE, ...CULT],
@@ -277,6 +295,6 @@ export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel): {
       startingBases: {},
       tradeDeckOnly: spec.tradeDeckOnly ?? null,
     },
-    boss: newBossState(spec.id, spec.kind, level),
+    boss: newBossState(spec.id, spec.kind, level, spec.handSize ?? 0),
   }
 }

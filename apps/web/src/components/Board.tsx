@@ -51,7 +51,7 @@ export function Board({
     let maxFace = 0
     let playAll = false
     let canMulligan = false
-    const tentacles = new Set<string>()
+    const tentacleCards = new Set<string>()
     for (const a of legal) {
       switch (a.t) {
         case 'PLAY_CARD': play.add(a.card); break
@@ -62,7 +62,7 @@ export function Board({
         case 'ATTACK_PLAYER': maxFace = Math.max(maxFace, a.amount); break
         case 'END_TURN': endTurn = true; break
         case 'MULLIGAN_ROW': canMulligan = true; break
-        case 'ATTACK_TENTACLE': tentacles.add(a.faction); break
+        case 'ATTACK_TENTACLE': tentacleCards.add(a.card); break
         case 'ACTIVATE': {
           const set = activate.get(a.card) ?? new Set<string>()
           set.add(a.slot)
@@ -74,7 +74,7 @@ export function Board({
     }
     return {
       play, buy, attack, activate, buyExplorer, endTurn, maxFace, playAll,
-      canMulligan, tentacles,
+      canMulligan, tentacleCards,
     }
   }, [legal])
 
@@ -175,22 +175,34 @@ export function Board({
             <span className="tentacles">
               {TENTACLE_FACTIONS.map((f: Faction) => {
                 const pile = v.boss!.tentacles[f]
-                const dead = v.boss!.tentaclesDestroyed.includes(f)
-                const defense = pile.reduce((n: number, c) => n + cardDef(c.def).cost, 0)
-                const can = idx.tentacles.has(f)
                 return (
-                  <button
+                  <span
                     key={f}
-                    type="button"
-                    className={`tentacle${dead ? ' is-dead' : ''}${can ? ' is-open' : ''}`}
+                    className={`tentacle${pile.length === 0 ? ' is-dead' : ''}`}
                     style={{ '--fc': FACTION_VAR[f] } as React.CSSProperties}
-                    disabled={!can}
-                    title={`${TENTACLE_RU[f]} — ${UI.attackTentacle}`}
-                    onClick={() => onAction({ t: 'ATTACK_TENTACLE', faction: f })}
                   >
                     <span className="tentacle__label">{TENTACLE_RU[f]}</span>
-                    <span className="tentacle__n">{dead ? '—' : defense}</span>
-                  </button>
+                    {pile.length === 0 && <span className="tentacle__n">—</span>}
+                    {/* One button per card: each is shot off for its own cost. */}
+                    {pile.map((c) => {
+                      const cost = cardDef(c.def).cost
+                      const can = idx.tentacleCards.has(c.iid)
+                      return (
+                        <button
+                          key={c.iid}
+                          type="button"
+                          className={`tcard${can ? ' is-open' : ''}`}
+                          disabled={!can}
+                          title={`${nameOf(c.def)} — ${UI.attackTentacle} (${cost})`}
+                          onClick={() => onAction({
+                            t: 'ATTACK_TENTACLE', faction: f, card: c.iid as CardIid,
+                          })}
+                        >
+                          {cost}
+                        </button>
+                      )
+                    })}
+                  </span>
                 )
               })}
             </span>

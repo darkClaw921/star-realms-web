@@ -18,7 +18,10 @@ export type GameEvent =
   | { e: 'SCRAP'; from: Zone; owner: PlayerId | null; iid: CardIid | null; def: CardDefId | null }
   | { e: 'ACQUIRE'; player: PlayerId; def: CardDefId; dest: 'discard' | 'deck_top'; cost: number }
   | { e: 'TRADE_ROW_REFILL'; def: CardDefId | null; slot: number }
-  | { e: 'TENTACLE_DESTROYED'; faction: Faction; defense: number }
+  /** Dimensional Horror: a card was swallowed by a tentacle. */
+  | { e: 'TENTACLE_FED'; faction: Faction; def: CardDefId }
+  /** Dimensional Horror: a card in a tentacle was shot off it. */
+  | { e: 'TENTACLE_HIT'; faction: Faction; def: CardDefId; cost: number }
   /** Frontiers (Repair Mech): a base goes from the discard pile to the deck top. */
   | { e: 'TOPDECK'; player: PlayerId; iid: CardIid; def: CardDefId }
   /** Frontiers (Mobile Market): back from the scrap heap at end of turn. */

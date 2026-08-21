@@ -1087,8 +1087,30 @@ input[type='range'] {
   border-color: var(--fc);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fc) 50%, transparent);
 }
-.tentacle.is-dead { opacity: 0.4; text-decoration: line-through; }
+.tentacle.is-dead { opacity: 0.45; }
 .tentacle__n { font-family: var(--font-mono); font-weight: 600; color: var(--fc); }
+
+/* One swallowed card, shot off for its own printed cost. */
+.tcard {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 20px;
+  padding: 2px 5px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--fc) 45%, var(--rule));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-dim);
+  cursor: default;
+}
+.tcard.is-open {
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--fc);
+  background: color-mix(in srgb, var(--fc) 18%, transparent);
+}
+.tcard.is-open:hover { background: color-mix(in srgb, var(--fc) 30%, transparent); }
 
 /* ── objective strip, shown only in a mission ───────────────────────────── */
 .objective {

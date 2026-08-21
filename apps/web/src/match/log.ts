@@ -58,8 +58,10 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
       return `${who(e.player)} кладёт ${card(e.def)} на верх колоды`
     case 'RETURN_FROM_SCRAP':
       return `${card(e.def)} возвращается из утиля в стопку сброса`
-    case 'TENTACLE_DESTROYED':
-      return `${TENTACLE_RU[e.faction] ?? e.faction} уничтожено (оборона ${e.defense})`
+    case 'TENTACLE_FED':
+      return `${TENTACLE_RU[e.faction] ?? e.faction} поглощает ${card(e.def)}`
+    case 'TENTACLE_HIT':
+      return `${card(e.def)} сбита с щупальца (${e.cost} очк. боя)`
     case 'PLAY_CARD': return `${who(e.player)} разыгрывает ${card(e.def)}`
     case 'ABILITY_USED':
       return e.slot === 'trigger'

@@ -3,7 +3,7 @@ import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
 import type { ScenarioSetup } from './scenario'
-import { PLAYERS } from './ids'
+import { opponentOf, PLAYERS } from './ids'
 import { nextHex, seedRng, shuffle, type RngState } from './rng'
 import {
   ENGINE_VERSION, EXPLORER_PILE_SIZE, FIRST_TURN_HAND_SIZE, HAND_SIZE,
@@ -119,7 +119,12 @@ export function createGame(setup: MatchSetup): GameState {
     const c = players[setup.firstPlayer].deck.shift()
     if (c) players[setup.firstPlayer].hand.push(c)
   }
-  for (let i = 0; i < HAND_SIZE; i++) {
+  // A deck boss opens with the hand its challenge card gives it, not five.
+  const bossSeat = setup.boss ? opponentOf(setup.firstPlayer) : null
+  const secondHand = setup.boss && setup.boss.kind === 'deck' && second === bossSeat
+    ? setup.boss.handSize
+    : HAND_SIZE
+  for (let i = 0; i < secondHand; i++) {
     const c = players[second].deck.shift()
     if (c) players[second].hand.push(c)
   }

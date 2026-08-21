@@ -87,11 +87,14 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   if (v.boss) {
     if (!v.boss.mulliganUsed) out.push({ t: 'MULLIGAN_ROW' })
     if (v.boss.id === 'dimensional-horror') {
+      // One entry per affordable CARD, not per tentacle: each card is shot off
+      // for its own cost, and any number of them per turn.
       for (const f of TENTACLE_FACTIONS) {
-        const pile = v.boss.tentacles[f]
-        if (v.boss.tentaclesDestroyed.includes(f) || pile.length === 0) continue
-        const defense = pile.reduce((n, c) => n + cardDef(c.def).cost, 0)
-        if (me.combat >= defense) out.push({ t: 'ATTACK_TENTACLE', faction: f })
+        for (const c of v.boss.tentacles[f]) {
+          if (me.combat >= cardDef(c.def).cost) {
+            out.push({ t: 'ATTACK_TENTACLE', faction: f, card: c.iid })
+          }
+        }
       }
     }
   }

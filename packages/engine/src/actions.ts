@@ -20,8 +20,12 @@ export type Action =
   | { t: 'RESOLVE_CHOICE'; choiceId: ChoiceId; selected: readonly ChoiceOption[] }
   /** Challenges only: scrap the whole trade row. Once per challenge. */
   | { t: 'MULLIGAN_ROW' }
-  /** Dimensional Horror only: spend combat on one of its tentacles. */
-  | { t: 'ATTACK_TENTACLE'; faction: Faction }
+  /**
+   * Dimensional Horror only: spend combat equal to ONE card's cost to shoot it
+   * off a tentacle. The tentacle is named too, so a card cannot be attacked in
+   * the wrong pile.
+   */
+  | { t: 'ATTACK_TENTACLE'; faction: Faction; card: CardIid }
   | { t: 'END_TURN' }
 
 /** An action plus who is attempting it. Built by the server, never by the client. */

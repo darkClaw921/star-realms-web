@@ -406,13 +406,22 @@ async function main() {
       const authorityBefore = await myAuthority()
       for (let i = 0; i < 3; i++) {
         await clickText(page, 'Разыграть все', 700)
-        for (let k = 0; k < 3; k++) {
-          const card = await page.$('.overlay .card')
-          if (!card) break
-          await card.click().catch(() => {})
-          await sleep(150)
-          if (!(await clickText(page, 'Подтвердить', 400))) await clickText(page, 'Пропустить', 300)
-          await sleep(200)
+        // Промпт может требовать НЕСКОЛЬКО карт («сбросьте две»), поэтому
+        // выбираем, пока кнопка подтверждения не станет активной, а не ровно
+        // одну карту.
+        for (let k = 0; k < 6; k++) {
+          if (!(await page.$('.overlay .card'))) break
+          const done = await page.evaluate(() => {
+            const btn = [...document.querySelectorAll('.overlay button')]
+              .find((b) => /подтвердить|пропустить/i.test(b.textContent ?? ''))
+            if (btn && !btn.disabled) { btn.click(); return true }
+            const card = [...document.querySelectorAll('.overlay .card')]
+              .find((c) => !c.disabled && !c.className.includes('is-selected'))
+            card?.click()
+            return false
+          })
+          await sleep(220)
+          if (done) break
         }
         await clickText(page, 'Завершить ход', 900)
         await sleep(800)

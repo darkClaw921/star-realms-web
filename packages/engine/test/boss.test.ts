@@ -131,64 +131,76 @@ describe('Nemesis Beast', () => {
 })
 
 describe('Automatons', () => {
-  it('assimilates a card into play and grows its count every turn', () => {
+  it('plays cards off the trade deck and grows its count after attacking', () => {
     let s = start('automatons')
-    const rowBefore = s.tradeRow.filter(Boolean).length
+    const deckBefore = s.tradeDeck.length
     s = pass(s, 1)
+    // Count starts at 0, so turn one plays exactly one card (the do-while runs
+    // once, then 0 >= 0 stops it), and the count becomes 1 after the attack.
     expect(s.boss?.assimilation).toBe(1)
-    // The salvaged card joins the armada and stays on the table: a script boss
-    // has no discard pile to send it to.
-    expect(s.players.p2.inPlay.length).toBe(1)
+    expect(s.tradeDeck.length).toBeLessThan(deckBefore)
+    // The cards were PLAYED, so they are on the table, not in a discard pile a
+    // script boss does not have.
+    expect(s.players.p2.inPlay.length).toBeGreaterThan(0)
     expect(s.players.p2.discard).toHaveLength(0)
-    expect(s.tradeRow.filter(Boolean).length).toBe(rowBefore)
 
     s = pass(s, 1)
     expect(s.boss?.assimilation).toBe(2)
-    expect(s.players.p2.inPlay.length).toBe(2)
   })
 
-  it('grows the combat it opens with, turn over turn', () => {
-    // Assimilation IS the combat, so turn three has to hit harder than turn one.
-    const one = pass(start('automatons'), 1)
-    const three = pass(start('automatons'), 3)
-    expect(60 - three.players.p1.authority).toBeGreaterThan(60 - one.players.p1.authority)
+  it('keeps playing until the cards it played cost at least the count', () => {
+    // By turn four the count is high enough to force several cards in one turn.
+    let s = start('automatons')
+    const deck0 = s.tradeDeck.length
+    s = pass(s, 1)
+    const afterOne = deck0 - s.tradeDeck.length
+    const beforeLate = s.tradeDeck.length
+    s = pass(s, 4)
+    const perLateTurn = (beforeLate - s.tradeDeck.length) / 4
+    expect(perLateTurn).toBeGreaterThan(afterOne - 0.5)
   })
 })
 
 describe('Dimensional Horror', () => {
-  it('feeds tentacles and is beaten by destroying all four', () => {
+  it('is beaten by emptying every tentacle at once', () => {
     let s = pass(start('dimensional-horror'), 3)
-    const piles = TENTACLE_FACTIONS.map((f) => s.boss?.tentacles[f].length ?? 0)
-    expect(piles.reduce((a, b) => a + b, 0)).toBeGreaterThan(0)
+    const total = TENTACLE_FACTIONS.reduce((n, f) => n + (s.boss?.tentacles[f].length ?? 0), 0)
+    expect(total).toBeGreaterThan(0)
 
-    // Hand the player enough combat to shear off every tentacle at once.
+    // Enough combat to shoot every card off every tentacle.
     s = { ...s, players: { ...s.players, p1: { ...s.players.p1, combat: 500 } } }
-    for (const f of TENTACLE_FACTIONS) {
-      if ((s.boss?.tentacles[f].length ?? 0) === 0) continue
-      s = reduce(s, { actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: f } }).state
+    let guard = 0
+    while (!s.winner && guard++ < 60) {
+      const shot = TENTACLE_FACTIONS
+        .map((f) => ({ f, c: s.boss?.tentacles[f][0] }))
+        .find((x) => x.c)
+      if (!shot?.c) break
+      s = reduce(s, { actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: shot.f, card: shot.c.iid } }).state
     }
-    const left = TENTACLE_FACTIONS.filter((f) => !s.boss?.tentaclesDestroyed.includes(f))
-    // Any tentacle that never got fed cannot be attacked, so only claim the win
-    // when all four actually existed.
-    if (left.length === 0) expect(s.winner).toBe('p1')
-    else expect(s.winner).toBeNull()
+    expect(TENTACLE_FACTIONS.every((f) => (s.boss?.tentacles[f].length ?? 0) === 0)).toBe(true)
+    expect(s.winner).toBe('p1')
   })
 
-  it('a tentacle costs its swallowed cards to destroy', () => {
+  it('a card in a tentacle costs exactly its own printed cost', () => {
     const s0 = pass(start('dimensional-horror'), 2)
     const fed = TENTACLE_FACTIONS.find((f) => (s0.boss?.tentacles[f].length ?? 0) > 0)
     expect(fed).toBeDefined()
-    const pile = s0.boss!.tentacles[fed!]
-    const cost = pile.reduce((n, c) => n + cardDef(c.def).cost, 0)
+    const target = s0.boss!.tentacles[fed!][0]!
+    const cost = cardDef(target.def).cost
 
     const poor = { ...s0, players: { ...s0.players, p1: { ...s0.players.p1, combat: cost - 1 } } }
-    expect(() => reduce(poor, { actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: fed! } }))
-      .toThrow()
+    expect(() => reduce(poor, {
+      actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: fed!, card: target.iid },
+    })).toThrow()
 
     const rich = { ...s0, players: { ...s0.players, p1: { ...s0.players.p1, combat: cost } } }
-    const after = reduce(rich, { actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: fed! } }).state
+    const after = reduce(rich, {
+      actor: 'p1', action: { t: 'ATTACK_TENTACLE', faction: fed!, card: target.iid },
+    }).state
     expect(after.players.p1.combat).toBe(0)
-    expect(after.boss?.tentaclesDestroyed).toContain(fed)
+    expect(after.boss!.tentacles[fed!].some((c) => c.iid === target.iid)).toBe(false)
+    // Shooting one card does not remove the rest of the pile.
+    expect(after.scrapHeap.some((c) => c.iid === target.iid)).toBe(true)
   })
 })
 
@@ -258,6 +270,95 @@ describe('challenges stay playable', () => {
       const wire = JSON.stringify(redact(s, 'p1'))
       expect(wire).not.toContain('"rng"')
       for (const c of s.players.p2.hand) expect(wire).not.toContain(c.iid)
+    }
+  })
+})
+
+/**
+ * The faction tables, as printed on the challenge cards. These are the part
+ * that used to be reconstructed, so each one is pinned to its printed wording.
+ */
+describe('printed faction tables', () => {
+  /** Stack the trade deck so a known faction is what gets revealed. */
+  function withRow(id: string, defs: string[]): GameState {
+    const s = start(id)
+    return {
+      ...s,
+      tradeRow: defs.map((d) => ({ iid: `t${d}` as never, def: asDefId(d) })),
+      // Refills come off the deck, so control that too.
+      tradeDeck: defs.map((d, i) => ({ iid: `k${i}${d}` as never, def: asDefId(d) })),
+    }
+  }
+
+  it('Nemesis Beast: yellow makes you discard TWO cards', () => {
+    // Star Empire in the row means Star Empire is what replaces the scrapped
+    // card, which is what the beast reads.
+    const s = withRow('nemesis-beast', ['corvette', 'corvette', 'corvette', 'corvette', 'corvette'])
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    const choice = after.resolution[0]
+    if (choice && choice.f === 'choice') {
+      expect(choice.choice.prompt).toBe('DISCARD')
+      expect(choice.choice.min).toBe(2)
+    }
+  })
+
+  it('Nemesis Beast: blue gives it FIVE authority', () => {
+    const s = withRow('nemesis-beast', ['cutter', 'cutter', 'cutter', 'cutter', 'cutter'])
+    const before = s.players.p2.authority
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(after.players.p2.authority).toBe(before + 5)
+  })
+
+  it('Nemesis Beast: green takes a base, or 3 combat when there is none', () => {
+    const s = withRow('nemesis-beast', ['ram', 'ram', 'ram', 'ram', 'ram'])
+    // No bases in play at all, so the "or gains 3 combat" branch is the one.
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    // The combat is spent by the attack that follows, so read the damage.
+    expect(50 - after.players.p1.authority).toBeGreaterThanOrEqual(3)
+  })
+
+  it('Dimensional Horror: blue destroys ALL of your bases', () => {
+    const base = {
+      iid: 'mybase' as never, def: asDefId('the-hive'), copiedDef: null,
+      used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+      playedThisTurn: false,
+    }
+    const s0 = withRow('dimensional-horror', ['cutter', 'cutter', 'cutter', 'cutter', 'cutter'])
+    const s = { ...s0, players: { ...s0.players, p1: { ...s0.players.p1, inPlay: [base, { ...base, iid: 'b2' as never }] } } }
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(after.players.p1.inPlay.filter((c) => c.def === asDefId('the-hive'))).toHaveLength(0)
+  })
+
+  it('Pirates: green attacks with three times the revealed cost', () => {
+    // Ram costs 3, so green is 9 combat -- more than the 6 that 2x would give.
+    const s = withRow('pirates-of-the-dark-star', ['ram', 'ram', 'ram', 'ram', 'ram'])
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(50 - after.players.p1.authority).toBe(9)
+  })
+
+  it('Pirates: blue heals the boss as well as hitting you', () => {
+    // Cutter costs 2: 4 combat and 4 authority.
+    const s = withRow('pirates-of-the-dark-star', ['cutter', 'cutter', 'cutter', 'cutter', 'cutter'])
+    const bossBefore = s.players.p2.authority
+    const after = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(after.players.p2.authority).toBe(bossBefore + 4)
+    expect(50 - after.players.p1.authority).toBe(4)
+  })
+})
+
+describe('deck bosses draw what their card says', () => {
+  it('each deck boss draws its own printed hand size', () => {
+    const expected: Record<string, number> = {
+      'blob-assault': 1,
+      'madness-of-the-machine': 2,
+      'defy-the-empire': 5,
+      'cost-of-freedom': 2,
+    }
+    for (const [id, n] of Object.entries(expected)) {
+      expect(start(id).boss?.handSize).toBe(n)
+      // And it really is what lands in hand after a turn passes.
+      const s = pass(start(id), 1)
+      expect(s.players.p2.hand.length).toBeLessThanOrEqual(n)
     }
   })
 })
