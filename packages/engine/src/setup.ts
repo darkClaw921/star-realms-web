@@ -92,6 +92,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     missionsDone: [],
     gainedThisTurn: { trade: 0, combat: 0, authority: 0 },
     gainedAuthorityThisTurn: false,
+    acquiredThisTurn: false,
     pendingDiscounts: [],
     alliesUsedThisTurn: [],
     scrappedThisTurn: 0,
@@ -334,6 +335,7 @@ export function createGame(setup: MatchSetup): GameState {
     basesDestroyed: { p1: 0, p2: 0 },
     boss: setup.boss ?? null,
     variant,
+    marketCounters: {},
   }
 }
 

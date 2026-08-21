@@ -88,7 +88,12 @@ export function costFor(
   def: CardDef,
   inPlay: readonly Pick<InPlayCard, 'def'>[],
   /** The Arena scenario and who is buying, where one of them changes prices. */
-  ctx?: { variant: VariantState | null; buyer: PlayerId },
+  ctx?: {
+    variant: VariantState | null
+    buyer: PlayerId
+    /** Buyer's Market: counters sitting on THIS copy of the card. */
+    counters?: number
+  },
 ): number {
   let cost = def.cost
   if (def.discount) {
@@ -108,6 +113,8 @@ export function costFor(
     const mine = v.faction?.[ctx.buyer]
     if (v.id === 'entrenched-loyalties' && mine
         && (def.faction === mine || def.faction2 === mine)) cost -= 1
+    // Buyer's Market: one point off per counter this copy has collected.
+    if (v.id === 'buyers-market') cost -= ctx.counters ?? 0
   }
   return Math.max(0, cost)
 }

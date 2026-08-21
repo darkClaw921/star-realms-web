@@ -147,6 +147,8 @@ export interface PlayerView {
   readonly boss: BossState | null
   /** The Arena scenario in force. Public: both sides play under it. */
   readonly variant: VariantState | null
+  /** Buyer's Market: counters on trade row cards. Public. */
+  readonly marketCounters: Readonly<Record<string, number>>
 }
 
 function viewInPlay(c: InPlayCard): InPlayCardView {
@@ -243,6 +245,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     basesDestroyed: { p1: s.basesDestroyed.p1, p2: s.basesDestroyed.p2 },
     boss: s.boss,
     variant: s.variant ? { ...s.variant } : null,
+    marketCounters: { ...s.marketCounters },
   }
 }
 

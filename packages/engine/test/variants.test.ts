@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createGame } from '../src/setup'
-import { VARIANTS, type VariantId } from '../src/variants'
+import { SECONDHAND, VARIANTS, type VariantId } from '../src/variants'
 import { CARDS, cardDef, EXPLORER, SCOUT, VIPER } from '../src/cards/registry'
 import { costFor } from '../src/helpers'
 import { asDefId } from '../src/ids'
@@ -13,10 +13,15 @@ const game = (variant: VariantId) => createGame({
 })
 
 describe('Arena scenarios', () => {
-  it('carries ten of the twenty, and no invented ones', () => {
-    // The other ten have no rule text at any source we can reach, so they are
-    // deliberately absent rather than guessed at.
-    expect(VARIANTS).toHaveLength(10)
+  it('carries thirteen of the twenty, and no invented ones', () => {
+    // The other six have no rule text at any source we can reach -- the
+    // publisher's whole archive, its pages, the community wiki and BGG were
+    // searched -- so they are deliberately absent rather than guessed at.
+    expect(VARIANTS).toHaveLength(13)
+    // Three of the thirteen come from a secondary write-up rather than from the
+    // publisher's own article, and say so.
+    expect(SECONDHAND.every((v) => VARIANTS.includes(v))).toBe(true)
+    expect(SECONDHAND).toHaveLength(3)
   })
 
   it('is absent by default, so an ordinary game is unchanged', () => {
@@ -128,6 +133,42 @@ describe('scenarios that are simply true', () => {
     // Scout 1+1, Explorer 2+1, Viper 1+1.
     expect(st.players.p1.trade).toBe(5)
     expect(st.players.p1.combat).toBe(2)
+  })
+
+  it("Buyer's Market marks the dearest card and discounts it", () => {
+    const board = scenario({
+      me: { hand: [], trade: 20 },
+      // Command Ship costs 8, the dearest in the row by some way.
+      tradeRow: ['command-ship', 'ram', 'scout', 'viper', 'explorer'],
+    })
+    board.variant = { id: 'buyers-market' }
+    const dear = rowIid(board, 'command-ship')
+    let st = run(board, { t: 'END_TURN' }).state
+    expect(st.marketCounters[dear]).toBe(1)
+    st = run(st, { t: 'END_TURN' }).state
+    expect(st.marketCounters[dear]).toBe(2)
+
+    // Trade is wiped at every turn boundary, so it is granted again here.
+    st = { ...st, players: { ...st.players, p1: { ...st.players.p1, trade: 20 } } }
+    const before = st.players.p1.trade
+    st = run(st, { t: 'BUY_CARD', card: dear }).state
+    // Printed 8, two counters, so 6.
+    expect(before - st.players.p1.trade).toBe(6)
+  })
+
+  it('Rapid Construction tops the deck with the first acquisition only', () => {
+    const board = scenario({
+      me: { hand: [], trade: 20 },
+      tradeRow: ['ram', 'cutter', 'scout', 'viper', 'explorer'],
+    })
+    board.variant = { id: 'rapid-construction' }
+    let st = run(board, { t: 'BUY_CARD', card: rowIid(board, 'ram') }).state
+    expect(st.players.p1.deck[0]?.def).toBe(D('ram'))
+    expect(st.players.p1.discard).toHaveLength(0)
+
+    // The second goes to the discard pile like any other purchase.
+    st = run(st, { t: 'BUY_CARD', card: rowIid(st, 'cutter') }).state
+    expect(st.players.p1.discard.map((c) => c.def)).toEqual([D('cutter')])
   })
 
   it('leaves a card in play alone when no scenario is in force', () => {

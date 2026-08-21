@@ -109,7 +109,10 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   for (const c of v.tradeRow) {
     // High Alert prices some cards against your board, so the affordability
     // test has to go through the same function the purchase does.
-    if (c && costFor(cardDef(c.def), me.inPlay, { variant: v.variant, buyer: seat }) <= me.trade) {
+    const price = c ? costFor(cardDef(c.def), me.inPlay, {
+      variant: v.variant, buyer: seat, counters: v.marketCounters[c.iid] ?? 0,
+    }) : 0
+    if (c && price <= me.trade) {
       out.push({ t: 'BUY_CARD', card: c.iid })
     }
   }

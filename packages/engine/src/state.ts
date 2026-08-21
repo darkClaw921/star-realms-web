@@ -140,6 +140,8 @@ export interface PlayerState {
   gainedThisTurn: { trade: number; combat: number; authority: number }
   /** Pact Dominion fires on the FIRST authority gain of each of your turns. */
   gainedAuthorityThisTurn: boolean
+  /** Rapid Construction: whether this turn's first acquisition has happened. */
+  acquiredThisTurn: boolean
   /**
    * Armed "the next card of this faction costs less" discounts. Like the
    * acquisition redirects they stack and expire at end of turn.
@@ -262,6 +264,12 @@ export interface GameState {
   boss: BossState | null
   /** The Arena scenario in force, or null. Entirely public. */
   variant: VariantState | null
+  /**
+   * Buyer's Market: counters sitting on trade row cards, keyed by instance.
+   * Public, and keyed by iid rather than by slot because a counter belongs to
+   * the card, and the card can be bought out from under the slot.
+   */
+  marketCounters: Record<string, number>
 }
 
 export function emptyFactionCounts(): Record<Faction, number> {

@@ -303,6 +303,12 @@ function acquire(
   if (d.variant?.id === 'recruiting-drive' && acquiredType === 'ship' && dest === 'discard') {
     dest = 'deck_top'
   }
+  // Rapid Construction: only the FIRST acquisition of the turn, and only when it
+  // would otherwise have gone to the discard pile.
+  if (d.variant?.id === 'rapid-construction' && !p.acquiredThisTurn && dest === 'discard') {
+    dest = 'deck_top'
+  }
+  p.acquiredThisTurn = true
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
@@ -1929,7 +1935,9 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   const inst = d.tradeRow[idx] as CardInstance
   // High Alert prices some cards against your board, so the price is computed
   // here rather than read off the card -- see costFor.
-  let cost = costFor(cardDef(inst.def), p.inPlay, { variant: d.variant, buyer: me })
+  let cost = costFor(cardDef(inst.def), p.inPlay, {
+    variant: d.variant, buyer: me, counters: d.marketCounters[inst.iid] ?? 0,
+  })
   // Black Market: one point off, once per turn, for whoever revealed it, and
   // only from the slots the Black Market itself added.
   const fromMarket = idx >= TRADE_ROW_SIZE
@@ -2025,7 +2033,20 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.alliesUsedThisTurn = []
   p.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
   p.gainedAuthorityThisTurn = false
+  p.acquiredThisTurn = false
   p.pendingDiscounts = []
+  // Buyer's Market: at the end of each player's turn, a counter goes on the most
+  // expensive card or cards in the row. Printed cost, not the discounted one --
+  // otherwise a card would keep discounting itself further every turn.
+  if (d.variant?.id === 'buyers-market') {
+    let top = 0
+    for (const c of d.tradeRow) if (c) top = Math.max(top, cardDef(c.def).cost)
+    for (const c of d.tradeRow) {
+      if (c && cardDef(c.def).cost === top) {
+        d.marketCounters[c.iid] = (d.marketCounters[c.iid] ?? 0) + 1
+      }
+    }
+  }
   // Stealth Tower copies a base "until your turn ends", so the copy is dropped
   // HERE rather than at the start of your next turn. The difference is not
   // cosmetic: a copied outpost left standing would shield you through the
@@ -2051,6 +2072,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.alliesUsedThisTurn = []
   next.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
   next.gainedAuthorityThisTurn = false
+  next.acquiredThisTurn = false
   next.pendingDiscounts = []
   // Revealed gambits recharge with everything else in play.
   for (const g of next.gambitsInPlay) {

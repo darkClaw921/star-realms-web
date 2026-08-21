@@ -39,6 +39,10 @@ export const VARIANT_CARDS: Record<string, Spec> = {
     [{ k: 'SCRAP_FROM_ZONES', zones: ['hand'], min: 1, max: 1 }],
     'Each player can spend {trade:1} to scrap a card in their hand.',
     { primaryCost: 1 }),
+  'sc-flare-mining': scenario('Flare Mining',
+    [{ k: 'SEQ', effects: [{ k: 'DRAW', n: 1 }, { k: 'SELF_DISCARD', n: 1 }] }],
+    'Once per turn, each player may pay {trade:1} to draw a card, then discard a card.',
+    { primaryCost: 1 }),
   'sc-maximum-warp': scenario('Maximum Warp', [{ k: 'DRAW', n: 1 }],
     "At the start of each player's turn, they draw a card.",
     // Not activated: it simply happens, like Frontier Fleet's combat.
@@ -47,6 +51,11 @@ export const VARIANT_CARDS: Record<string, Spec> = {
 
 /** Scenarios whose rule is simply true, and so have no ability to activate. */
 export const VARIANT_NOTES: Record<string, string> = {
+  'buyers-market': "At the end of each player's turn, place a counter on the most " +
+    'expensive card or cards in the trade row. Cards cost {trade:1} less for each ' +
+    'counter on them.',
+  'rapid-construction': 'The first card a player acquires each turn is placed on top ' +
+    'of their deck instead of their discard pile.',
   'rushed-defenses': 'Bases go directly into play when acquired, and are scrapped ' +
     'when destroyed.',
   'recruiting-drive': 'Whenever a player acquires a ship, they put it on top of their ' +

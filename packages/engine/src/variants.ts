@@ -8,16 +8,22 @@ import type { CardDefId, Faction, PlayerId } from './ids'
  *
  * SOURCES, and this one needs stating plainly. The publisher's Card Gallery
  * spreadsheet carries NO text for the twenty Scenario cards, and there are no
- * card scans of them -- only cropped artwork. What the publisher does have is
- * its own Arena Tips articles, which quote each week's scenario rule verbatim.
- * The ten scenarios below are the ones whose exact wording appears there.
+ * card scans of them -- only cropped artwork. Two things fill part of the gap:
  *
- * The other ten -- Border Skirmish, Buyer's Market, Early Recruitment, Flare
- * Mining, Fleeting Opportunities, Picking Sides, Prolonged Conflict, Rapid
- * Construction, Ready Reserves and Warpgate Nexus -- are DELIBERATELY ABSENT.
- * Their names are printed in the Card Gallery and nowhere else; inventing ten
- * setup rules and calling them Star Realms would be a fabrication, not an
- * implementation. They go in when a source for them does.
+ *   - the publisher's own Arena Tips articles, which quote each week's scenario
+ *     rule verbatim. Ten scenarios come from there, word for word.
+ *   - three more -- Buyer's Market, Flare Mining and Rapid Construction -- whose
+ *     rule is quoted in secondary write-ups of the same Arena weeks. They are
+ *     marked `secondhand` so the distinction is not lost.
+ *
+ * The remaining six -- Border Skirmish, Early Recruitment, Fleeting
+ * Opportunities, Picking Sides, Prolonged Conflict and Ready Reserves -- are
+ * DELIBERATELY ABSENT. Their names appear in the Card Gallery and in Arena
+ * schedules; their rules appear nowhere reachable. The publisher's whole
+ * 337-post archive, its static pages, the community wiki and BoardGameGeek were
+ * searched for them. Inventing six setup rules and calling them Star Realms
+ * would be a fabrication, not an implementation, so they go in when a source
+ * for them does.
  */
 export type VariantId =
   | 'total-war'
@@ -30,11 +36,24 @@ export type VariantId =
   | 'commitment-to-the-cause'
   | 'frontier-expedition'
   | 'frantic-preparations'
+  | 'flare-mining'
+  | 'buyers-market'
+  | 'rapid-construction'
 
 export const VARIANTS: readonly VariantId[] = [
   'total-war', 'maximum-warp', 'emergency-repairs', 'ruthless-efficiency',
   'rushed-defenses', 'recruiting-drive', 'entrenched-loyalties',
   'commitment-to-the-cause', 'frontier-expedition', 'frantic-preparations',
+  'flare-mining', 'buyers-market', 'rapid-construction',
+]
+
+/**
+ * Scenarios whose wording comes from a secondary write-up rather than from the
+ * publisher's own article. The rule is specific and consistent across sources,
+ * but the provenance is weaker, and the UI says so.
+ */
+export const SECONDHAND: readonly VariantId[] = [
+  'flare-mining', 'buyers-market', 'rapid-construction',
 ]
 
 /**
@@ -61,4 +80,5 @@ export const VARIANT_CARD: Partial<Record<VariantId, CardDefId>> = {
   'maximum-warp': 'sc-maximum-warp' as CardDefId,
   'emergency-repairs': 'sc-emergency-repairs' as CardDefId,
   'ruthless-efficiency': 'sc-ruthless-efficiency' as CardDefId,
+  'flare-mining': 'sc-flare-mining' as CardDefId,
 }
