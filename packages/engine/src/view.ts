@@ -22,7 +22,10 @@ export interface InPlayCardView {
   readonly iid: CardIid
   readonly def: CardDefId
   readonly copiedDef: CardDefId | null
-  readonly used: { readonly primary: boolean; readonly ally: boolean; readonly scrap: boolean }
+  readonly used: {
+    readonly primary: boolean; readonly ally: boolean
+    readonly doubleAlly: boolean; readonly scrap: boolean
+  }
   readonly playedThisTurn: boolean
 }
 
@@ -46,6 +49,7 @@ export interface SelfView {
   readonly trade: number
   readonly combat: number
   readonly allyUnlocked: readonly Faction[]
+  readonly doubleAllyUnlocked: readonly Faction[]
   readonly pendingTopdeck: number
   readonly factionPlayedThisTurn: Readonly<Record<Faction, number>>
 }
@@ -112,7 +116,10 @@ function viewInPlay(c: InPlayCard): InPlayCardView {
     iid: c.iid,
     def: c.def,
     copiedDef: c.copiedDef,
-    used: { primary: c.used.primary, ally: c.used.ally, scrap: c.used.scrap },
+    used: {
+      primary: c.used.primary, ally: c.used.ally,
+      doubleAlly: c.used.doubleAlly, scrap: c.used.scrap,
+    },
     playedThisTurn: c.playedThisTurn,
   }
 }
@@ -160,6 +167,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       trade: meState.trade,
       combat: meState.combat,
       allyUnlocked: [...meState.allyUnlocked],
+      doubleAllyUnlocked: [...meState.doubleAllyUnlocked],
       pendingTopdeck: meState.pendingTopdeck,
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
     },

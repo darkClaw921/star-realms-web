@@ -1,4 +1,5 @@
 import type { CardDefId, Faction } from '@sr/engine'
+import { FRONTIERS_RU } from './frontiers.ru'
 
 /**
  * Русская локализация карт.
@@ -26,12 +27,14 @@ export interface CardRu {
   readonly primary: string
   readonly ally: string
   readonly scrap: string
+  /** Frontiers: двойное союзное свойство. */
+  readonly doubleAlly?: string
 }
 
 const C = (name: string, primary: string, ally = '', scrap = ''): CardRu =>
   ({ name, primary, ally, scrap })
 
-const CARDS_RU: Record<string, CardRu> = {
+const CORE_RU: Record<string, CardRu> = {
   // ─────────────────────────── Торговая Федерация ───────────────────────────
   'federation-shuttle': C('Челнок Федерации', '{trade:2}', '{authority:4}'),
   cutter: C('Катер', '{authority:4} {trade:2}', '{combat:4}'),
@@ -115,6 +118,9 @@ const CARDS_RU: Record<string, CardRu> = {
   viper: C('Штурмовик', '{combat:1}'),
   explorer: C('Исследователь', '{trade:2}', '', '{combat:2}'),
 }
+
+/** Обе таблицы в одной: карта ищется по идентификатору независимо от набора. */
+const CARDS_RU: Record<string, CardRu> = { ...CORE_RU, ...FRONTIERS_RU }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */
 export const BRANCH_RU: Record<string, string> = {

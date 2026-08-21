@@ -54,6 +54,10 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
   switch (e.e) {
     case 'TURN_START': return `— Ход ${e.turn}: ${who(e.player)} —`
     case 'TURN_END': return null
+    case 'TOPDECK':
+      return `${who(e.player)} кладёт ${card(e.def)} на верх колоды`
+    case 'RETURN_FROM_SCRAP':
+      return `${card(e.def)} возвращается из утиля в стопку сброса`
     case 'TENTACLE_DESTROYED':
       return `${TENTACLE_RU[e.faction] ?? e.faction} уничтожено (оборона ${e.defense})`
     case 'PLAY_CARD': return `${who(e.player)} разыгрывает ${card(e.def)}`

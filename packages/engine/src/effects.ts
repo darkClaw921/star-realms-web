@@ -80,7 +80,7 @@ export type Effect =
    * qualifying acquisition. Multiple copies STACK (official ruling): each
    * acquisition consumes exactly one, and unused ones expire at end of turn.
    */
-  | { k: 'TOPDECK_NEXT_ACQUIRED'; filter: 'ship'; min: 0 | 1 }
+  | { k: 'TOPDECK_NEXT_ACQUIRED'; filter: 'ship' | 'base'; min: 0 | 1 }
 
   // ---- Stealth Needle -------------------------------------------------------
   /**
@@ -100,6 +100,25 @@ export type Effect =
   /** Repeat `then` once per unit of `ref`. Blob World's draw. */
   | { k: 'PER'; ref: CounterRef; then: readonly Effect[] }
   | { k: 'SEQ'; effects: readonly Effect[] }
+
+  // ── Frontiers ─────────────────────────────────────────────────────────────
+  /** Pulverizer: scrap a trade row card and gain combat equal to its cost. */
+  | { k: 'SCRAP_TRADE_ROW_FOR_COMBAT'; min: 0 | 1; max: 1 }
+  /** Neural Nexus: scrap from hand or discard, gain combat equal to its cost. */
+  | { k: 'SCRAP_FOR_COMBAT'; zones: readonly Zone[]; min: 0 | 1; max: 1 }
+  /** Repair Mech: put a base from your discard pile on top of your deck. */
+  | { k: 'TOPDECK_BASE_FROM_DISCARD'; min: 0 | 1 }
+  /** Warpgate Cruiser: discard any number of cards, gaining combat for each. */
+  | { k: 'DISCARD_FOR_COMBAT'; per: number }
+  /**
+   * "Draw a card, then discard a card" -- the Star Empire filter. Mandatory and
+   * self-targeting, so it is not OPPONENT_DISCARD and not optional.
+   */
+  | { k: 'SELF_DISCARD'; n: number }
+  /** Reclamation Station: combat for every card you have scrapped this turn. */
+  | { k: 'COMBAT_PER_SCRAPPED'; per: number }
+  /** Mobile Market: at end of turn it comes back from the scrap heap. */
+  | { k: 'RETURN_SELF_AT_END_OF_TURN' }
 
   // ── Frontiers Challenges: the script bosses ───────────────────────────────
   // A boss turn is pushed onto the resolution stack like any other effect, so a
@@ -138,7 +157,7 @@ export interface Trigger {
 }
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
-export type AbilitySlot = 'primary' | 'ally' | 'scrap' | 'trigger'
+export type AbilitySlot = 'primary' | 'ally' | 'doubleAlly' | 'scrap' | 'trigger'
 
 /** Copy-source for Stealth Needle; null on every other card. */
 export interface CopyState {

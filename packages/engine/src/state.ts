@@ -28,7 +28,7 @@ export interface InPlayCard {
    */
   copiedDef: CardDefId | null
   /** Once-per-turn bookkeeping, cleared at the start of the controller's turn. */
-  used: { primary: boolean; ally: boolean; scrap: boolean }
+  used: { primary: boolean; ally: boolean; doubleAlly: boolean; scrap: boolean }
   /** False for bases held over from a previous turn. */
   playedThisTurn: boolean
 }
@@ -58,6 +58,11 @@ export interface PlayerState {
    */
   allyUnlocked: Faction[]
   /**
+   * Factions with THREE cards in play, which is what a Double Ally needs. Kept
+   * separate from allyUnlocked, and like it, never un-unlocks once triggered.
+   */
+  doubleAllyUnlocked: Faction[]
+  /**
    * Ships played from hand this turn, in order. Stealth Needle copies from this
    * list rather than from `inPlay`, because a ship played this turn and then
    * scrapped is still a legal copy target.
@@ -69,6 +74,12 @@ export interface PlayerState {
    * unused ones expire at end of turn.
    */
   pendingTopdeck: number
+  /** Frontiers: same, for the next BASE acquired (Long Hauler). */
+  pendingTopdeckBase: number
+  /** Cards this player has scrapped this turn. Reclamation Station reads it. */
+  scrappedThisTurn: number
+  /** Cards that return from the scrap heap to the discard pile at end of turn. */
+  returnAtEndOfTurn: CardIid[]
 }
 
 export interface EffectCtx {

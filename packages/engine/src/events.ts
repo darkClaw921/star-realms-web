@@ -19,10 +19,14 @@ export type GameEvent =
   | { e: 'ACQUIRE'; player: PlayerId; def: CardDefId; dest: 'discard' | 'deck_top'; cost: number }
   | { e: 'TRADE_ROW_REFILL'; def: CardDefId | null; slot: number }
   | { e: 'TENTACLE_DESTROYED'; faction: Faction; defense: number }
+  /** Frontiers (Repair Mech): a base goes from the discard pile to the deck top. */
+  | { e: 'TOPDECK'; player: PlayerId; iid: CardIid; def: CardDefId }
+  /** Frontiers (Mobile Market): back from the scrap heap at end of turn. */
+  | { e: 'RETURN_FROM_SCRAP'; player: PlayerId; iid: CardIid; def: CardDefId }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }
-  | { e: 'ALLY_UNLOCKED'; player: PlayerId; faction: Faction }
+  | { e: 'ALLY_UNLOCKED'; player: PlayerId; faction: Faction; double?: boolean }
   | { e: 'RESHUFFLE'; player: PlayerId; n: number }
   | { e: 'CHOICE_AUTO_RESOLVED'; player: PlayerId; label: string }
   | { e: 'FIZZLE'; label: string }

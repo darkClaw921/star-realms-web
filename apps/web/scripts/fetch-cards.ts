@@ -21,10 +21,41 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ART_DIR = join(HERE, '..', 'public', 'cards', 'art')
 const MANIFEST = join(HERE, '..', 'src', 'cards', 'artManifest.gen.ts')
 
-const API =
-  'https://www.starrealms.com/wp-json/wp/v2/media' +
-  '?per_page=100&media_type=image&after=2015-04-01T00:00:00&before=2015-05-01T00:00:00' +
-  '&_fields=slug,title,source_url,media_details'
+const FIELDS = '&_fields=slug,title,source_url,media_details'
+const BASE_API = 'https://www.starrealms.com/wp-json/wp/v2/media?media_type=image' + FIELDS
+
+/**
+ * The two upload batches that hold the card faces.
+ *
+ * Base set: April 2015, exactly 49 items and nothing else in the window, so one
+ * page is the whole set. Frontiers: October 2018, mixed in with a year of other
+ * uploads, so it is paged through and filtered by the publisher's own
+ * `SRFRN_Card_` naming.
+ */
+const SOURCES = [
+  {
+    set: 'core',
+    url: `${BASE_API}&per_page=100&after=2015-04-01T00:00:00&before=2015-05-01T00:00:00`,
+    pages: 1,
+    expect: 49,
+    keep: (): boolean => true,
+    id: (title: string): string => toCardId(title),
+  },
+  {
+    set: 'frontiers',
+    url: `${BASE_API}&per_page=100&after=2018-01-01T00:00:00&before=2018-12-31T00:00:00`,
+    pages: 4,
+    expect: 48,
+    keep: (title: string): boolean =>
+      title.startsWith('SRFRN_Card_') && !title.includes('Scorecard'),
+    // "SRFRN_Card_HiveQueen" -> "hive-queen". The scans are named in CamelCase
+    // with a set prefix rather than by the printed card name.
+    id: (title: string): string =>
+      title.replace('SRFRN_Card_', '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
+] as const
 
 /**
  * Two publisher-side defects that a naive importer silently gets wrong.
@@ -65,15 +96,34 @@ const CROP = {
   landscape: { top: 0.150, height: 0.545, left: 0.030, width: 0.940 },
 } as const
 
+/** Reads one source, paging through it and keeping only its own card faces. */
+async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; id: string }[]> {
+  const out: { item: MediaItem; id: string }[] = []
+  for (let page = 1; page <= src.pages; page++) {
+    const res = await fetch(`${src.url}&page=${page}`)
+    // A page past the end is a 400, not an empty list.
+    if (!res.ok) break
+    const items = (await res.json()) as MediaItem[]
+    if (items.length === 0) break
+    for (const item of items) {
+      const title = item.title.rendered
+      if (!src.keep(title)) continue
+      out.push({ item, id: src.id(title) })
+    }
+  }
+  console.log(`  ${src.set}: ${out.length} card faces (expected ${src.expect})`)
+  if (out.length !== src.expect) {
+    console.warn(`  ! expected ${src.expect}, got ${out.length} -- continuing anyway`)
+  }
+  return out
+}
+
 async function main(): Promise<void> {
   console.log('Fetching the card media index from starrealms.com ...')
-  const res = await fetch(API)
-  if (!res.ok) throw new Error(`WP REST API returned ${res.status}`)
-  const items = (await res.json()) as MediaItem[]
-  console.log(`  ${items.length} media items (expected 49)`)
-  if (items.length !== 49) {
-    console.warn(`  ! expected 49 base-set faces, got ${items.length} -- continuing anyway`)
-  }
+  const found: { item: MediaItem; id: string }[] = []
+  for (const src of SOURCES) found.push(...await collect(src))
+  const items = found.map((f) => f.item)
+  const idOf = new Map(found.map((f) => [f.item.source_url, f.id]))
 
   await mkdir(ART_DIR, { recursive: true })
   await mkdir(dirname(MANIFEST), { recursive: true })
@@ -83,7 +133,7 @@ async function main(): Promise<void> {
   let failed = 0
 
   for (const item of items) {
-    const id = toCardId(item.title.rendered)
+    const id = idOf.get(item.source_url) ?? toCardId(item.title.rendered)
     try {
       const imgRes = await fetch(item.source_url)
       if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)

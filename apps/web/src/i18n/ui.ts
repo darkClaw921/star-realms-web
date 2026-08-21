@@ -71,6 +71,13 @@ export const UI = {
   objectiveLabel: 'Задача',
   toCampaign: 'К вылетам',
 
+  // наборы карт
+  setsName: 'Наборы карт',
+  setsHint: 'Влияет только на НОВЫЕ партии: менять состав торговой колоды посреди игры — ' +
+    'значит менять правила на ходу. Последний включённый набор выключить нельзя.',
+  setName: { core: 'Базовый набор', frontiers: 'Frontiers' } as Record<string, string>,
+  cardsInDeck: (n: number): string => `${n} карт в колоде`,
+
   // приключения Frontiers
   modeChallenges: 'Приключения',
   modeChallengesDesc: 'Восемь боссов из набора Frontiers, у каждого своя механика. Соло, четыре уровня сложности.',
@@ -116,6 +123,7 @@ export const UI = {
 
   // свойства карт (кнопки под разыгранной картой)
   slotPrimary: 'Применить',
+  slotDoubleAlly: 'Двойной союз',
   slotAlly: 'Союзное',
   slotScrap: 'Утиль',
 
@@ -185,6 +193,15 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
   switch (c.prompt) {
     case 'DISCARD':
       return n === 1 ? 'Сбросьте карту' : `Сбросьте ${n} карты`
+    // ── Frontiers ──────────────────────────────────────────────────────────
+    case 'SCRAP_ROW_FOR_COMBAT':
+      return 'Утилизируйте карту из торгового ряда — получите очки боя, равные её стоимости'
+    case 'SCRAP_FOR_COMBAT':
+      return 'Утилизируйте карту — получите очки боя, равные её стоимости'
+    case 'TOPDECK_BASE':
+      return 'Положите базу из стопки сброса на верх своей колоды'
+    case 'DISCARD_FOR_COMBAT':
+      return 'Сбросьте сколько хотите карт — по 2 очка боя за каждую'
     case 'SCRAP_ZONES':
       return c.min === 0
         ? 'Можете утилизировать карту с руки или из стопки сброса'

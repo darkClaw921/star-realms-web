@@ -55,6 +55,10 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     if (!card.used.ally && eff.ally.length > 0 && allyReady(card, me.allyUnlocked)) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'ally' })
     }
+    if (!card.used.doubleAlly && eff.doubleAlly.length > 0
+        && allyReady(card, me.doubleAllyUnlocked)) {
+      out.push({ t: 'ACTIVATE', card: card.iid, slot: 'doubleAlly' })
+    }
     if (!card.used.scrap && eff.scrap.length > 0) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'scrap' })
     }

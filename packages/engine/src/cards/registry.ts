@@ -1,6 +1,7 @@
 import { asDefId, type CardDefId } from '../ids'
 import type { Effect } from '../effects'
-import type { CardDef, CardRegistry } from './types'
+import { buildDefs, type CardDef, type CardRegistry, type SetId, type Spec } from './types'
+import { FRONTIERS } from './frontiers'
 
 /**
  * THE BASE SET.
@@ -34,8 +35,6 @@ const chooseOne = (...branches: { label: string; then: Effect[] }[]): Effect =>
   ({ k: 'CHOOSE_ONE', branches })
 const topdeckNextShip = (): Effect => ({ k: 'TOPDECK_NEXT_ACQUIRED', filter: 'ship', min: 0 })
 
-type Spec = Omit<CardDef, 'id' | 'ally' | 'scrap' | 'triggers' | 'factionWildcard'> &
-  Partial<Pick<CardDef, 'ally' | 'scrap' | 'triggers' | 'factionWildcard'>>
 
 const defs: Record<string, Spec> = {
   // ══════════════════════════ TRADE FEDERATION (20) ══════════════════════════
@@ -367,19 +366,10 @@ const defs: Record<string, Spec> = {
   },
 }
 
-export const CARDS: CardRegistry = new Map(
-  Object.entries(defs).map(([id, s]) => [
-    asDefId(id),
-    {
-      id: asDefId(id),
-      ...s,
-      ally: s.ally ?? [],
-      scrap: s.scrap ?? [],
-      triggers: s.triggers ?? [],
-      factionWildcard: s.factionWildcard ?? false,
-    } satisfies CardDef,
-  ]),
-)
+export const CARDS: CardRegistry = new Map([
+  ...buildDefs(defs, 'core'),
+  ...buildDefs(FRONTIERS, 'frontiers'),
+])
 
 export function cardDef(id: CardDefId): CardDef {
   const d = CARDS.get(id)
@@ -400,13 +390,21 @@ export const EXPLORER = asDefId('explorer')
  * restricted deck is a real subset of the real deck rather than a reweighted
  * one.
  */
-export function tradeDeckComposition(only?: readonly CardDefId[]): CardDefId[] {
+export function tradeDeckComposition(
+  only?: readonly CardDefId[],
+  sets: readonly SetId[] = ['core'],
+): CardDefId[] {
   const allow = only ? new Set<string>(only) : null
+  const enabled = new Set<SetId>(sets)
   const out: CardDefId[] = []
   for (const def of CARDS.values()) {
     if (def.role !== 'trade_deck') continue
+    if (!enabled.has(def.set)) continue
     if (allow && !allow.has(def.id)) continue
     for (let i = 0; i < def.copies; i++) out.push(def.id)
   }
   return out
 }
+
+/** Every set the registry knows about, in the order they should be offered. */
+export const ALL_SETS: readonly SetId[] = ['core', 'frontiers']

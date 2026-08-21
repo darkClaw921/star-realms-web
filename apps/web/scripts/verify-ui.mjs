@@ -257,6 +257,64 @@ async function main() {
         cardAfter === cardBefore ? 'слот не изменился' : `${cardBefore} → ${cardAfter}`)
     }
 
+    // ── 2b2. наборы карт ──────────────────────────────────────────────────
+    {
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.table', { timeout: 10000 })
+      await sleep(900)
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')]
+          .find((x) => x.getAttribute('aria-label') === 'Настройки')
+        b?.click()
+      })
+      await sleep(500)
+
+      const deckSize = () => page.evaluate(() => {
+        const el = [...document.querySelectorAll('.setting__value')]
+          .find((x) => /карт в колоде/.test(x.textContent ?? ''))
+        return Number((el?.textContent ?? '').match(/(\d+)/)?.[1] ?? 0)
+      })
+      const before = await deckSize()
+      const toggles = await page.$$eval('.sets .switch input', (e) => e.length)
+      record('наборы карт переключаются', toggles === 2 && before === 80,
+        `переключателей ${toggles}, колода ${before}`)
+
+      // Последний включённый набор выключить нельзя -- иначе колода пуста.
+      const coreLocked = await page.$eval('.sets .switch input', (e) => e.disabled)
+      record('последний набор выключить нельзя', coreLocked === true, `заблокирован: ${coreLocked}`)
+
+      await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll('.sets .switch input')]
+        if (boxes[1] && !boxes[1].checked) boxes[1].click()
+      })
+      await sleep(400)
+      const after = await deckSize()
+      record('Frontiers удваивает торговую колоду', after === 160, `${before} → ${after}`)
+      shots.push(await shot(page, 'sets', 'Наборы карт в настройках. Frontiers включается и выключается; состав читается только при раздаче новой партии.'))
+
+      // Настройка обязана дойти до новой партии, а не только до панели.
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.band--market .card', { timeout: 10000 })
+      await sleep(900)
+      const deckText = await textOf(page, '.band--market .zone__head')
+      const inDeck = Number((deckText.match(/(\d+)/) ?? [])[1] ?? 0)
+      record('новая партия раздаётся из обоих наборов', inDeck > 120, `в колоде: ${inDeck}`)
+
+      // И выключение возвращает базовую колоду.
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({ ...raw, sets: ['core'] }))
+        } catch { /* */ }
+      })
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.band--market .card', { timeout: 10000 })
+      await sleep(900)
+      const backText = await textOf(page, '.band--market .zone__head')
+      const backDeck = Number((backText.match(/(\d+)/) ?? [])[1] ?? 0)
+      record('выключение возвращает базовый набор', backDeck < 80, `в колоде: ${backDeck}`)
+    }
+
     // ── 2c. кампания ──────────────────────────────────────────────────────
     await page.goto(`${BASE}/campaign`, { waitUntil: 'networkidle2' })
     await page.waitForSelector('.camp', { timeout: 10000 })

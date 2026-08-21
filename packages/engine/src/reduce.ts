@@ -157,6 +157,9 @@ function refillTradeRow(d: D, ev: GameEvent[]): void {
  * cards only, not to a Stealth Needle that copied one.
  */
 function toScrapHeap(d: D, inst: CardInstance, from: Zone, owner: PlayerId | null, ev: GameEvent[]): void {
+  // Reclamation Station counts what YOU scrapped, so trade-row scrapping (which
+  // has no owner) must not feed the counter.
+  if (owner) d.players[owner].scrappedThisTurn += 1
   if (inst.def === EXPLORER) {
     d.explorerPile += 1
   } else {
@@ -179,10 +182,16 @@ function recomputeAlly(d: D, pid: PlayerId, ev: GameEvent[]): void {
   const p = d.players[pid]
   for (const f of FACTIONS) {
     if (f === 'unaligned') continue
-    if (p.allyUnlocked.includes(f)) continue
-    if (allyCountFor(p, f) >= 2) {
+    const n = allyCountFor(p, f)
+    // Ally needs one other card of the faction, Double Ally two -- so two and
+    // three cards in play respectively, counting the card using the ability.
+    if (n >= 2 && !p.allyUnlocked.includes(f)) {
       p.allyUnlocked.push(f)
       ev.push({ e: 'ALLY_UNLOCKED', player: pid, faction: f })
+    }
+    if (n >= 3 && !p.doubleAllyUnlocked.includes(f)) {
+      p.doubleAllyUnlocked.push(f)
+      ev.push({ e: 'ALLY_UNLOCKED', player: pid, faction: f, double: true })
     }
   }
 }
@@ -198,8 +207,11 @@ function acquire(
     return
   }
   p.discard.push(inst)
-  // Freighter / Central Office: offer to redirect this acquisition to the deck top.
-  if (p.pendingTopdeck > 0 && cardDef(inst.def).type === 'ship') {
+  // Freighter / Central Office redirect ships; Frontiers' Long Hauler redirects
+  // bases. Either way the acquisition is offered, never forced.
+  const isShip = cardDef(inst.def).type === 'ship'
+  const armed = isShip ? p.pendingTopdeck > 0 : p.pendingTopdeckBase > 0
+  if (armed) {
     pushChoice(d, {
       id: mintId(d) as ChoiceId,
       actor: pid,
@@ -255,6 +267,67 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     case 'GAIN_COMBAT': return gain(d, me, 'combat', effect.n, ev)
     case 'GAIN_AUTHORITY': return gain(d, me, 'authority', effect.n, ev)
     case 'DRAW': { drawCards(d, me, effect.n, ev); return }
+
+    // ── Frontiers ───────────────────────────────────────────────────────────
+    case 'SELF_DISCARD': {
+      const opts: ChoiceOption[] = cardOpts(p.hand, 'hand', me)
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'hand is empty' }); return }
+      pushChoice(d, makeChoice(d, me, 'DISCARD', 'Discard a card',
+        Math.min(effect.n, opts.length), Math.min(effect.n, opts.length), opts, ctx.source))
+      return
+    }
+
+    case 'SCRAP_TRADE_ROW_FOR_COMBAT': {
+      const opts: ChoiceOption[] = []
+      for (const c of d.tradeRow) {
+        if (c) opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'tradeRow', owner: null })
+      }
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'trade row is empty' }); return }
+      pushChoice(d, makeChoice(d, me, 'SCRAP_ROW_FOR_COMBAT',
+        'Scrap a trade row card for combat', effect.min, effect.max, opts, ctx.source))
+      return
+    }
+
+    case 'SCRAP_FOR_COMBAT': {
+      const opts: ChoiceOption[] = []
+      for (const z of effect.zones) {
+        const list = z === 'hand' ? p.hand : z === 'discard' ? p.discard : []
+        opts.push(...cardOpts(list, z, me))
+      }
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to scrap' }); return }
+      pushChoice(d, makeChoice(d, me, 'SCRAP_FOR_COMBAT',
+        'Scrap a card for combat', effect.min, effect.max, opts, ctx.source))
+      return
+    }
+
+    case 'TOPDECK_BASE_FROM_DISCARD': {
+      const bases = p.discard.filter((c) => cardDef(c.def).type !== 'ship')
+      if (bases.length === 0) { ev.push({ e: 'FIZZLE', label: 'no base in the discard pile' }); return }
+      pushChoice(d, makeChoice(d, me, 'TOPDECK_BASE', 'Put a base on top of your deck',
+        effect.min, 1, cardOpts(bases, 'discard', me), ctx.source))
+      return
+    }
+
+    case 'DISCARD_FOR_COMBAT': {
+      if (p.hand.length === 0) { ev.push({ e: 'FIZZLE', label: 'hand is empty' }); return }
+      // "Any number" is min 0, max the whole hand -- one choice, not a loop.
+      pushChoice(d, makeChoice(d, me, 'DISCARD_FOR_COMBAT',
+        `Discard any number of cards for ${effect.per} combat each`,
+        0, p.hand.length, cardOpts(p.hand, 'hand', me), ctx.source))
+      return
+    }
+
+    case 'COMBAT_PER_SCRAPPED': {
+      // The card using this is itself scrapped by the activation, so it is
+      // already counted -- which is what "including this one" means.
+      gain(d, me, 'combat', effect.per * p.scrappedThisTurn, ev)
+      return
+    }
+
+    case 'RETURN_SELF_AT_END_OF_TURN': {
+      if (ctx.source) p.returnAtEndOfTurn.push(ctx.source)
+      return
+    }
 
     case 'SEQ': return pushEffects(d, effect.effects, ctx)
 
@@ -390,7 +463,8 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'TOPDECK_NEXT_ACQUIRED': {
-      p.pendingTopdeck += 1
+      if (effect.filter === 'base') p.pendingTopdeckBase += 1
+      else p.pendingTopdeck += 1
       return
     }
 
@@ -505,6 +579,59 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'SCRAP_ROW_FOR_COMBAT': {
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const idx = d.tradeRow.findIndex((x) => x?.iid === o.iid)
+        if (idx < 0) continue
+        const inst = d.tradeRow[idx] as CardInstance
+        d.tradeRow[idx] = null
+        toScrapHeap(d, inst, 'tradeRow', null, ev)
+        gain(d, me, 'combat', cardDef(inst.def).cost, ev)
+      }
+      refillTradeRow(d, ev)
+      return
+    }
+
+    case 'SCRAP_FOR_COMBAT': {
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, o.zone, o.iid)
+        if (!inst) continue
+        toScrapHeap(d, inst, o.zone, me, ev)
+        gain(d, me, 'combat', cardDef(inst.def).cost, ev)
+      }
+      return
+    }
+
+    case 'TOPDECK_BASE': {
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, 'discard', o.iid)
+        if (inst) {
+          p.deck.unshift(inst)
+          ev.push({ e: 'TOPDECK', player: me, iid: inst.iid, def: inst.def })
+        }
+      }
+      return
+    }
+
+    case 'DISCARD_FOR_COMBAT': {
+      let n = 0
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, 'hand', o.iid)
+        if (!inst) continue
+        p.discard.push(inst)
+        ev.push({ e: 'DISCARD', player: me, iid: inst.iid, def: inst.def })
+        n++
+      }
+      // The per-card value lives on the effect, not on the choice, so it is read
+      // back from the frame that pushed this choice.
+      if (n > 0) gain(d, me, 'combat', n * 2, ev)
+      return
+    }
+
     case 'CHOOSE_BRANCH': {
       const o = selected[0]
       if (!o || o.o !== 'BRANCH') return
@@ -546,7 +673,9 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       if (idx < 0) return
       const inst = p.discard.splice(idx, 1)[0] as CardInstance
       p.deck.unshift(inst)
-      p.pendingTopdeck = Math.max(0, p.pendingTopdeck - 1)
+      // Consume the counter the acquisition actually armed.
+      if (cardDef(inst.def).type === 'ship') p.pendingTopdeck = Math.max(0, p.pendingTopdeck - 1)
+      else p.pendingTopdeckBase = Math.max(0, p.pendingTopdeckBase - 1)
       ev.push({ e: 'ACQUIRE', player: me, def: inst.def, dest: 'deck_top', cost: 0 })
       return
     }
@@ -625,7 +754,7 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     iid: inst.iid,
     def: inst.def,
     copiedDef: null,
-    used: { primary: false, ally: false, scrap: false },
+    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
     playedThisTurn: true,
   }
   p.inPlay.push(card as Draft<InPlayCard>)
@@ -654,7 +783,10 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   if (queued.length > 0) pushEffects(d, queued, ctx)
 }
 
-function activate(d: D, me: PlayerId, iid: CardIid, slot: 'primary' | 'ally' | 'scrap', ev: GameEvent[]): void {
+function activate(
+  d: D, me: PlayerId, iid: CardIid,
+  slot: 'primary' | 'ally' | 'doubleAlly' | 'scrap', ev: GameEvent[],
+): void {
   const p = d.players[me]
   const card = p.inPlay.find((c) => c.iid === iid)
   if (!card) throw new IllegalActionError(`card ${iid} is not in play`)
@@ -666,8 +798,15 @@ function activate(d: D, me: PlayerId, iid: CardIid, slot: 'primary' | 'ally' | '
 
   if (slot === 'ally') {
     const factions = factionsOf(card)
-    const ok = factions.some((f) => p.allyUnlocked.includes(f))
-    if (!ok) throw new IllegalActionError('ally condition not met')
+    if (!factions.some((f) => p.allyUnlocked.includes(f))) {
+      throw new IllegalActionError('ally condition not met')
+    }
+  }
+  if (slot === 'doubleAlly') {
+    const factions = factionsOf(card)
+    if (!factions.some((f) => p.doubleAllyUnlocked.includes(f))) {
+      throw new IllegalActionError('double ally condition not met')
+    }
   }
   if (slot === 'primary' && cardDef(card.def).type === 'ship') {
     throw new IllegalActionError('a ship primary resolves on play')
@@ -735,11 +874,26 @@ function endTurn(d: D, ev: GameEvent[]): void {
     p.hand = []
   }
 
+  // Mobile Market: it comes back from the scrap heap at end of turn. Done here,
+  // before the per-turn reset, so the card lands in the discard pile and is part
+  // of the deck again on the next reshuffle.
+  for (const iid of p.returnAtEndOfTurn) {
+    const idx = d.scrapHeap.findIndex((c) => c.iid === iid)
+    if (idx < 0) continue
+    const inst = d.scrapHeap.splice(idx, 1)[0] as CardInstance
+    p.discard.push(inst)
+    ev.push({ e: 'RETURN_FROM_SCRAP', player: me, iid: inst.iid, def: inst.def })
+  }
+  p.returnAtEndOfTurn = []
+
   // Per-turn bookkeeping that is easy to forget and silently wrong if missed.
   p.factionPlayedThisTurn = emptyFactionCounts()
   p.shipsPlayedThisTurn = []
   p.allyUnlocked = []
+  p.doubleAllyUnlocked = []
   p.pendingTopdeck = 0
+  p.pendingTopdeckBase = 0
+  p.scrappedThisTurn = 0
 
   if (!scriptBoss) drawCards(d, me, HAND_SIZE, ev)
 
@@ -751,9 +905,12 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.factionPlayedThisTurn = emptyFactionCounts()
   next.shipsPlayedThisTurn = []
   next.allyUnlocked = []
+  next.doubleAllyUnlocked = []
   next.pendingTopdeck = 0
+  next.pendingTopdeckBase = 0
+  next.scrappedThisTurn = 0
   for (const c of next.inPlay) {
-    c.used = { primary: false, ally: false, scrap: false }
+    c.used = { primary: false, ally: false, doubleAlly: false, scrap: false }
     c.playedThisTurn = false
     // A Stealth Needle never survives a turn (it is a ship), so no copy state
     // can leak across turns; bases have none.
@@ -901,7 +1058,7 @@ function automatonsStep(d: D, ev: GameEvent[]): void {
   if (card) {
     d.players[me].inPlay.push({
       iid: card.iid, def: card.def, copiedDef: null,
-      used: { primary: false, ally: false, scrap: false }, playedThisTurn: false,
+      used: { primary: false, ally: false, doubleAlly: false, scrap: false }, playedThisTurn: false,
     })
     ev.push({ e: 'PLAY_CARD', player: me, iid: card.iid, def: card.def })
   }

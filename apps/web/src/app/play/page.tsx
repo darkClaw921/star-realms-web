@@ -12,6 +12,7 @@ import { UI } from '@/i18n/ui'
 import { LocalMatchClient } from '@/match/LocalMatchClient'
 import { useMatch } from '@/match/useMatch'
 import { markBeaten, markChallengeBeaten } from '@/campaign/progress'
+import { readSettings } from '@/settings/useSettings'
 
 function Play(): React.JSX.Element {
   const params = useSearchParams()
@@ -34,6 +35,10 @@ function Play(): React.JSX.Element {
     return { spec, ...challengeSetup(spec, level) }
   }, [urlMode, params])
 
+  // Sets are read ONCE, when the match is created. Reading them live would let
+  // a settings change rewrite the trade deck mid-game.
+  const sets = useMemo(() => readSettings().sets, [])
+
   // One seed per mount. Deliberately not derived from the URL so a refresh deals
   // a new game rather than replaying the same one.
   const seed = useMemo(
@@ -46,8 +51,11 @@ function Play(): React.JSX.Element {
       seed, firstPlayer: 'p1', mode, humanSeat: 'p1', difficulty,
       scenario: mission?.setup ?? challenge?.scenario,
       boss: challenge?.boss,
+      // A challenge or a mission fixes its own card pool, so the player's set
+      // choice only applies to an ordinary game.
+      sets: mission || challenge ? undefined : sets,
     }),
-    [seed, mode, difficulty, mission, challenge],
+    [seed, mode, difficulty, mission, challenge, sets],
   )
   const { snapshot, client } = useMatch(factory)
 

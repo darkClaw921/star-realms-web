@@ -1,6 +1,7 @@
 import { EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
 import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
+import type { SetId } from './cards/types'
 import type { ScenarioSetup } from './scenario'
 import { PLAYERS } from './ids'
 import { nextHex, seedRng, shuffle, type RngState } from './rng'
@@ -19,6 +20,11 @@ export interface MatchSetup {
   readonly scenario?: ScenarioSetup | undefined
   /** A Frontiers Challenge boss, or absent. */
   readonly boss?: BossState | undefined
+  /**
+   * Which card sets are in the trade deck. Defaults to the base set alone, so
+   * an existing caller keeps dealing exactly the game it dealt before.
+   */
+  readonly sets?: readonly SetId[] | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -54,7 +60,11 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     combat: 0,
     factionPlayedThisTurn: emptyFactionCounts(),
     allyUnlocked: [],
+    doubleAllyUnlocked: [],
     pendingTopdeck: 0,
+    pendingTopdeckBase: 0,
+    scrappedThisTurn: 0,
+    returnAtEndOfTurn: [],
   }
 }
 
@@ -77,9 +87,8 @@ export function createGame(setup: MatchSetup): GameState {
   }
 
   let tradeDeck: CardInstance[]
-  ;[tradeDeck, rng] = mintAll(rng, sc?.tradeDeckOnly
-    ? tradeDeckComposition(sc.tradeDeckOnly)
-    : tradeDeckComposition())
+  const sets = setup.sets ?? ['core']
+  ;[tradeDeck, rng] = mintAll(rng, tradeDeckComposition(sc?.tradeDeckOnly ?? undefined, sets))
   ;[tradeDeck, rng] = shuffle(rng, tradeDeck)
 
   const players: Record<PlayerId, PlayerState> = {
@@ -96,7 +105,7 @@ export function createGame(setup: MatchSetup): GameState {
       ;[c, rng] = mint(rng, def)
       players[pid].inPlay.push({
         iid: c.iid, def: c.def, copiedDef: null,
-        used: { primary: false, ally: false, scrap: false },
+        used: { primary: false, ally: false, doubleAlly: false, scrap: false },
         playedThisTurn: false,
       })
     }

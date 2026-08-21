@@ -1,6 +1,6 @@
 'use client'
 
-import { asDefId } from '@sr/engine'
+import { ALL_SETS, asDefId, tradeDeckComposition, type SetId } from '@sr/engine'
 import { UI } from '@/i18n/ui'
 import { DEFAULTS, LIMITS, useSettings, type Settings } from '@/settings/useSettings'
 import { Card } from './Card'
@@ -50,7 +50,18 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
   const { settings, set, reset } = useSettings()
   const pct = (v: number): string => `${Math.round(v * 100)}%`
   const isDefault = (Object.keys(DEFAULTS) as (keyof Settings)[])
-    .every((k) => settings[k] === DEFAULTS[k])
+    .every((k) => (k === 'sets'
+      ? settings.sets.join() === DEFAULTS.sets.join()
+      : settings[k] === DEFAULTS[k]))
+
+  const toggleSet = (id: SetId): void => {
+    const on = settings.sets.includes(id)
+    const next = on ? settings.sets.filter((s) => s !== id) : [...settings.sets, id]
+    // Никогда не остаёмся без карт: последний включённый набор выключить нельзя.
+    if (next.length === 0) return
+    set('sets', ALL_SETS.filter((s) => next.includes(s)))
+  }
+  const deckSize = tradeDeckComposition(undefined, settings.sets).length
 
   return (
     <div className="overlay" onClick={onClose} role="presentation">
@@ -83,6 +94,32 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
             format={pct}
             onChange={(v) => set('textScale', v)}
           />
+
+          <div>
+            <div className="setting__head">
+              <span className="setting__name">{UI.setsName}</span>
+              <span className="setting__value">{UI.cardsInDeck(deckSize)}</span>
+            </div>
+            <div className="sets">
+              {ALL_SETS.map((id) => {
+                const on = settings.sets.includes(id)
+                const last = on && settings.sets.length === 1
+                return (
+                  <label key={id} className={`switch${last ? ' is-locked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={last}
+                      onChange={() => toggleSet(id)}
+                    />
+                    <span className="track" />
+                    <span>{UI.setName[id]}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <p className="setting__hint">{UI.setsHint}</p>
+          </div>
 
           <div>
             <div className="setting__head">

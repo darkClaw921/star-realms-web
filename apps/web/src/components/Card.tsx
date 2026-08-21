@@ -121,6 +121,13 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
                   <CardText src={text.ally} />
                 </>
               )}
+              {text.doubleAlly && (
+                <>
+                  <span className="card__rule" />
+                  <span className="card__slot-label is-double">Двойной союз</span>{' '}
+                  <CardText src={text.doubleAlly} />
+                </>
+              )}
               {text.scrap && (
                 <>
                   <span className="card__rule" />
@@ -164,6 +171,7 @@ export function cardLabel(def: CardDefId): string {
       : c.type === 'base' ? `база, оборона ${c.defense}` : 'корабль',
     speak(text.primary),
     text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
+    text.doubleAlly ? `Двойное союзное свойство: ${speak(text.doubleAlly)}` : '',
     text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
   ].filter(Boolean).join('. ')
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { ALL_SETS, type SetId } from '@sr/engine'
 
 /**
  * Пользовательские настройки отображения.
@@ -15,9 +16,17 @@ export interface Settings {
   cardScale: number
   /** Дополнительный множитель только для текста на карте. */
   textScale: number
+  /**
+   * Наборы карт в торговой колоде.
+   *
+   * Настройка читается ТОЛЬКО при раздаче новой партии: менять состав колоды
+   * посреди игры значило бы менять правила на ходу, а сохранённая партия
+   * перестала бы воспроизводиться.
+   */
+  sets: readonly SetId[]
 }
 
-export const DEFAULTS: Settings = { cardScale: 1, textScale: 1 }
+export const DEFAULTS: Settings = { cardScale: 1, textScale: 1, sets: ['core'] }
 
 export const LIMITS = {
   cardScale: { min: 0.7, max: 1.6, step: 0.05 },
@@ -37,7 +46,19 @@ export function sanitize(raw: unknown): Settings {
       LIMITS.cardScale.min, LIMITS.cardScale.max),
     textScale: clamp(Number(o.textScale) || DEFAULTS.textScale,
       LIMITS.textScale.min, LIMITS.textScale.max),
+    sets: sanitizeSets(o.sets),
   }
+}
+
+/**
+ * Неизвестный набор из старой или чужой записи отбрасывается, а пустой список
+ * возвращается к базовому: раздать партию вообще без карт нельзя.
+ */
+function sanitizeSets(raw: unknown): readonly SetId[] {
+  if (!Array.isArray(raw)) return DEFAULTS.sets
+  const known = new Set<string>(ALL_SETS)
+  const out = ALL_SETS.filter((s) => raw.includes(s) && known.has(s))
+  return out.length > 0 ? out : DEFAULTS.sets
 }
 
 export function readSettings(): Settings {

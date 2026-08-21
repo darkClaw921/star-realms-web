@@ -1,6 +1,6 @@
 import {
   actorOf, createGame, enumerateLegalActions, redact, redactEvent, reduce,
-  type Action, type BossState, type GameState, type PlayerId, type ScenarioSetup,
+  type Action, type BossState, type GameState, type PlayerId, type ScenarioSetup, type SetId,
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
@@ -20,6 +20,8 @@ export interface LocalOptions {
   readonly scenario?: ScenarioSetup | undefined
   /** A Frontiers Challenge boss. */
   readonly boss?: BossState | undefined
+  /** Card sets in the trade deck. Read once, at deal time. */
+  readonly sets?: readonly SetId[] | undefined
 }
 
 /**
@@ -45,6 +47,7 @@ export class LocalMatchClient implements MatchClient {
       firstPlayer: opts.firstPlayer,
       scenario: opts.scenario,
       boss: opts.boss,
+      sets: opts.sets,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()
