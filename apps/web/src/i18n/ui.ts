@@ -94,8 +94,14 @@ export const UI = {
     'stellar-allies': 'Stellar Allies',
     'promo-1': 'Промо-набор 1',
     'promo-year-2': 'Промо-набор второго года',
+    'frontiers-promos': 'Frontiers: промо с Kickstarter',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
+
+  // отложенные карты («Терпение вознаграждено»)
+  setAside: 'Отложено',
+  setAsideTitle: (name: string): string =>
+    `«${name}» отложена — её можно купить до конца партии`,
 
   // приключения Frontiers
   modeChallenges: 'Приключения',
@@ -274,6 +280,13 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
     // ── Stellar Allies ─────────────────────────────────────────────────────
     case 'COPY_USED_ALLY':
       return 'Скопируйте союзное свойство, уже применённое в этот ход'
+    // ── Frontiers: промо с Kickstarter ─────────────────────────────────────
+    case 'DISCARD_TO_HAND':
+      return 'Возьмите карту из стопки сброса в руку'
+    case 'STEAL_FROM_DISCARD':
+      return 'Переложите карту из стопки сброса соперника в свою'
+    case 'SET_ASIDE_FROM_ROW':
+      return 'Отложите карту из торгового ряда — её можно будет купить до конца партии'
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

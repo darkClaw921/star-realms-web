@@ -89,6 +89,10 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
       out.push({ t: 'BUY_CARD', card: c.iid })
     }
   }
+  for (const c of v.setAside) {
+    // Bought exactly as a row card is, so it goes through the same price.
+    if (costFor(cardDef(c.def), me.inPlay) <= me.trade) out.push({ t: 'BUY_CARD', card: c.iid })
+  }
   if (v.explorerPile > 0 && me.trade >= EXPLORER_COST) out.push({ t: 'BUY_EXPLORER' })
 
   // Outposts must fall before anything behind them can be touched.

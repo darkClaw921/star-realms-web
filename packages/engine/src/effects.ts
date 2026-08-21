@@ -263,6 +263,58 @@ export type Effect =
    * scrapped -- which is exactly the line the card rewards.
    */
   | { k: 'COPY_USED_ALLY' }
+
+  // ── Frontiers Kickstarter promos ──────────────────────────────────────────
+  /**
+   * "Scrap this card from play." Half the pack's ally abilities open with it:
+   * the card pays for itself and is gone. Distinct from the scrap SLOT, which is
+   * how a card volunteers itself -- here the scrapping is part of the effect.
+   */
+  | { k: 'SCRAP_SELF' }
+  /**
+   * The Colossus: "Choose a faction as you play The Colossus. The Colossus has
+   * that faction." A real faction, not a phantom -- it counts for other cards'
+   * ally conditions and for its own per-faction draw.
+   */
+  | { k: 'CHOOSE_OWN_FACTION' }
+  /**
+   * Midgate Station: "Discard any number of cards. Gain Trade or Combat equal to
+   * the number of cards discarded plus 1." ONE choice of resource for the whole
+   * lot, unlike Supply Depot's per-card split.
+   */
+  | { k: 'DISCARD_FOR_RESOURCE_PLUS'; plus: number }
+  /** Assimilator: move a card from an opponent's discard pile to yours. */
+  | { k: 'STEAL_FROM_DISCARD'; n: number }
+  /** Superflare: shuffle your discard pile back into your deck. */
+  | { k: 'SHUFFLE_DISCARD_INTO_DECK' }
+  /** Wormhole: put a card from your discard pile into your hand. */
+  | { k: 'DISCARD_TO_HAND'; min: 0 | 1 }
+  /** Supply Run / Coalition Messenger's cousin: discard pile to the top of the deck. */
+  | { k: 'DISCARD_TO_DECK_TOP'; min: 0 | 1 }
+  /**
+   * Mobilization: look at the top N, discard any number of them, put the rest
+   * back on top in any order. A wider Stellar Link, so it shares its prompt.
+   */
+  | { k: 'SCRY_MANY'; n: number }
+  /**
+   * Recon Mission / Supply Run: an Explorer for nothing. Separate from
+   * ACQUIRE_FREE because the Explorer pile is not the trade row -- it is never
+   * refilled and never enters the row.
+   */
+  | { k: 'ACQUIRE_EXPLORER_FREE'; dest: AcquireDest; min: 0 | 1 }
+  /**
+   * The asymmetric half of an event: "each OTHER player ...". Resolves `then`
+   * with the opponent as controller, which is what makes their half their own
+   * choice rather than yours.
+   */
+  | { k: 'OPPONENT_EFFECT'; then: readonly Effect[] }
+  /** Powerful Backing: phantom cards of a NAMED faction, with nothing to choose. */
+  | { k: 'GAIN_PHANTOM'; faction: Faction; n: number }
+  /**
+   * Patience Rewarded: scrap a trade row card and set it aside, acquirable for
+   * the rest of the game as if it were still in the row.
+   */
+  | { k: 'SET_ASIDE_FROM_ROW'; min: 0 | 1 }
   /**
    * Re-fill the trade row, resolving any event that turns up. Pushed by the
    * refill itself when an event appears, so that the event can ask a question
@@ -337,7 +389,7 @@ export interface Trigger {
    * outpost. ACQUIRE_SELF fires on the card being bought, for Colony Wars'
    * "when you acquire this card" clause.
    */
-  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF'
+  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF' | 'SCRAP_OWN'
   /** Colony Wars' Command Center fires only on ships of one faction. */
   readonly faction?: Faction
   readonly effects: readonly Effect[]

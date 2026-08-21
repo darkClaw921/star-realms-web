@@ -30,6 +30,7 @@ export type SetId =
   | 'stellar-allies'
   | 'promo-1'
   | 'promo-year-2'
+  | 'frontiers-promos'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -78,6 +79,15 @@ export interface CardDef {
    * per turn.
    */
   readonly primaryCost?: number
+  /**
+   * Frontiers promo "Docking": during the discard phase, if you have a base of
+   * this faction in play, the card is set aside instead of discarded and comes
+   * back to your hand at the end of the draw phase.
+   *
+   * Not a triggered ability, because it fires during a phase where no ability
+   * can be activated -- it is a property of the card that the end of turn reads.
+   */
+  readonly docking?: Faction
   readonly role: CardRole
   /** Ships: resolved immediately and mandatorily on play. Bases: activatable once per turn. */
   readonly primary: readonly Effect[]

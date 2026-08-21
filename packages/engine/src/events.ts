@@ -30,6 +30,10 @@ export type GameEvent =
   | { e: 'RETURN_TO_HAND'; owner: PlayerId; iid: CardIid; def: CardDefId }
   /** Crisis: an event turned up in the trade row and resolved on the spot. */
   | { e: 'EVENT'; def: CardDefId }
+  /** Docking: the card went back to hand instead of being discarded. */
+  | { e: 'DOCKED'; player: PlayerId; iid: CardIid; def: CardDefId }
+  /** Patience Rewarded: a trade row card is now buyable for the rest of the game. */
+  | { e: 'SET_ASIDE'; def: CardDefId }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }

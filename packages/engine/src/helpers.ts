@@ -14,14 +14,18 @@ export function effectiveDefId(c: Pick<InPlayCard, 'def' | 'copiedDef'>): CardDe
  * Machine Cult plus the copied ship's faction -- and counts as both for ally
  * purposes.
  */
-export function factionsOf(c: Pick<InPlayCard, 'def' | 'copiedDef'>): Faction[] {
+export function factionsOf(
+  c: Pick<InPlayCard, 'def' | 'copiedDef'> & Partial<Pick<InPlayCard, 'chosenFaction'>>,
+): Faction[] {
   const printed = cardDef(c.def)
   // United's dual-faction cards are printed with two, and count as both for
   // every ally condition -- including the other card's.
-  const own = printed.faction2 ? [printed.faction, printed.faction2] : [printed.faction]
-  if (!c.copiedDef) return own
-  const copied = cardDef(c.copiedDef).faction
-  return own.includes(copied) ? own : [...own, copied]
+  const out = printed.faction2 ? [printed.faction, printed.faction2] : [printed.faction]
+  // The Colossus picks its faction on play; the Needle copies one.
+  for (const extra of [c.chosenFaction, c.copiedDef ? cardDef(c.copiedDef).faction : null]) {
+    if (extra && !out.includes(extra)) out.push(extra)
+  }
+  return out
 }
 
 export function isWildcard(c: Pick<InPlayCard, 'def' | 'copiedDef'>): boolean {

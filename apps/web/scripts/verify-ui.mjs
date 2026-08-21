@@ -298,6 +298,7 @@ async function main() {
         ['Stellar Allies', 12],
         ['Промо-набор 1', 15],
         ['Промо-набор второго года', 9],
+        ['Frontiers: промо с Kickstarter', 40],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>

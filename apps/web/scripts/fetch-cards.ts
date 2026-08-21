@@ -88,6 +88,17 @@ const SOURCES = [
     },
   },
   {
+    // The Frontiers Kickstarter promos, under two prefixes across two years.
+    set: 'frontiers-promos',
+    url: `${BASE_API}&per_page=100&search=FRN`,
+    pages: 3,
+    // 25 cards, most of them uploaded both plain and foil.
+    expect: 36,
+    keep: (title: string): boolean =>
+      /^SR(KSTFRN|FRNKS)_/.test(title) && SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
     // Stellar Allies and the two promo-year packs, each under its own prefix and
     // spread over years of uploads, so these are matched by name rather than by
     // a window. Foil and plain scans are the same face; whichever comes second

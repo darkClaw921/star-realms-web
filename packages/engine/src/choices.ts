@@ -29,6 +29,10 @@ export type PromptKind =
   | 'SCRY'
   // ── Stellar Allies ────────────────────────────────────────────────────────
   | 'COPY_USED_ALLY'
+  // ── Frontiers Kickstarter promos ──────────────────────────────────────────
+  | 'DISCARD_TO_HAND'
+  | 'STEAL_FROM_DISCARD'
+  | 'SET_ASIDE_FROM_ROW'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

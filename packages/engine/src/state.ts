@@ -27,6 +27,11 @@ export interface InPlayCard {
    * abilities AND its faction, in addition to Machine Cult.
    */
   copiedDef: CardDefId | null
+  /**
+   * The Colossus: the faction chosen as it was played. A real faction for every
+   * purpose -- other cards' ally conditions see it, and so does its own count.
+   */
+  chosenFaction: Faction | null
   /** Once-per-turn bookkeeping, cleared at the start of the controller's turn. */
   used: {
     primary: boolean
@@ -143,6 +148,10 @@ export type ChoiceCont =
   | { c: 'DESTROY_OR_LOSE'; n: number }
   /** Stealth: how many phantom cards of the chosen faction to add. */
   | { c: 'PHANTOM'; n: number }
+  /** The Colossus: which in-play card the chosen faction is being pinned to. */
+  | { c: 'OWN_FACTION'; iid: CardIid }
+  /** Midgate Station: the resource is worth the discards plus this. */
+  | { c: 'DISCARD_PLUS'; plus: number }
   /** Needle Lancer: the ally abilities on offer, parallel to the branch options. */
   | { c: 'COPY_ALLY'; used: readonly { def: CardDefId; slot: string }[] }
 
@@ -171,6 +180,13 @@ export interface GameState {
   explorerPile: number
   /** Removed from the game. Public. */
   scrapHeap: CardInstance[]
+  /**
+   * Patience Rewarded: cards set aside from the trade row, which stay buyable
+   * for the rest of the game "as if they were in the trade row". Public, and a
+   * separate list rather than extra row slots -- the row has a fixed size and
+   * refills, and these do neither.
+   */
+  setAside: CardInstance[]
   /** LIFO. Index 0 is the next thing to do. */
   resolution: ResolutionFrame[]
   /** SERVER ONLY. Must never appear in any PlayerView, event, log or error. */

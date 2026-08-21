@@ -262,6 +262,27 @@ export function Board({
             />
             <span className="eyebrow">{UI.explorersLeft(v.explorerPile)}</span>
           </div>
+          {/* Patience Rewarded's set-aside cards buy exactly like row cards, so
+            * they sit beside the row rather than in a panel of their own -- a
+            * buyable card the player cannot see is worse than no card. */}
+          {v.setAside.length > 0 && (
+            <div className="zone">
+              {v.setAside.map((c) => (
+                <Card
+                  key={c.iid}
+                  def={c.def}
+                  playable={idx.buy.has(c.iid)}
+                  dimmed={!idx.buy.has(c.iid) && myTurn}
+                  onClick={idx.buy.has(c.iid)
+                    ? () => onAction({ t: 'BUY_CARD', card: c.iid as CardIid })
+                    : undefined}
+                  cost={costFor(cardDef(c.def), v.me.inPlay)}
+                  title={UI.setAsideTitle(nameOf(c.def))}
+                />
+              ))}
+              <span className="eyebrow">{UI.setAside}</span>
+            </div>
+          )}
         </div>
       </section>
 

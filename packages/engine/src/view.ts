@@ -102,6 +102,8 @@ export interface PlayerView {
   readonly tradeDeckCount: number
   readonly explorerPile: number
   readonly scrapHeap: readonly CardInstance[]
+  /** Patience Rewarded's set-aside cards: buyable, and public like the row. */
+  readonly setAside: readonly CardInstance[]
   readonly pendingChoice: PendingChoiceView | null
   readonly winner: PlayerId | null
   /** Campaign rules in force, or null. Public -- both sides play under them. */
@@ -193,6 +195,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     tradeDeckCount: s.tradeDeck.length,
     explorerPile: s.explorerPile,
     scrapHeap: s.scrapHeap.map((c) => ({ iid: c.iid, def: c.def })),
+    setAside: s.setAside.map((c) => ({ iid: c.iid, def: c.def })),
     pendingChoice: choice ? redactChoice(choice, viewer) : null,
     winner: s.winner,
     scenario: s.scenario,

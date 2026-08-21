@@ -279,8 +279,8 @@ describe('boss attack targeting', () => {
         p1: {
           ...s0.players.p1,
           inPlay: [
-            { iid: 'aaa' as never, def: asDefId('trading-post'), copiedDef: null, used: { primary: false, ally: false, scrap: false }, playedThisTurn: false },
-            { iid: 'bbb' as never, def: asDefId('the-hive'), copiedDef: null, used: { primary: false, ally: false, scrap: false }, playedThisTurn: false },
+            { iid: 'aaa' as never, def: asDefId('trading-post'), copiedDef: null, chosenFaction: null, used: { primary: false, ally: false, scrap: false }, playedThisTurn: false },
+            { iid: 'bbb' as never, def: asDefId('the-hive'), copiedDef: null, chosenFaction: null, used: { primary: false, ally: false, scrap: false }, playedThisTurn: false },
           ],
         },
         p2: { ...s0.players.p2, combat: 0 },
@@ -383,7 +383,7 @@ describe('printed faction tables', () => {
 
   it('Dimensional Horror: blue destroys ALL of your bases', () => {
     const base = {
-      iid: 'mybase' as never, def: asDefId('the-hive'), copiedDef: null,
+      iid: 'mybase' as never, def: asDefId('the-hive'), copiedDef: null, chosenFaction: null,
       used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
       doubleAlly: false, scrap: false,

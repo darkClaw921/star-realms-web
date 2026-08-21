@@ -116,7 +116,7 @@ export function createGame(setup: MatchSetup): GameState {
       let c: CardInstance
       ;[c, rng] = mint(rng, def)
       players[pid].inPlay.push({
-        iid: c.iid, def: c.def, copiedDef: null,
+        iid: c.iid, def: c.def, copiedDef: null, chosenFaction: null,
         used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
       doubleAlly: false, scrap: false,
@@ -156,6 +156,7 @@ export function createGame(setup: MatchSetup): GameState {
     tradeDeck,
     explorerPile: EXPLORER_PILE_SIZE,
     scrapHeap: [],
+    setAside: [],
     resolution: [],
     rng,
     winner: null,

@@ -11,6 +11,7 @@ import {
   HIGH_ALERT_FIRST_STRIKE, HIGH_ALERT_HEROES, HIGH_ALERT_INVASION,
   HIGH_ALERT_REQUISITION, HIGH_ALERT_TECH,
 } from './highAlert'
+import { FRONTIERS_PROMOS } from './frontiersPromos'
 import { PROMO_PACK_1, STELLAR_ALLIES, YEAR_TWO_PROMOS } from './promos'
 import { FRONTIERS } from './frontiers'
 
@@ -397,6 +398,7 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(STELLAR_ALLIES, 'stellar-allies'),
   ...buildDefs(PROMO_PACK_1, 'promo-1'),
   ...buildDefs(YEAR_TWO_PROMOS, 'promo-year-2'),
+  ...buildDefs(FRONTIERS_PROMOS, 'frontiers-promos'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -441,5 +443,5 @@ export const ALL_SETS: readonly SetId[] = [
   'united-assault', 'united-command', 'united-heroes',
   'high-alert-first-strike', 'high-alert-tech', 'high-alert-requisition',
   'high-alert-invasion', 'high-alert-heroes',
-  'stellar-allies', 'promo-1', 'promo-year-2',
+  'stellar-allies', 'promo-1', 'promo-year-2', 'frontiers-promos',
 ]

@@ -15,7 +15,7 @@ export function inst(def: string): CardInstance { return { iid: iid(), def: asDe
 
 export function inPlay(def: string, opts: Partial<InPlayCard> = {}): InPlayCard {
   return {
-    iid: iid(), def: asDefId(def), copiedDef: null,
+    iid: iid(), def: asDefId(def), copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
       doubleAlly: false, scrap: false,
