@@ -126,7 +126,6 @@ export function ChoiceSheet({
                   <Card
                     key={o.iid}
                     def={o.def}
-                    asShip
                     selected={picked.some((x) => same(x, o))}
                     playable
                     onClick={() => toggle(o)}

@@ -89,7 +89,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
               <span className="setting__name">{UI.preview}</span>
             </div>
             <div className="settings__preview">
-              {PREVIEW.map((def) => <Card key={def} def={def} asShip />)}
+              {PREVIEW.map((def) => <Card key={def} def={def} />)}
             </div>
           </div>
         </div>

@@ -103,7 +103,7 @@ export function Board({
         </OpponentHud>
         <div className="row row--scroll" style={{ marginTop: 8 }}>
           {v.opponent.inPlay.length === 0 && (
-            <span className="eyebrow" style={{ padding: '18px 2px' }}>{UI.nothingInPlay}</span>
+            <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
           )}
           {v.opponent.inPlay.map((c) => (
             <div key={c.iid} className="zone">
@@ -141,7 +141,6 @@ export function Board({
               <Card
                 key={c.iid}
                 def={c.def}
-                asShip
                 playable={idx.buy.has(c.iid)}
                 dimmed={!idx.buy.has(c.iid) && myTurn}
                 onClick={idx.buy.has(c.iid)
@@ -158,7 +157,6 @@ export function Board({
           <div className="zone">
             <Card
               def={EXPLORER}
-              asShip
               playable={idx.buyExplorer}
               dimmed={!idx.buyExplorer && myTurn}
               onClick={idx.buyExplorer ? () => onAction({ t: 'BUY_EXPLORER' }) : undefined}
@@ -175,7 +173,7 @@ export function Board({
           <span className="eyebrow">{UI.inPlay}</span>
           <div className="row row--scroll">
             {v.me.inPlay.length === 0 && (
-              <span className="eyebrow" style={{ padding: '18px 2px' }}>{UI.nothingInPlay}</span>
+              <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
             )}
             {v.me.inPlay.map((c) => {
               const slots = idx.activate.get(c.iid)
@@ -252,13 +250,12 @@ export function Board({
 
         <div className="row row--scroll" style={{ marginTop: 8 }}>
           {v.me.hand.length === 0 && (
-            <span className="eyebrow" style={{ padding: '18px 2px' }}>{UI.handEmpty}</span>
+            <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.handEmpty}</span>
           )}
           {v.me.hand.map((c) => (
             <Card
               key={c.iid}
               def={c.def}
-              asShip
               playable={idx.play.has(c.iid)}
               dimmed={!idx.play.has(c.iid)}
               onClick={idx.play.has(c.iid)

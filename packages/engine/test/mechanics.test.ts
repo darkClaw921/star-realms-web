@@ -156,7 +156,7 @@ describe('5-6. ally abilities: retroactive, order-independent, and sticky', () =
 
   it('resets ally unlocks at end of turn', () => {
     const s = scenario({ me: { hand: ['blob-fighter', 'ram'], deck: ['scout', 'scout', 'scout', 'scout', 'scout'] } })
-    let st = run(s,
+    const st = run(s,
       { t: 'PLAY_CARD', card: handIid(s, 'p1', 'blob-fighter') },
       { t: 'PLAY_CARD', card: handIid(s, 'p1', 'ram') },
       { t: 'END_TURN' },

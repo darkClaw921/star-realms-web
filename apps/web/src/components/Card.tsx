@@ -5,7 +5,7 @@ import { cardDef, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 import { cardRu, FACTION_RU } from '@/i18n/cards.ru'
 import { CardText, speak } from './cardText'
-import { FACTION_VAR, Icon, type IconName } from './Icons'
+import { FACTION_VAR, FactionMark, Icon, type IconName } from './Icons'
 
 /**
  * Condense an effect tree into icon chips, for card sizes where prose is
@@ -66,20 +66,10 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
   const chips = [...chipsFor(c.primary).entries()].filter(([, n]) => n !== 0)
 
   return (
-    <span className="card__body">
-      <span className="card__top">
-        {c.role !== 'starter' && <span className="card__cost">{c.cost}</span>}
-        <span className="card__name">{name}</span>
-        {c.defense !== null && (
-          <span className={`card__defense ${c.type === 'outpost' ? 'is-outpost' : 'is-base'}`}>
-            {c.defense}
-          </span>
-        )}
-      </span>
-
+    <>
+      {/* Art first, and full bleed: everything else floats above it. */}
       <span className="card__window">
         {art && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             className={`card__art${loaded ? ' is-loaded' : ''}`}
             src={art}
@@ -92,37 +82,55 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
         )}
+        {/* The veil is what makes text on full-bleed art safe. It is a sibling
+          * of the image rather than a shadow on the text, so it also darkens the
+          * procedural ground and both cases end up identical. */}
+        {/* Under the veil, so it can never sit on top of the ability text. */}
+        <FactionMark faction={c.faction} className="card__faction" />
+        <span className="card__veil" />
       </span>
 
-      {!quiet && (
-        <span className="card__text">
-          <span className="card__chips">
-            {chips.map(([icon, n]) => (
-              <span key={icon} className={`chip glyph--${icon}`}>
-                <Icon name={icon} /> {n}
-              </span>
-            ))}
-          </span>
-          <span className="card__prose">
-            {text.primary && <CardText src={text.primary} />}
-            {text.ally && (
-              <>
-                <span className="card__rule" />
-                <span className="card__slot-label">Союз</span>{' '}
-                <CardText src={text.ally} />
-              </>
-            )}
-            {text.scrap && (
-              <>
-                <span className="card__rule" />
-                <span className="card__slot-label is-scrap">Утиль</span>{' '}
-                <CardText src={text.scrap} />
-              </>
-            )}
-          </span>
+      <span className="card__body">
+        <span className="card__top">
+          {c.role !== 'starter' && <span className="card__cost">{c.cost}</span>}
+          <span className="card__name">{name}</span>
+          {c.defense !== null && (
+            <span className={`card__defense ${c.type === 'outpost' ? 'is-outpost' : 'is-base'}`}>
+              {c.defense}
+            </span>
+          )}
         </span>
-      )}
-    </span>
+
+        {!quiet && (
+          <span className="card__text">
+            <span className="card__chips">
+              {chips.map(([icon, n]) => (
+                <span key={icon} className={`chip glyph--${icon}`}>
+                  <Icon name={icon} /> {n}
+                </span>
+              ))}
+            </span>
+            <span className="card__prose">
+              {text.primary && <CardText src={text.primary} />}
+              {text.ally && (
+                <>
+                  <span className="card__rule" />
+                  <span className="card__slot-label">Союз</span>{' '}
+                  <CardText src={text.ally} />
+                </>
+              )}
+              {text.scrap && (
+                <>
+                  <span className="card__rule" />
+                  <span className="card__slot-label is-scrap">Утиль</span>{' '}
+                  <CardText src={text.scrap} />
+                </>
+              )}
+            </span>
+          </span>
+        )}
+      </span>
+    </>
   )
 })
 
@@ -133,17 +141,17 @@ export interface CardProps {
   playable?: boolean | undefined
   selected?: boolean | undefined
   dimmed?: boolean | undefined
-  /** Overrides the printed orientation, e.g. to show a base upright in hand. */
-  asShip?: boolean | undefined
   title?: string | undefined
   quiet?: boolean | undefined
 }
 
 export function Card({
-  def, onClick, playable, selected, dimmed, asShip, title, quiet,
+  def, onClick, playable, selected, dimmed, title, quiet,
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
-  const isBase = !asShip && c.type !== 'ship'
+  // Orientation follows the printed card everywhere: a base lies landscape in
+  // the trade row and in hand exactly as it does on the table.
+  const isBase = c.type !== 'ship'
   const cls = [
     'card',
     isBase ? 'is-base' : '',

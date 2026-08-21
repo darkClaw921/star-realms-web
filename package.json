@@ -18,7 +18,7 @@
     "lint": "eslint .",
     "depcruise": "depcruise packages/engine/src --config .dependency-cruiser.cjs",
     "fetch-cards": "npm run fetch-cards -w @sr/web",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc -b --pretty packages/engine packages/protocol apps/web",
     "verify": "npm run verify -w @sr/web",
     "report": "npm run report -w @sr/web"
   },
