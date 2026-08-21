@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createGame } from '../src/setup'
-import { SECONDHAND, VARIANTS, type VariantId } from '../src/variants'
+import { VARIANTS, type VariantId } from '../src/variants'
 import { CARDS, cardDef, EXPLORER, SCOUT, VIPER } from '../src/cards/registry'
 import { costFor } from '../src/helpers'
 import { asDefId } from '../src/ids'
@@ -13,15 +13,10 @@ const game = (variant: VariantId) => createGame({
 })
 
 describe('Arena scenarios', () => {
-  it('carries thirteen of the twenty, and no invented ones', () => {
-    // The other six have no rule text at any source we can reach -- the
-    // publisher's whole archive, its pages, the community wiki and BGG were
-    // searched -- so they are deliberately absent rather than guessed at.
-    expect(VARIANTS).toHaveLength(13)
-    // Three of the thirteen come from a secondary write-up rather than from the
-    // publisher's own article, and say so.
-    expect(SECONDHAND.every((v) => VARIANTS.includes(v))).toBe(true)
-    expect(SECONDHAND).toHaveLength(3)
+  it('carries all twenty', () => {
+    expect(VARIANTS).toHaveLength(20)
+    // No duplicates, which a hand-maintained list of twenty invites.
+    expect(new Set(VARIANTS).size).toBe(20)
   })
 
   it('is absent by default, so an ordinary game is unchanged', () => {
@@ -169,6 +164,67 @@ describe('scenarios that are simply true', () => {
     // The second goes to the discard pile like any other purchase.
     st = run(st, { t: 'BUY_CARD', card: rowIid(st, 'cutter') }).state
     expect(st.players.p1.discard.map((c) => c.def)).toEqual([D('cutter')])
+  })
+
+  it('Border Skirmish and Prolonged Conflict move the starting authority', () => {
+    expect(game('border-skirmish').players.p1.authority).toBe(30)
+    expect(game('prolonged-conflict').players.p1.authority).toBe(80)
+  })
+
+  it('Warpgate Nexus plays with two more cards in the row', () => {
+    const s = game('warpgate-nexus')
+    expect(s.tradeRow).toHaveLength(7)
+    expect(s.tradeRow.filter(Boolean)).toHaveLength(7)
+  })
+
+  it('Early Recruitment deals one card of each faction, two per player', () => {
+    const s = game('early-recruitment')
+    const own = (pid: 'p1' | 'p2') =>
+      [...s.players[pid].deck, ...s.players[pid].hand]
+        .map((c) => cardDef(c.def))
+        .filter((d) => d.role === 'trade_deck')
+    expect(own('p1')).toHaveLength(2)
+    expect(own('p2')).toHaveLength(2)
+    // Cost 1 for Early Recruitment, and all four factions between them.
+    const all = [...own('p1'), ...own('p2')]
+    expect(all.every((d) => d.cost === 1)).toBe(true)
+    expect(new Set(all.map((d) => d.faction)).size).toBe(4)
+    // Picking Sides is the same deal at cost two.
+    const two = game('picking-sides')
+    const theirs = [...two.players.p1.deck, ...two.players.p1.hand]
+      .map((c) => cardDef(c.def)).filter((d) => d.role === 'trade_deck')
+    expect(theirs.every((d) => d.cost === 2)).toBe(true)
+  })
+
+  it('Fleeting Opportunities eats the far card at every turn start', () => {
+    const board = scenario({
+      me: { hand: [] },
+      // Deliberately not an Explorer in the far slot: an Explorer that would be
+      // scrapped goes back to the Explorer pile instead, which would make this
+      // test pass or fail for the wrong reason.
+      tradeRow: ['cutter', 'scout', 'viper', 'explorer', 'ram'],
+    })
+    board.variant = { id: 'fleeting-opportunities' }
+    const far = board.tradeRow[4]!
+    const st = run(board, { t: 'END_TURN' }).state
+    expect(st.scrapHeap.some((c) => c.iid === far.iid)).toBe(true)
+    // The row slides down and refills, so it is never short.
+    expect(st.tradeRow.filter(Boolean)).toHaveLength(5)
+  })
+
+  it('Ready Reserves keeps the hand and charges a draw for each card kept', () => {
+    const board = scenario({
+      me: {
+        hand: ['scout', 'viper'],
+        deck: ['ram', 'ram', 'ram', 'ram', 'ram', 'ram'],
+      },
+    })
+    board.variant = { id: 'ready-reserves' }
+    const st = run(board, { t: 'END_TURN' }).state
+    // Nothing discarded, and the hand ends at five: the two kept plus three drawn.
+    expect(st.players.p1.discard).toHaveLength(0)
+    expect(st.players.p1.hand).toHaveLength(5)
+    expect(st.players.p1.hand.filter((c) => c.def === D('ram'))).toHaveLength(3)
   })
 
   it('leaves a card in play alone when no scenario is in force', () => {

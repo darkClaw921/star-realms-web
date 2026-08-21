@@ -1998,11 +1998,15 @@ function endTurn(d: D, ev: GameEvent[]): void {
     // have a base of its faction standing. Handled here rather than as a trigger
     // because it fires during the discard phase, when no ability can be used.
     const docked: typeof p.hand = []
+    // Ready Reserves: nothing in hand is discarded, and every card kept is one
+    // fewer drawn -- so the hand is topped back up to its size rather than
+    // refilled, and holding a card costs a draw exactly as the card says.
+    const keepAll = d.variant?.id === 'ready-reserves'
     for (const c of p.hand) {
       const dock = cardDef(c.def).docking
-      if (dock && p.inPlay.some((b) => isBase(b) && factionsOf(b).includes(dock))) {
+      if (keepAll || (dock && p.inPlay.some((b) => isBase(b) && factionsOf(b).includes(dock)))) {
         docked.push(c)
-        ev.push({ e: 'DOCKED', player: me, iid: c.iid, def: c.def })
+        if (!keepAll) ev.push({ e: 'DOCKED', player: me, iid: c.iid, def: c.def })
         continue
       }
       p.discard.push(c)
@@ -2053,9 +2057,21 @@ function endTurn(d: D, ev: GameEvent[]): void {
   // opponent's attack, which is exactly the turn the printed wording excludes.
   for (const c of p.inPlay) c.copiedDef = null
 
+  // Fleeting Opportunities: at the start of each player's turn the far card is
+  // scrapped and the row slides down. Done at the turn boundary, which is where
+  // the row is otherwise untouched, so it reads in one place.
+  if (d.variant?.id === 'fleeting-opportunities') {
+    const gone = takeFarthest(d)
+    if (gone) toScrapHeap(d, gone, 'tradeRow', null, ev)
+    refillTradeRow(d, ev)
+  }
+
   // A deck boss draws what its challenge card says, not the standard five.
   const bossHand = d.boss && d.boss.kind === 'deck' && me === bossSeat(d) ? d.boss.handSize : 0
-  if (!scriptBoss) drawCards(d, me, bossHand > 0 ? bossHand : p.handSize, ev)
+  // Cards kept in hand count against the draw, so the hand ends the turn at its
+  // size however many were held.
+  const target = bossHand > 0 ? bossHand : p.handSize
+  if (!scriptBoss) drawCards(d, me, Math.max(0, target - p.hand.length), ev)
 
   d.activePlayer = opponentOf(me)
   d.turn += 1

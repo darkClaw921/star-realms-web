@@ -51,6 +51,20 @@ export const VARIANT_CARDS: Record<string, Spec> = {
 
 /** Scenarios whose rule is simply true, and so have no ability to activate. */
 export const VARIANT_NOTES: Record<string, string> = {
+  'border-skirmish': 'At the start of the game, each player loses {authority:20}',
+  'prolonged-conflict': 'At the start of the game, each player gains {authority:30}',
+  'warpgate-nexus': 'Play with two additional cards in the trade row.',
+  'fleeting-opportunities': "At the start of each player's turn, scrap the card " +
+    'furthest from the trade deck, slide all the cards in the trade row over one ' +
+    'space, then add the top card of the trade deck to the trade row.',
+  'ready-reserves': "Cards in a player's hand are not discarded at end of turn. For " +
+    'each card a player keeps, they draw one fewer card at the end of their turn.',
+  'early-recruitment': 'Before the game begins, the player going first chooses one of ' +
+    'the four factions and takes a card of that faction costing {trade:1} from the ' +
+    'trade deck into their personal deck. The player going second repeats this for two ' +
+    'of the remaining factions, then the first player takes the last. (Two players only.)',
+  'picking-sides': 'The same as Early Recruitment, with cards costing {trade:2} ' +
+    '(Two players only.)',
   'buyers-market': "At the end of each player's turn, place a counter on the most " +
     'expensive card or cards in the trade row. Cards cost {trade:1} less for each ' +
     'counter on them.',

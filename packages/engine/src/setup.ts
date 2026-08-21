@@ -7,7 +7,10 @@ import type { ScenarioSetup } from './scenario'
 import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
 import type { Faction } from './ids'
 import { nextHex, nextInt, seedRng, shuffle, type RngState } from './rng'
-import { VARIANT_CARD, type VariantId, type VariantState } from './variants'
+import {
+  VARIANT_AUTHORITY, VARIANT_CARD, VARIANT_RECRUIT_COST,
+  type VariantId, type VariantState,
+} from './variants'
 import {
   ENGINE_VERSION, EXPLORER_PILE_SIZE, FIRST_TURN_HAND_SIZE, HAND_SIZE,
   STARTING_AUTHORITY, TRADE_ROW_SIZE,
@@ -165,8 +168,14 @@ export function createGame(setup: MatchSetup): GameState {
 
   const startingAuthority = (pid: PlayerId): number => {
     const c = cmd[pid]
-    if (c) return cardDef(asDefId(c.commander)).commander?.authority ?? STARTING_AUTHORITY
-    return sc?.authority[pid] ?? STARTING_AUTHORITY
+    const base = c
+      ? cardDef(asDefId(c.commander)).commander?.authority ?? STARTING_AUTHORITY
+      : sc?.authority[pid] ?? STARTING_AUTHORITY
+    // Border Skirmish and Prolonged Conflict move the starting authority, and
+    // they move it relative to whatever it already was -- so a Command Deck's
+    // own number is shifted rather than replaced.
+    const shift = setup.variant ? VARIANT_AUTHORITY[setup.variant] ?? 0 : 0
+    return Math.max(1, base + shift)
   }
   const players: Record<PlayerId, PlayerState> = {
     p1: newPlayer(decks.p1, startingAuthority('p1')),
@@ -255,6 +264,7 @@ export function createGame(setup: MatchSetup): GameState {
   // Loyalties assigns a faction per player at setup, and that assignment is
   // public from the first turn.
   let variant: VariantState | null = null
+  let extraRowSlots = 0
   if (setup.variant) {
     if (setup.variant === 'entrenched-loyalties') {
       const pool = FACTIONS.filter((f) => f !== 'unaligned')
@@ -268,6 +278,39 @@ export function createGame(setup: MatchSetup): GameState {
     } else {
       variant = { id: setup.variant }
     }
+    // Warpgate Nexus: "play with two additional cards in the trade row".
+    if (setup.variant === 'warpgate-nexus') extraRowSlots = 2
+
+    // Early Recruitment and Picking Sides hand each player two cost-1 (or
+    // cost-2) cards from the trade deck, one per faction. The printed card has
+    // the players CHOOSE which faction each pick is; setup here is not
+    // interactive, so the four factions are dealt out in a random order and the
+    // picks follow the printed seat order -- first, second, second, first.
+    const recruitCost = setup.variant ? VARIANT_RECRUIT_COST[setup.variant] : undefined
+    if (recruitCost !== undefined) {
+      let order = FACTIONS.filter((f) => f !== 'unaligned')
+      ;[order, rng] = shuffle(rng, order)
+      const seats: PlayerId[] = [
+        setup.firstPlayer, opponentOf(setup.firstPlayer),
+        opponentOf(setup.firstPlayer), setup.firstPlayer,
+      ]
+      order.forEach((faction, i) => {
+        const seat = seats[i]
+        if (!seat) return
+        const at = tradeDeck.findIndex(
+          (c) => cardDef(c.def).faction === faction && cardDef(c.def).cost === recruitCost,
+        )
+        if (at < 0) return
+        const [card] = tradeDeck.splice(at, 1)
+        if (card) players[seat].deck.push(card)
+      })
+      for (const pid of PLAYERS) {
+        let d2: CardInstance[]
+        ;[d2, rng] = shuffle(rng, players[pid].deck as CardInstance[])
+        players[pid].deck = d2
+      }
+    }
+
     // A scenario with an activated ability gets a card in front of each player,
     // face up from the start.
     const face = VARIANT_CARD[setup.variant]
@@ -288,7 +331,9 @@ export function createGame(setup: MatchSetup): GameState {
   }
 
   const tradeRow: (CardInstance | null)[] = []
-  for (let i = 0; i < TRADE_ROW_SIZE; i++) tradeRow.push(tradeDeck.shift() ?? null)
+  for (let i = 0; i < TRADE_ROW_SIZE + extraRowSlots; i++) {
+    tradeRow.push(tradeDeck.shift() ?? null)
+  }
 
   const second = setup.firstPlayer === 'p1' ? 'p2' : 'p1'
   // The first player's short opening hand is two fewer than their normal one,
@@ -325,7 +370,7 @@ export function createGame(setup: MatchSetup): GameState {
     scrapHeap: [],
     setAside: [],
     unclaimedGambits,
-    extraRowSlots: 0,
+    extraRowSlots,
     blackMarketOwner: null,
     blackMarketUsedThisTurn: false,
     resolution: [],

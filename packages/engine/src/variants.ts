@@ -6,24 +6,19 @@ import type { CardDefId, Faction, PlayerId } from './ids'
  * A Scenario changes one rule for the whole game: "shuffle the Scenario cards,
  * flip one over, and that's the rule affecting both players for this game."
  *
- * SOURCES, and this one needs stating plainly. The publisher's Card Gallery
- * spreadsheet carries NO text for the twenty Scenario cards, and there are no
- * card scans of them -- only cropped artwork. Two things fill part of the gap:
+ * SOURCE. All twenty are here, and every one is transcribed from the
+ * publisher's own scan of the card.
  *
- *   - the publisher's own Arena Tips articles, which quote each week's scenario
- *     rule verbatim. Ten scenarios come from there, word for word.
- *   - three more -- Buyer's Market, Flare Mining and Rapid Construction -- whose
- *     rule is quoted in secondary write-ups of the same Arena weeks. They are
- *     marked `secondhand` so the distinction is not lost.
+ * Finding them took two false starts worth recording, because both are easy to
+ * repeat. The Card Gallery spreadsheet carries no text for these cards at all,
+ * so the obvious source is empty. And a search of the media library for
+ * "Scenario" or for the set's own `SRSCN_` prefix returns only cropped artwork
+ * -- the card faces are filed under plain hyphenated names ("Border-Skirmish")
+ * in the December 2017 upload, matching neither pattern. The pack's rules card
+ * is the thread that leads there: it is filed the same way.
  *
- * The remaining six -- Border Skirmish, Early Recruitment, Fleeting
- * Opportunities, Picking Sides, Prolonged Conflict and Ready Reserves -- are
- * DELIBERATELY ABSENT. Their names appear in the Card Gallery and in Arena
- * schedules; their rules appear nowhere reachable. The publisher's whole
- * 337-post archive, its static pages, the community wiki and BoardGameGeek were
- * searched for them. Inventing six setup rules and calling them Star Realms
- * would be a fabrication, not an implementation, so they go in when a source
- * for them does.
+ * Two of the twenty, Early Recruitment and Picking Sides, are printed
+ * two-player only. This engine is two-player, so they are always legal here.
  */
 export type VariantId =
   | 'total-war'
@@ -39,22 +34,40 @@ export type VariantId =
   | 'flare-mining'
   | 'buyers-market'
   | 'rapid-construction'
+  | 'border-skirmish'
+  | 'prolonged-conflict'
+  | 'warpgate-nexus'
+  | 'fleeting-opportunities'
+  | 'ready-reserves'
+  | 'early-recruitment'
+  | 'picking-sides'
 
 export const VARIANTS: readonly VariantId[] = [
   'total-war', 'maximum-warp', 'emergency-repairs', 'ruthless-efficiency',
   'rushed-defenses', 'recruiting-drive', 'entrenched-loyalties',
   'commitment-to-the-cause', 'frontier-expedition', 'frantic-preparations',
   'flare-mining', 'buyers-market', 'rapid-construction',
+  'border-skirmish', 'prolonged-conflict', 'warpgate-nexus',
+  'fleeting-opportunities', 'ready-reserves', 'early-recruitment', 'picking-sides',
 ]
 
 /**
- * Scenarios whose wording comes from a secondary write-up rather than from the
- * publisher's own article. The rule is specific and consistent across sources,
- * but the provenance is weaker, and the UI says so.
+ * Authority each player starts with, relative to the standard fifty.
+ * Border Skirmish takes twenty away; Prolonged Conflict hands thirty over.
  */
-export const SECONDHAND: readonly VariantId[] = [
-  'flare-mining', 'buyers-market', 'rapid-construction',
-]
+export const VARIANT_AUTHORITY: Partial<Record<VariantId, number>> = {
+  'border-skirmish': -20,
+  'prolonged-conflict': 30,
+}
+
+/**
+ * Early Recruitment and Picking Sides both hand out one card of each faction,
+ * differing only in what those cards cost.
+ */
+export const VARIANT_RECRUIT_COST: Partial<Record<VariantId, number>> = {
+  'early-recruitment': 1,
+  'picking-sides': 2,
+}
 
 /**
  * The scenario in force, plus whatever it rolled at setup.
