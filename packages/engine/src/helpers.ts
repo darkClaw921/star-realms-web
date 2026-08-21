@@ -37,8 +37,22 @@ export function allyCountFor(p: Pick<PlayerState, 'inPlay'>, f: Faction): number
   return n
 }
 
+/**
+ * Whitelist, not "anything that is not a ship".
+ *
+ * Crisis' Heroes sit in the play area beside your bases without being bases:
+ * they cannot be attacked or destroyed, and they must not count for Embassy
+ * Yacht or Central Station. Written as a negation, every one of those would
+ * silently include them.
+ */
 export function isBase(c: Pick<InPlayCard, 'def'>): boolean {
-  return cardDef(c.def).type !== 'ship'
+  const t = cardDef(c.def).type
+  return t === 'base' || t === 'outpost'
+}
+
+/** Crisis' Heroes: in play, but not a base and not a ship. */
+export function isHero(c: Pick<InPlayCard, 'def'>): boolean {
+  return cardDef(c.def).type === 'hero'
 }
 
 export function isOutpost(c: Pick<InPlayCard, 'def'>): boolean {

@@ -8,7 +8,7 @@ import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
   allyCountFor, canAttackFace, effectiveDefId, factionsOf, findInPlay, isBase,
-  isOutpost, legalAttackTargets, legalDestroyTargets,
+  isHero, isOutpost, legalAttackTargets, legalDestroyTargets,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { FACTIONS, opponentOf, PLAYERS } from './ids'
@@ -146,10 +146,31 @@ function drawCards(d: D, pid: PlayerId, n: number, ev: GameEvent[]): CardDefId[]
   return drawn
 }
 
+/**
+ * Fill every empty trade row slot, resolving any event that turns up.
+ *
+ * An event "has its effect as soon as the card enters the Trade Row" and is then
+ * replaced immediately, so it never occupies a slot. Because an event can ask a
+ * question, this cannot simply loop: it stops at the event, pushes the event and
+ * a fresh REFILL_TRADE_ROW onto the resolution stack, and lets settle() come
+ * back to the remaining slots once the event has fully resolved.
+ */
 function refillTradeRow(d: D, ev: GameEvent[]): void {
   for (let i = 0; i < TRADE_ROW_SIZE; i++) {
     if (d.tradeRow[i]) continue
     const c = d.tradeDeck.shift() ?? null
+    if (c && cardDef(c.def).type === 'event') {
+      // Out of the game the moment it resolves; the slot stays empty and the
+      // queued refill fills it from the next card down.
+      d.scrapHeap.push(c)
+      ev.push({ e: 'EVENT', def: c.def })
+      pushEffects(
+        d,
+        [...cardDef(c.def).primary, { k: 'REFILL_TRADE_ROW' }],
+        { controller: d.activePlayer, source: null, slot: 'primary' },
+      )
+      return
+    }
     d.tradeRow[i] = c
     ev.push({ e: 'TRADE_ROW_REFILL', def: c?.def ?? null, slot: i })
   }
@@ -207,6 +228,9 @@ function acquire(
   dest: AcquireDest, ev: GameEvent[],
 ): void {
   const p = d.players[pid]
+  // A Hero "goes directly into play instead of into your discard pile" -- not a
+  // redirect the player may decline, but where Heroes simply go.
+  if (cardDef(inst.def).type === 'hero') dest = 'in_play'
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
@@ -612,6 +636,107 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
+    case 'REFILL_TRADE_ROW': { refillTradeRow(d, ev); return }
+
+    case 'GAIN_ALLY': {
+      if (!p.allyUnlocked.includes(effect.faction)) {
+        p.allyUnlocked.push(effect.faction)
+        ev.push({ e: 'ALLY_UNLOCKED', player: me, faction: effect.faction })
+      }
+      return
+    }
+
+    case 'EACH_PLAYER': {
+      // Active player first, and pushed in that order so the stack resolves it
+      // first: an event that asks both players a question must ask in turn
+      // order, not in whatever order the seats happen to be listed.
+      const order = [d.activePlayer, opponentOf(d.activePlayer)]
+      for (const pid of [...order].reverse()) {
+        pushEffects(d, effect.then, { controller: pid, source: ctx.source, slot: ctx.slot })
+      }
+      return
+    }
+
+    case 'LOSE_AUTHORITY': {
+      // A loss is not a negative gain: authority floors at zero, and dropping to
+      // zero is a loss condition checked by settle().
+      const n = Math.min(effect.n, p.authority)
+      p.authority -= n
+      ev.push({ e: 'GAIN', player: me, what: 'authority', n: -n })
+      return
+    }
+
+    case 'DISCARD_OR_LOSE': {
+      const opts = cardOpts(p.hand as CardInstance[], 'hand', me)
+      if (opts.length === 0) {
+        // Nothing to discard is not an escape: the penalty is for every card
+        // BELOW the maximum, and an empty hand is as far below as it gets.
+        pushEffects(d, [{ k: 'LOSE_AUTHORITY', n: effect.max * effect.per }], ctx)
+        return
+      }
+      pushChoice(d, makeChoice(d, me, 'DISCARD_OR_LOSE',
+        `Discard up to ${effect.max} cards, or lose authority for each you do not`,
+        0, Math.min(effect.max, opts.length), opts, ctx.source),
+        { c: 'DISCARD_OR_LOSE', max: effect.max, per: effect.per })
+      return
+    }
+
+    case 'DESTROY_OWN_BASE_OR_LOSE': {
+      const mine = p.inPlay.filter(isBase)
+      if (mine.length === 0) { pushEffects(d, [{ k: 'LOSE_AUTHORITY', n: effect.n }], ctx); return }
+      // Both halves are offered as branches, because "either ... or" is a real
+      // choice even when losing authority is usually the worse one.
+      const opts: ChoiceOption[] = mine.map((c) => ({
+        o: 'CARD', iid: c.iid, def: c.def, zone: 'inPlay', owner: me,
+      }))
+      pushChoice(d, makeChoice(d, me, 'DESTROY_OWN_BASE_OR_LOSE',
+        `Destroy one of your bases, or lose ${effect.n} authority`,
+        0, 1, opts, ctx.source),
+        { c: 'DESTROY_OR_LOSE', n: effect.n })
+      return
+    }
+
+    case 'SCRAP_WHOLE_TRADE_ROW': {
+      for (let i = 0; i < d.tradeRow.length; i++) {
+        const c = d.tradeRow[i]
+        if (!c) continue
+        d.tradeRow[i] = null
+        toScrapHeap(d, c, 'tradeRow', null, ev)
+      }
+      // Through the stack, not inline: the replacements may themselves be events.
+      pushEffects(d, [{ k: 'REFILL_TRADE_ROW' }], ctx)
+      return
+    }
+
+    case 'OPPONENT_DRAW': {
+      drawCards(d, opponentOf(me), effect.n, ev)
+      return
+    }
+
+    case 'DRAW_THEN_TOPDECK': {
+      // "Those cards": only what this draw produced is eligible, so the hand is
+      // snapshotted first and the choice is built from the difference.
+      const before = new Set(p.hand.map((c) => c.iid))
+      drawCards(d, me, effect.draw, ev)
+      const drawn = (p.hand as CardInstance[]).filter((c) => !before.has(c.iid))
+      const n = Math.min(effect.back, drawn.length)
+      if (n === 0) { ev.push({ e: 'FIZZLE', label: 'nothing drawn' }); return }
+      pushChoice(d, makeChoice(d, me, 'TOPDECK_FROM_HAND',
+        `Put ${n} of the drawn cards back on top of your deck, in order`,
+        n, n, cardOpts(drawn, 'hand', me), ctx.source))
+      return
+    }
+
+    case 'TOPDECK_FROM_HAND': {
+      const opts = cardOpts(p.hand as CardInstance[], 'hand', me)
+      const n = Math.min(effect.n, opts.length)
+      if (n === 0) { ev.push({ e: 'FIZZLE', label: 'hand is empty' }); return }
+      // Mandatory and exactly n: Warp Jump puts two back, not "up to two".
+      pushChoice(d, makeChoice(d, me, 'TOPDECK_FROM_HAND',
+        `Put ${n} cards back on top of your deck, in order`, n, n, opts, ctx.source))
+      return
+    }
+
     case 'RETURN_BASE_TO_HAND': {
       // Returning is not an attack, so unlike DESTROY_BASE it is NOT filtered
       // through the outpost shield: the shield is worded against attacks and
@@ -893,6 +1018,49 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'DISCARD_OR_LOSE': {
+      const cfg = cont?.c === 'DISCARD_OR_LOSE' ? cont : { max: 2, per: 4 }
+      let n = 0
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, 'hand', o.iid)
+        if (!inst) continue
+        p.discard.push(inst)
+        ev.push({ e: 'DISCARD', player: me, iid: inst.iid, def: inst.def })
+        n++
+      }
+      const short = Math.max(0, cfg.max - n)
+      if (short > 0) pushEffects(d, [{ k: 'LOSE_AUTHORITY', n: short * cfg.per }], ctx)
+      return
+    }
+
+    case 'DESTROY_OWN_BASE_OR_LOSE': {
+      const cfg = cont?.c === 'DESTROY_OR_LOSE' ? cont : { n: 6 }
+      const o = selected[0]
+      if (!o || o.o !== 'CARD') {
+        pushEffects(d, [{ k: 'LOSE_AUTHORITY', n: cfg.n }], ctx)
+        return
+      }
+      const found = findInPlay(d as unknown as GameState, o.iid)
+      // Self-inflicted, so the destroyer is the owner and it must not count
+      // towards a "destroy enemy bases" objective.
+      if (found) destroyBase(d, found.owner, found.card, 'effect', ev, found.owner)
+      return
+    }
+
+    case 'TOPDECK_FROM_HAND': {
+      // Selection order IS the deck order: "in any order" is the player's call,
+      // and the last one selected ends up on top.
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, 'hand', o.iid)
+        if (!inst) continue
+        p.deck.unshift(inst)
+        ev.push({ e: 'TOPDECK', player: me, iid: inst.iid, def: inst.def })
+      }
+      return
+    }
+
     case 'RETURN_BASE_TO_HAND': {
       const o = selected[0]
       if (!o || o.o !== 'CARD') return
@@ -1116,7 +1284,9 @@ function endTurn(d: D, ev: GameEvent[]): void {
   if (!scriptBoss) {
     const staying: Draft<InPlayCard>[] = []
     for (const c of p.inPlay) {
-      if (isBase(c)) { staying.push(c); continue }
+      // Bases stay, and so do Heroes: a Hero waits in the play area across turns
+      // until you spend it, which is the whole of what makes it a Hero.
+      if (isBase(c) || isHero(c)) { staying.push(c); continue }
       p.discard.push({ iid: c.iid, def: c.def })
     }
     p.inPlay = staying

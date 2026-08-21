@@ -159,6 +159,17 @@ export interface CardProps {
  * for the preview dialog's label. Derived from the same structured text the
  * card renders, so the two can never drift apart.
  */
+/** Как тип карты называется вслух. Оборона озвучивается только там, где она есть. */
+function TYPE_RU(c: ReturnType<typeof cardDef>): string {
+  switch (c.type) {
+    case 'outpost': return `аванпост, оборона ${c.defense}`
+    case 'base': return `база, оборона ${c.defense}`
+    case 'hero': return 'герой'
+    case 'event': return 'событие'
+    case 'ship': return 'корабль'
+  }
+}
+
 export function cardLabel(def: CardDefId): string {
   const c = cardDef(def)
   const ru = cardRu(def)
@@ -167,8 +178,7 @@ export function cardLabel(def: CardDefId): string {
     ru?.name ?? c.name,
     c.role === 'starter' ? '' : `стоимость ${c.cost}`,
     FACTION_RU[c.faction],
-    c.type === 'outpost' ? `аванпост, оборона ${c.defense}`
-      : c.type === 'base' ? `база, оборона ${c.defense}` : 'корабль',
+    TYPE_RU(c),
     speak(text.primary),
     text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
     text.doubleAlly ? `Двойное союзное свойство: ${speak(text.doubleAlly)}` : '',
@@ -181,8 +191,10 @@ export function Card({
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
   // Orientation follows the printed card everywhere: a base lies landscape in
-  // the trade row and in hand exactly as it does on the table.
-  const isBase = c.type !== 'ship'
+  // the trade row and in hand exactly as it does on the table. Heroes and
+  // Events are printed portrait, so this is a whitelist rather than "not a
+  // ship" -- which would silently turn every Hero on its side.
+  const isBase = c.type === 'base' || c.type === 'outpost'
   const cls = [
     'card',
     isBase ? 'is-base' : '',

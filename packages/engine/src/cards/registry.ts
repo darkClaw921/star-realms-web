@@ -3,6 +3,8 @@ import type { Effect } from '../effects'
 import { buildDefs, type CardDef, type CardRegistry, type SetId, type Spec } from './types'
 import { COLONY_WARS } from './colonyWars'
 import { CRISIS_BASES, CRISIS_FLEETS } from './crisis'
+import { CRISIS_EVENTS } from './crisisEvents'
+import { CRISIS_HEROES } from './crisisHeroes'
 import { FRONTIERS } from './frontiers'
 
 /**
@@ -375,6 +377,8 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(COLONY_WARS, 'colony-wars'),
   ...buildDefs(CRISIS_BASES, 'crisis-bases'),
   ...buildDefs(CRISIS_FLEETS, 'crisis-fleets'),
+  ...buildDefs(CRISIS_HEROES, 'crisis-heroes'),
+  ...buildDefs(CRISIS_EVENTS, 'crisis-events'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -414,5 +418,6 @@ export function tradeDeckComposition(
 
 /** Every set the registry knows about, in the order they should be offered. */
 export const ALL_SETS: readonly SetId[] = [
-  'core', 'frontiers', 'colony-wars', 'crisis-bases', 'crisis-fleets',
+  'core', 'frontiers', 'colony-wars',
+  'crisis-bases', 'crisis-fleets', 'crisis-heroes', 'crisis-events',
 ]

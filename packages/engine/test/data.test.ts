@@ -36,10 +36,15 @@ describe('base-set data integrity', () => {
     expect(tradeDeck.every((c) => c.faction !== 'unaligned')).toBe(true)
   })
 
-  it('gives every base a defense and every ship none', () => {
+  it('gives every base a defense and everything else none', () => {
+    // Defense is what an attack has to get through, so only bases have one.
+    // Ships, Crisis' Heroes and Crisis' Events cannot be attacked at all.
     for (const c of CARDS.values()) {
-      if (c.type === 'ship') expect(c.defense, c.name).toBeNull()
-      else expect(c.defense, c.name).toBeGreaterThan(0)
+      if (c.type === 'base' || c.type === 'outpost') {
+        expect(c.defense, c.name).toBeGreaterThan(0)
+      } else {
+        expect(c.defense, c.name).toBeNull()
+      }
     }
   })
 

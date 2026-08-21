@@ -81,6 +81,8 @@ export const UI = {
     'colony-wars': 'Colony Wars',
     'crisis-bases': 'Crisis: Базы и линкоры',
     'crisis-fleets': 'Crisis: Флоты и крепости',
+    'crisis-heroes': 'Crisis: Герои',
+    'crisis-events': 'Crisis: События',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -244,6 +246,12 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return c.min === 0
         ? 'Можете вернуть выбранную базу в руку её владельца'
         : 'Верните выбранную базу в руку её владельца'
+    case 'DISCARD_OR_LOSE':
+      return `Сбросьте до ${n} карт — за каждую недостающую потеряете авторитет`
+    case 'DESTROY_OWN_BASE_OR_LOSE':
+      return 'Уничтожьте свою базу или потеряйте авторитет'
+    case 'TOPDECK_FROM_HAND':
+      return `Верните ${n} карты на верх колоды — порядок выбора и будет порядком в колоде`
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

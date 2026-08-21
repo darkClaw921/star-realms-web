@@ -28,6 +28,8 @@ export type GameEvent =
   | { e: 'RETURN_FROM_SCRAP'; player: PlayerId; iid: CardIid; def: CardDefId }
   /** Crisis' Mega Mech: a base leaves play for its owner's HAND, not the scrap heap. */
   | { e: 'RETURN_TO_HAND'; owner: PlayerId; iid: CardIid; def: CardDefId }
+  /** Crisis: an event turned up in the trade row and resolved on the spot. */
+  | { e: 'EVENT'; def: CardDefId }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }

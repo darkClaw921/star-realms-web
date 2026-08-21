@@ -180,6 +180,54 @@ export type Effect =
    * attack -- the shield is worded against attacks and targeting by destruction.
    */
   | { k: 'RETURN_BASE_TO_HAND'; min: 0 | 1 }
+  /**
+   * Crisis' Heroes: "Gain a Blob Ally -- until end of turn, you may use all of
+   * your Blob ally abilities."
+   *
+   * Unlocks the faction outright rather than adding a card of it, so it works
+   * from a single card and, like every other ally unlock, survives the enabler
+   * leaving play.
+   */
+  | { k: 'GAIN_ALLY'; faction: Faction }
+  /**
+   * Crisis' Events, every one of which is worded "each player ...".
+   *
+   * Resolves `then` once per player with THAT player as the controller, active
+   * player first. Without it, every event would need its own two-sided handler.
+   */
+  | { k: 'EACH_PLAYER'; then: readonly Effect[] }
+  /** Events deal in losses, which are not negative gains: authority floors at 0. */
+  | { k: 'LOSE_AUTHORITY'; n: number }
+  /**
+   * Black Hole: "may discard up to two cards; for each card less than two that a
+   * player discards, that player loses 4 Authority." The penalty is computed
+   * from how many were actually discarded, so it cannot be SEQ of two effects.
+   */
+  | { k: 'DISCARD_OR_LOSE'; max: number; per: number }
+  /** Bombardment: "either destroys a base they control or loses 6 Authority." */
+  | { k: 'DESTROY_OWN_BASE_OR_LOSE'; n: number }
+  /** Supernova: the whole trade row goes to the scrap heap. */
+  | { k: 'SCRAP_WHOLE_TRADE_ROW' }
+  /** Put N cards from hand back on top of your deck, in the player's order. */
+  | { k: 'TOPDECK_FROM_HAND'; n: number }
+  /**
+   * Warp Jump: "draws three cards, then puts two of THOSE cards back on top of
+   * their deck in any order."
+   *
+   * One effect rather than DRAW followed by TOPDECK_FROM_HAND, because "those
+   * cards" is a real restriction: the cards already in hand are not eligible.
+   * Building the choice from the cards this effect just drew keeps that exact,
+   * and keeps it out of persistent state.
+   */
+  | { k: 'DRAW_THEN_TOPDECK'; draw: number; back: number }
+  /** Trade Mission: the OTHER player draws, while the active one gets the trade. */
+  | { k: 'OPPONENT_DRAW'; n: number }
+  /**
+   * Re-fill the trade row, resolving any event that turns up. Pushed by the
+   * refill itself when an event appears, so that the event can ask a question
+   * and the refill resumes afterwards.
+   */
+  | { k: 'REFILL_TRADE_ROW' }
 
   // ── Colony Wars ───────────────────────────────────────────────────────────
   /**

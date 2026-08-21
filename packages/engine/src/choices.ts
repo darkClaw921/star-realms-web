@@ -21,6 +21,9 @@ export type PromptKind =
   | 'COPY_BASE'
   // ── Crisis ────────────────────────────────────────────────────────────────
   | 'RETURN_BASE_TO_HAND'
+  | 'DISCARD_OR_LOSE'
+  | 'DESTROY_OWN_BASE_OR_LOSE'
+  | 'TOPDECK_FROM_HAND'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

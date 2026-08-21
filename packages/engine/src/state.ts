@@ -107,6 +107,10 @@ export type ChoiceCont =
   | { c: 'REDIRECT'; iid: CardIid; dests: readonly AcquireDest[]; redirects: readonly number[] }
   /** One card discarded for Supply Depot; the branch decides trade or combat. */
   | { c: 'DISCARD_RESOURCE'; per: number }
+  /** Black Hole: the penalty depends on how far short of `max` the answer was. */
+  | { c: 'DISCARD_OR_LOSE'; max: number; per: number }
+  /** Bombardment: declining to destroy a base is choosing the authority loss. */
+  | { c: 'DESTROY_OR_LOSE'; n: number }
 
 /** One item on the resolution stack. Both variants are plain JSON. */
 export type ResolutionFrame =

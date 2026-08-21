@@ -60,6 +60,8 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
       return `${card(e.def)} возвращается из утиля в стопку сброса`
     case 'RETURN_TO_HAND':
       return `${card(e.def)} возвращается в руку игрока ${who(e.owner)}`
+    case 'EVENT':
+      return `Событие: ${card(e.def)}`
     case 'TENTACLE_FED':
       return `${TENTACLE_RU[e.faction] ?? e.faction} поглощает ${card(e.def)}`
     case 'TENTACLE_HIT':

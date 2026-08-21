@@ -285,6 +285,8 @@ async function main() {
         ['Colony Wars', 80],
         ['Crisis: Базы и линкоры', 12],
         ['Crisis: Флоты и крепости', 12],
+        ['Crisis: Герои', 12],
+        ['Crisis: События', 12],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>

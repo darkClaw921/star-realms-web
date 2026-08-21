@@ -17,6 +17,8 @@ export type SetId =
   | 'colony-wars'
   | 'crisis-bases'
   | 'crisis-fleets'
+  | 'crisis-heroes'
+  | 'crisis-events'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are

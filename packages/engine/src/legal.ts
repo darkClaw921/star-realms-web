@@ -73,7 +73,9 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   const shielded = v.opponent.inPlay.some((c) => cardDef(c.def).type === 'outpost')
   for (const c of v.opponent.inPlay) {
     const def = cardDef(c.def)
-    if (def.type === 'ship') continue
+    // Only bases are attackable. A Hero sits in the play area and cannot be
+    // attacked at all, which a "not a ship" test would get wrong.
+    if (def.type !== 'base' && def.type !== 'outpost') continue
     if (shielded && def.type !== 'outpost') continue
     if (me.combat >= (def.defense ?? 0)) out.push({ t: 'ATTACK_BASE', base: c.iid })
   }
