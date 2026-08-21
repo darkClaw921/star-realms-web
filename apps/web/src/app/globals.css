@@ -132,6 +132,9 @@ button { font: inherit; color: inherit; }
   width: var(--card-w);
   flex: 0 0 auto;
 }
+/* A lifted card grows past its slot, so it has to win against the cards after
+ * it in source order -- otherwise its neighbour's edge cuts across it. */
+.card-slot:hover { position: relative; z-index: 3; }
 /* Bases are landscape, so at equal width they are far shorter. Widening them
  * keeps their text box the same physical size as a ship's. */
 .card-slot--base { width: calc(var(--card-w) * 1.32); }
@@ -154,7 +157,25 @@ button { font: inherit; color: inherit; }
   text-align: left;
   cursor: default;
   isolation: isolate;
-  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  /* The rest position of the hover gesture. The perspective lives inside the
+   * transform rather than on the slot: a slot-level perspective shares one
+   * vanishing point with whatever else the row scrolls past it, so the same
+   * angle skews differently depending on where the card sits. Per-card, the
+   * projection is identical for every card in the row. */
+  --rx: 0deg;
+  --ry: 0deg;
+  --lift: 0px;
+  --scale: 1;
+  --persp: 700px;
+  transform: perspective(var(--persp)) translateY(var(--lift))
+             rotateX(var(--rx)) rotateY(var(--ry)) scale(var(--scale));
+  transform-style: preserve-3d;
+  /* Keeps the rotated face from being re-rasterised as it crosses the plane. */
+  backface-visibility: hidden;
+  /* Returning to rest is a different gesture from following the pointer: a long
+   * eased curve here, a near-immediate one under .is-tilting below. */
+  transition: transform 600ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              box-shadow 400ms ease, border-color 140ms ease;
 }
 .card.is-base { aspect-ratio: 7 / 5; }
 
@@ -162,10 +183,36 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
   border-color: color-mix(in srgb, var(--fc) 60%, var(--rule));
 }
-.card.is-playable:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--fc) 45%, transparent),
+/* Any card leans and grows under the pointer -- being unplayable is a fact about
+ * the move, not about whether the card is worth looking at. Only the glow that
+ * says "you can act on this" is reserved for the playable ones. */
+.card:hover,
+.card:focus-visible {
+  --lift: -6px;
+  --scale: 1.055;
+  z-index: 2;
+}
+/* While the pointer is on the card the rotation is driven from JS a frame at a
+ * time, so the transition only has to bridge one frame -- a longer ease here
+ * reads as the surface lagging behind the hand. `will-change` promotes the card
+ * for the duration: without it the browser re-rasterises the whole face, text
+ * and all, on every frame of the tilt, which is what makes it judder. */
+.card.is-tilting {
+  transition: transform 80ms ease-out, box-shadow 400ms ease, border-color 140ms ease;
+  will-change: transform;
+}
+.card.is-playable:hover,
+.card.is-playable:focus-visible {
+  box-shadow: 0 14px 30px -8px color-mix(in srgb, var(--fc) 45%, transparent),
               0 0 0 1px color-mix(in srgb, var(--fc) 75%, transparent);
+}
+.card:hover:not(.is-playable) {
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.8);
+}
+
+/* Touch has no hover: the tilt would only ever fire mid-tap and stick. */
+@media (hover: none) {
+  .card:hover { --lift: 0px; --scale: 1; }
 }
 .card.is-selected {
   box-shadow: 0 0 0 2px var(--authority), 0 10px 28px -10px var(--authority);
@@ -438,9 +485,6 @@ button { font: inherit; color: inherit; }
   display: grid;
   place-items: center;
   min-height: 0;
-  /* Perspective belongs to the stage, not the card: on the card itself every
-   * rotation would get its own vanishing point and the tilt would read flat. */
-  perspective: 1300px;
 }
 
 /* cqi again, so the enlarged face is the same composition at a larger size
@@ -451,31 +495,20 @@ button { font: inherit; color: inherit; }
 }
 .preview__slot--base { width: min(92vw, 96vh); }
 
+/* Rest position, lift and the two transitions all come from `.card`: the
+ * enlarged face is the same object, so it inherits the same gesture and only
+ * overrides what genuinely differs -- a deeper perspective for a much larger
+ * surface, no hover lift, and its own shadow. */
 .preview__card {
-  --rx: 0deg;
-  --ry: 0deg;
-  --gx: 50%;
-  --gy: 50%;
+  --persp: 1600px;
   width: 100%;
-  transform: rotateX(var(--rx)) rotateY(var(--ry));
-  transform-style: preserve-3d;
-  transition: transform 90ms ease-out;
   box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.95),
               0 0 0 1px color-mix(in srgb, var(--fc) 45%, transparent);
   cursor: zoom-out;
 }
-
-/* A highlight that tracks the pointer. It is what makes the rotation read as a
- * physical surface catching light rather than a picture being skewed. */
-.preview__glare {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(38% 30% at var(--gx) var(--gy),
-    rgba(255, 255, 255, 0.16) 0%, transparent 70%);
-}
+/* The overlay owns the pointer, so the card must not lift and grow when the
+ * cursor happens to be over it -- it is already at its display size. */
+.preview__card:hover { --lift: 0px; --scale: 1; }
 
 .preview__bar {
   display: flex;
@@ -500,7 +533,8 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .preview { animation: none; }
   .preview__card { transform: none; transition: none; }
-  .preview__glare { display: none; }
+  /* The hover cue survives as the border and shadow; only the motion goes. */
+  .card { transform: none; transition: box-shadow 140ms ease, border-color 140ms ease; }
 }
 
 /* ── inline resource glyphs in card text ────────────────────────────────── */
@@ -561,10 +595,24 @@ button { font: inherit; color: inherit; }
   gap: var(--gap);
   min-width: 0;
 }
+/* A row that scrolls horizontally gets a vertical clip for free -- and a card
+ * lifted on hover grows straight into it, losing its top edge. So the row keeps
+ * room for the lift as padding and takes the same amount back as margin: the
+ * scroll box is taller, the layout is where it was. (`overflow-y: clip` with a
+ * margin cannot do this job: paired with `overflow-x: auto` it computes to
+ * `hidden` and the clip margin is dropped.)
+ *
+ * --row-gap-top is the gap a caller wants above the row; it composes with the
+ * headroom rather than fighting it, which an inline margin could not do. */
 .row--scroll {
+  --row-gap-top: 0px;
+  --row-headroom: 30px;
   overflow-x: auto;
+  padding-top: var(--row-headroom);
+  padding-bottom: 20px;
+  margin-top: calc(var(--row-gap-top) - var(--row-headroom));
+  margin-bottom: -16px;
   scroll-snap-type: x proximity;
-  padding-bottom: 4px;
   scrollbar-width: thin;
 }
 .row--scroll > * { scroll-snap-align: start; }

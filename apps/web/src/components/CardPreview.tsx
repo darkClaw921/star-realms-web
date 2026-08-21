@@ -1,23 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cardDef, type CardDefId } from '@sr/engine'
 import { UI } from '@/i18n/ui'
 import { CardFrame } from './Card'
 import { FACTION_VAR } from './Icons'
-
-/** Maximum tilt in degrees at the edge of the viewport. */
-const MAX_TILT = 13
+import { useTilt } from './useTilt'
 
 /**
  * The held card, blown up and tilted away from the pointer.
  *
- * The tilt is written to CSS custom properties rather than to `style.transform`
- * so the transform itself stays declarative and one place owns the composition
- * of rotation, scale and the glare position. Pointer maths runs on every move,
- * so nothing here allocates or reads layout: the stage's rect is measured once
- * per open and reused.
+ * Shares the tilt with the cards on the table, so the enlarged face behaves as
+ * the same physical object rather than as a second, similar-looking effect.
+ * The whole overlay listens, which lets the pointer keep steering the card out
+ * on the backdrop; angles are measured against the slot, which -- unlike the
+ * card -- never rotates.
  */
 export function CardPreview({
   def, label, onClose,
@@ -29,6 +27,8 @@ export function CardPreview({
   const [mounted, setMounted] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  const slotRef = useRef<HTMLDivElement>(null)
+  const tilt = useTilt({ target: cardRef, frame: slotRef })
   const c = cardDef(def)
   const isBase = c.type !== 'ship'
 
@@ -47,21 +47,6 @@ export function CardPreview({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const tilt = useCallback((e: React.PointerEvent | React.MouseEvent): void => {
-    const el = cardRef.current
-    if (!el) return
-    // Relative to the viewport, not to the card: the card is what moves, so
-    // measuring against it would feed its own rotation back into the input.
-    const dx = (e.clientX / window.innerWidth) * 2 - 1
-    const dy = (e.clientY / window.innerHeight) * 2 - 1
-    // Positive rotateY sends the right edge away, positive rotateX sends the top
-    // away -- so this leans the surface off the pointer rather than toward it.
-    el.style.setProperty('--rx', `${(-dy * MAX_TILT).toFixed(2)}deg`)
-    el.style.setProperty('--ry', `${(dx * MAX_TILT).toFixed(2)}deg`)
-    el.style.setProperty('--gx', `${(((dx + 1) / 2) * 100).toFixed(1)}%`)
-    el.style.setProperty('--gy', `${(((dy + 1) / 2) * 100).toFixed(1)}%`)
-  }, [])
-
   if (!mounted) return null
 
   return createPortal(
@@ -70,21 +55,20 @@ export function CardPreview({
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      onPointerMove={tilt}
       onClick={onClose}
+      {...tilt.handlers}
     >
       <div className="preview__stage">
-        <div className={`preview__slot${isBase ? ' preview__slot--base' : ''}`}>
+        <div ref={slotRef} className={`preview__slot${isBase ? ' preview__slot--base' : ''}`}>
           <div
             ref={cardRef}
-            className={`card preview__card${isBase ? ' is-base' : ''}`}
+            className={`card preview__card${isBase ? ' is-base' : ''}${tilt.active ? ' is-tilting' : ''}`}
             style={{
               '--fc': FACTION_VAR[c.faction],
               '--fc-line': `color-mix(in srgb, ${FACTION_VAR[c.faction]} 30%, var(--rule))`,
             } as React.CSSProperties}
           >
             <CardFrame def={def} />
-            <span className="preview__glare" aria-hidden="true" />
           </div>
         </div>
       </div>

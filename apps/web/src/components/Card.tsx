@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useRef, useState } from 'react'
 import { cardDef, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 import { cardRu, FACTION_RU } from '@/i18n/cards.ru'
@@ -8,6 +8,7 @@ import { CardText, speak } from './cardText'
 import { CardPreview } from './CardPreview'
 import { FACTION_VAR, FactionMark, Icon, type IconName } from './Icons'
 import { useHold } from './useHold'
+import { useTilt } from './useTilt'
 
 /**
  * Condense an effect tree into icon chips, for card sizes where prose is
@@ -195,6 +196,11 @@ export function Card({
   const label = cardLabel(def)
   const [preview, setPreview] = useState(false)
   const hold = useHold(useCallback(() => setPreview(true), []))
+  // The slot listens and the card rotates: the slot keeps its layout box while
+  // the card's own box grows with the rotation, and measuring against a rotating
+  // box would feed the tilt back into itself.
+  const cardRef = useRef<HTMLButtonElement>(null)
+  const tilt = useTilt({ target: cardRef })
 
   const style = {
     '--fc': FACTION_VAR[c.faction],
@@ -202,10 +208,14 @@ export function Card({
   } as React.CSSProperties
 
   return (
-    <div className={`card-slot${isBase ? ' card-slot--base' : ''}`}>
+    <div
+      className={`card-slot${isBase ? ' card-slot--base' : ''}`}
+      {...tilt.handlers}
+    >
       <button
+        ref={cardRef}
         type="button"
-        className={`${cls}${hold.holding ? ' is-holding' : ''}`}
+        className={`${cls}${hold.holding ? ' is-holding' : ''}${tilt.active ? ' is-tilting' : ''}`}
         style={style}
         onClick={onClick}
         // Never disabled: a card with no move still has something to show, and a

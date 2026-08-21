@@ -108,7 +108,7 @@ export function ChoiceSheet({
 
         {!confirmOnly && branches.length === 0 && (
           <>
-            <div className="row row--scroll" style={{ marginTop: 10 }}>
+            <div className="row row--scroll" style={{ '--row-gap-top': '10px' } as React.CSSProperties}>
               {opts.map((o) => {
                 if (o.o !== 'CARD') {
                   return (

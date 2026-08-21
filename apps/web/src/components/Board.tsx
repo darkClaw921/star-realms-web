@@ -116,7 +116,7 @@ export function Board({
             </button>
           )}
         </OpponentHud>
-        <div className="row row--scroll" style={{ marginTop: 8 }}>
+        <div className="row row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
           {v.opponent.inPlay.length === 0 && (
             <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
           )}
@@ -229,7 +229,7 @@ export function Board({
             {UI.inTradeDeck(v.tradeDeckCount)}
           </span>
         </div>
-        <div className="row row--scroll" style={{ marginTop: 8 }}>
+        <div className="row row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
           {v.tradeRow.map((c, i) =>
             c ? (
               <Card
@@ -342,7 +342,7 @@ export function Board({
           </div>
         </SelfHud>
 
-        <div className="row row--scroll" style={{ marginTop: 8 }}>
+        <div className="row row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
           {v.me.hand.length === 0 && (
             <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.handEmpty}</span>
           )}
