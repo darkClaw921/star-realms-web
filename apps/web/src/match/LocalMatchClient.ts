@@ -26,6 +26,8 @@ export interface LocalOptions {
   readonly gambitsPerPlayer?: number | undefined
   /** Missions dealt to each player. Completing all of yours wins the game. */
   readonly missionsPerPlayer?: number | undefined
+  /** A Command Deck per seat. Replaces that seat's starting deck entirely. */
+  readonly commandDeck?: Partial<Record<PlayerId, string>> | undefined
 }
 
 /**
@@ -54,6 +56,7 @@ export class LocalMatchClient implements MatchClient {
       sets: opts.sets,
       gambitsPerPlayer: opts.gambitsPerPlayer,
       missionsPerPlayer: opts.missionsPerPlayer,
+      commandDeck: opts.commandDeck,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()

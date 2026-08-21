@@ -1,7 +1,8 @@
 import type { Action } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef } from './cards/registry'
-import { costFor, objectiveMet } from './helpers'
+import { costFor, defenseOf, objectiveMet } from './helpers'
+import { splinterSet } from './reduce'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
 import type { InPlayCardView, PlayerView } from './view'
@@ -45,6 +46,23 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     out.push({ t: 'PLAY_ALL' })
   }
 
+  // Revealed gambits offer their abilities exactly as cards in play do.
+  for (const card of me.gambitsInPlay) {
+    const eff = cardDef(card.def)
+    if (!card.used.primary && eff.activated && eff.primary.length > 0) {
+      out.push({ t: 'ACTIVATE', card: card.iid, slot: 'primary' })
+    }
+    for (const [slot, effects, pinned] of [
+      ['ally', eff.ally, eff.allyFaction],
+      ['ally2', eff.ally2, eff.ally2Faction],
+    ] as const) {
+      if (!card.used[slot] && effects.length > 0
+          && (pinned ? me.allyUnlocked.includes(pinned) : false)) {
+        out.push({ t: 'ACTIVATE', card: card.iid, slot })
+      }
+    }
+  }
+
   for (const card of me.inPlay) {
     const printed = cardDef(card.def)
     const eff = cardDef(card.copiedDef ?? card.def)
@@ -80,6 +98,12 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     if (!card.used.scrap && eff.scrap.length > 0) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'scrap' })
     }
+    // Lost Fleet's Splinter: legal only while three matching Shards played this
+    // turn are still in play, because those three are the cost.
+    if (!card.used.splinter && eff.splinter.length > 0
+        && splinterSet(me, card).length === 3) {
+      out.push({ t: 'ACTIVATE', card: card.iid, slot: 'splinter' })
+    }
   }
 
   for (const c of v.tradeRow) {
@@ -106,6 +130,7 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   }
   if (v.explorerPile > 0 && me.trade >= EXPLORER_COST) out.push({ t: 'BUY_EXPLORER' })
 
+  const foe = seat === 'p1' ? 'p2' : 'p1'
   // Outposts must fall before anything behind them can be touched.
   const shielded = v.opponent.inPlay.some((c) => cardDef(c.def).type === 'outpost')
   for (const c of v.opponent.inPlay) {
@@ -114,7 +139,12 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     // attacked at all, which a "not a ship" test would get wrong.
     if (def.type !== 'base' && def.type !== 'outpost') continue
     if (shielded && def.type !== 'outpost') continue
-    if (me.combat >= (def.defense ?? 0)) out.push({ t: 'ATTACK_BASE', base: c.iid })
+    // Unity Warcraft shifts what a base actually costs to break, so the
+    // affordability test goes through the same function the attack does.
+    const need = defenseOf(
+      { [seat]: me, [foe]: v.opponent } as never, foe, def.defense ?? 0,
+    )
+    if (me.combat >= need) out.push({ t: 'ATTACK_BASE', base: c.iid })
   }
   if (!shielded) {
     // Every amount, not just "all of it": a partial hit is legal, and the fuzz

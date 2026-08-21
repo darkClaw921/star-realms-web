@@ -3,6 +3,7 @@ import { COLONY_WARS_RU } from './colonyWars.ru'
 import { CRISIS_RU } from './crisis.ru'
 import { HIGH_ALERT_RU } from './highAlert.ru'
 import { FRONTIERS_PROMOS_RU } from './frontiersPromos.ru'
+import { COMMAND_DECKS_RU } from './commandDecks.ru'
 import { GAMBITS_RU, MISSIONS_RU } from './gambits.ru'
 import { PROMOS_RU } from './promos.ru'
 import { UNITED_HEROES_RU, UNITED_RU } from './united.ru'
@@ -39,6 +40,8 @@ export interface CardRu {
   readonly ally2?: string
   readonly ally3?: string
   readonly ally4?: string
+  /** Lost Fleet: что покупают три одинаковых осколка. */
+  readonly splinter?: string
   /** Frontiers: двойное союзное свойство. */
   readonly doubleAlly?: string
 }
@@ -136,7 +139,7 @@ const CARDS_RU: Record<string, CardRu> = {
   ...CORE_RU, ...FRONTIERS_RU, ...COLONY_WARS_RU,
   ...CRISIS_RU, ...CRISIS_HEROES_RU, ...CRISIS_EVENTS_RU,
   ...UNITED_RU, ...UNITED_HEROES_RU, ...HIGH_ALERT_RU, ...PROMOS_RU, ...FRONTIERS_PROMOS_RU,
-  ...GAMBITS_RU, ...MISSIONS_RU,
+  ...GAMBITS_RU, ...MISSIONS_RU, ...COMMAND_DECKS_RU,
 }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */

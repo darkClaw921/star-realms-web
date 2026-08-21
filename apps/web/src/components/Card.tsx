@@ -151,6 +151,13 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
                   <CardText src={t} />
                 </Fragment>
               ))}
+              {text.splinter && (
+                <>
+                  <span className="card__rule" />
+                  <span className="card__slot-label is-double">Сплинтер</span>{' '}
+                  <CardText src={text.splinter} />
+                </>
+              )}
               {text.doubleAlly && (
                 <>
                   <span className="card__rule" />
@@ -217,6 +224,7 @@ export function cardLabel(def: CardDefId): string {
     text.ally2 ? `Второе союзное свойство: ${speak(text.ally2)}` : '',
     text.ally3 ? `Третье союзное свойство: ${speak(text.ally3)}` : '',
     text.ally4 ? `Четвёртое союзное свойство: ${speak(text.ally4)}` : '',
+    text.splinter ? `Свойство сплинтера: ${speak(text.splinter)}` : '',
     text.doubleAlly ? `Двойное союзное свойство: ${speak(text.doubleAlly)}` : '',
     text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
   ].filter(Boolean).join('. ')

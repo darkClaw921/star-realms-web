@@ -14,7 +14,8 @@ export type Action =
   | { t: 'PLAY_ALL' }
   | {
       t: 'ACTIVATE'; card: CardIid
-      slot: 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap'
+      slot:
+        | 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap' | 'splinter'
     }
   | { t: 'BUY_CARD'; card: CardIid }
   | { t: 'BUY_EXPLORER' }

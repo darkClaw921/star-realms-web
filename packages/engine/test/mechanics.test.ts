@@ -449,7 +449,7 @@ describe('18. end-of-turn bookkeeping', () => {
     expect(p.inPlay.map((c) => c.def)).toEqual([D('blob-wheel')]) // bases stay
     expect(p.inPlay[0]!.used).toEqual({
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-        doubleAlly: false, scrap: false,
+        doubleAlly: false, scrap: false, splinter: false,
     })
   })
 

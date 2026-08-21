@@ -35,6 +35,8 @@ export type Condition =
   | { c: 'FACTION_PLAYED_THIS_TURN'; faction: Faction; n: number }
   /** Promo bases: "if you played a base this turn (including this one)". */
   | { c: 'BASE_PLAYED_THIS_TURN' }
+  /** Viper Bot: "if you've scrapped a card from your hand or discard pile". */
+  | { c: 'SCRAPPED_THIS_TURN'; n: number }
 
 /** Counters that PER can multiply an effect by. */
 export type CounterRef =
@@ -55,7 +57,10 @@ export type CounterRef =
  * pile: Blob Carrier tops the deck, and Colony Wars routes cards straight into
  * hand, which is a real tempo difference and not a reskin of topdecking.
  */
-export type AcquireDest = 'discard' | 'deck_top' | 'hand' | 'in_play'
+export type AcquireDest =
+  | 'discard' | 'deck_top' | 'hand' | 'in_play'
+  /** Frontier Tug: the base you buy is shuffled into your deck, not discarded. */
+  | 'deck_shuffle'
 
 /**
  * An armed "put the next card you acquire this turn somewhere other than the
@@ -74,7 +79,7 @@ export interface AcquireRedirect {
    * filter 'base' -- a ship put "into play" would be a ship whose primary never
    * resolved, which the printed cards never ask for.
    */
-  readonly dest: 'deck_top' | 'hand' | 'in_play'
+  readonly dest: 'deck_top' | 'hand' | 'in_play' | 'deck_shuffle'
   /** The printed text says "you may". Freighter does; Factory World does not. */
   readonly optional: boolean
 }
@@ -333,6 +338,18 @@ export type Effect =
    * effect rather than a reuse of the two-way scry.
    */
   | { k: 'REVEAL_THREE_SPLIT' }
+
+  // ── Command Decks ─────────────────────────────────────────────────────────
+  /** Federation Scout: the next card of a faction costs less this turn. */
+  | { k: 'DISCOUNT_NEXT_ACQUIRED'; faction: Faction; n: number }
+  /**
+   * "Scrap up to N, then gain X per card scrapped this way." The payout is
+   * coupled to how many were actually scrapped, so it cannot be SEQ of two.
+   */
+  | { k: 'SCRAP_THEN_GAIN'; zones: readonly Zone[]; max: number; per: number
+      what: 'trade' | 'combat' | 'authority' }
+  /** Mech Battleship: draw as many as you scrapped, then discard as many. */
+  | { k: 'SCRAP_DRAW_DISCARD'; zones: readonly Zone[]; max: number }
   /**
    * Re-fill the trade row, resolving any event that turns up. Pushed by the
    * refill itself when an event appears, so that the event can ask a question
@@ -407,7 +424,18 @@ export interface Trigger {
    * outpost. ACQUIRE_SELF fires on the card being bought, for Colony Wars'
    * "when you acquire this card" clause.
    */
-  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF' | 'SCRAP_OWN'
+  readonly on:
+    | 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF' | 'SCRAP_OWN'
+    /** Alignment Ingenuity: a ship or base used its own scrap ability. */
+    | 'SCRAP_ABILITY'
+    /** Splinter Tech: a Splinter ability was used. */
+    | 'SPLINTER'
+    /**
+     * Coalition Efficiency: you are ABOUT to scrap from hand or discard, and may
+     * take something else instead. A replacement, so it fires before the scrap
+     * choice is offered rather than after it resolves.
+     */
+    | 'WOULD_SCRAP'
   /** Colony Wars' Command Center fires only on ships of one faction. */
   readonly faction?: Faction
   /** Veteran Pilots fires only on one specific card. */
@@ -417,7 +445,8 @@ export interface Trigger {
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
 export type AbilitySlot =
-  | 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap' | 'trigger'
+  | 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap'
+  | 'splinter' | 'trigger'
 
 /** Copy-source for Stealth Needle and Stealth Tower; null on every other card. */
 export interface CopyState {

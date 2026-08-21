@@ -13,6 +13,7 @@ import {
 } from './highAlert'
 import { FRONTIERS_PROMOS } from './frontiersPromos'
 import { COSMIC_GAMBITS, GAMBITS } from './gambits'
+import { COMMAND_DECK_CARDS } from './commandDecks'
 import { MISSIONS } from './missions'
 import { PROMO_PACK_1, STELLAR_ALLIES, YEAR_TWO_PROMOS } from './promos'
 import { FRONTIERS } from './frontiers'
@@ -404,6 +405,7 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(GAMBITS, 'gambits'),
   ...buildDefs(COSMIC_GAMBITS, 'cosmic-gambits'),
   ...buildDefs(MISSIONS, 'missions'),
+  ...buildDefs(COMMAND_DECK_CARDS, 'command-decks'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -449,5 +451,5 @@ export const ALL_SETS: readonly SetId[] = [
   'high-alert-first-strike', 'high-alert-tech', 'high-alert-requisition',
   'high-alert-invasion', 'high-alert-heroes',
   'stellar-allies', 'promo-1', 'promo-year-2', 'frontiers-promos',
-  'gambits', 'cosmic-gambits', 'missions',
+  'gambits', 'cosmic-gambits', 'missions', 'command-decks',
 ]

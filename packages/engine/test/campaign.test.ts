@@ -93,7 +93,7 @@ describe('campaign data', () => {
       expect(c.playedThisTurn).toBe(false)
       expect(c.used).toEqual({
         primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-        doubleAlly: false, scrap: false,
+        doubleAlly: false, scrap: false, splinter: false,
       })
     }
   })

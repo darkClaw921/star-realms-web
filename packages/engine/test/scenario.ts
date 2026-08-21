@@ -18,7 +18,7 @@ export function inPlay(def: string, opts: Partial<InPlayCard> = {}): InPlayCard 
     iid: iid(), def: asDefId(def), copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
     playedThisTurn: false,
     ...opts,

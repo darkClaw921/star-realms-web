@@ -47,6 +47,8 @@ export interface InPlayCard {
     ally4: boolean
     doubleAlly: boolean
     scrap: boolean
+    /** Lost Fleet's Splinter, spent by discarding three matching Shards. */
+    splinter: boolean
   }
   /** False for bases held over from a previous turn. */
   playedThisTurn: boolean
@@ -118,8 +120,14 @@ export interface PlayerState {
    * point of dealing them face down is that they cannot.
    */
   gambits: CardInstance[]
-  /** Revealed gambits that keep applying. One-shots never land here. */
-  gambitsInPlay: CardInstance[]
+  /**
+   * Revealed gambits that keep applying. One-shots never land here.
+   *
+   * InPlayCard rather than CardInstance because several of them have abilities
+   * you activate -- once per turn, so they need the same used-flag bookkeeping
+   * every other card in play has.
+   */
+  gambitsInPlay: InPlayCard[]
   /** Missions dealt to this player and not yet completed. Secret, like gambits. */
   missions: CardInstance[]
   /** Missions completed. Completing all of them wins the game outright. */
@@ -129,8 +137,23 @@ export interface PlayerState {
    * not what you still have, so a spent trade point still counts.
    */
   gainedThisTurn: { trade: number; combat: number; authority: number }
+  /** Pact Dominion fires on the FIRST authority gain of each of your turns. */
+  gainedAuthorityThisTurn: boolean
+  /**
+   * Armed "the next card of this faction costs less" discounts. Like the
+   * acquisition redirects they stack and expire at end of turn.
+   */
+  pendingDiscounts: { faction: Faction; n: number }[]
   /** Cards that return from the scrap heap to the discard pile at end of turn. */
   returnAtEndOfTurn: CardIid[]
+  /**
+   * Cards drawn at the end of your turn. Five, unless a Legendary Commander
+   * says otherwise -- their hand size is the whole of what makes one commander
+   * feel different from another before a single card is played.
+   */
+  handSize: number
+  /** The Legendary Commander in charge, or null in an ordinary game. Public. */
+  commander: CardDefId | null
 }
 
 export interface EffectCtx {
@@ -167,6 +190,10 @@ export type ChoiceCont =
   | { c: 'PHANTOM'; n: number }
   /** The Colossus: which in-play card the chosen faction is being pinned to. */
   | { c: 'OWN_FACTION'; iid: CardIid }
+  /** Mech Command Ship / Mech Wurm: pay `per` of `what` per card scrapped. */
+  | { c: 'SCRAP_GAIN'; per: number; what: 'trade' | 'combat' | 'authority' }
+  /** Mech Battleship: draw and then discard as many as were scrapped. */
+  | { c: 'SCRAP_DRAW_DISCARD' }
   /** Midgate Station: the resource is worth the discards plus this. */
   | { c: 'DISCARD_PLUS'; plus: number }
   /** Convert's reward: which of the three revealed cards still need a home. */

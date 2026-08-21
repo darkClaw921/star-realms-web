@@ -36,6 +36,8 @@ export type PromptKind =
   // ── Gambits and Missions ──────────────────────────────────────────────────
   | 'BUY_FROM_SCRAP_HEAP'
   | 'REVEAL_SPLIT'
+  // ── Command Decks ─────────────────────────────────────────────────────────
+  | 'SCRAP_THEN_GAIN'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

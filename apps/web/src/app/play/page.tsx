@@ -41,7 +41,10 @@ function Play(): React.JSX.Element {
   // mid-match must not reach into the game already on the table.
   const dealt = useMemo(() => {
     const st = readSettings()
-    return { sets: st.sets, gambits: st.gambits, missions: st.missions }
+    return {
+      sets: st.sets, gambits: st.gambits, missions: st.missions,
+      commandDeck: st.commandDeck,
+    }
   }, [])
   const sets = dealt.sets
 
@@ -66,6 +69,10 @@ function Play(): React.JSX.Element {
       // to the ordinary game the player configured.
       gambitsPerPlayer: challenge || mission ? 0 : dealt.gambits,
       missionsPerPlayer: challenge || mission ? 0 : dealt.missions,
+      // Only the player's own seat: the opponent keeps the standard deck.
+      commandDeck: challenge || mission || !dealt.commandDeck
+        ? undefined
+        : { p1: dealt.commandDeck },
     }),
     [seed, mode, difficulty, mission, challenge, sets, dealt],
   )

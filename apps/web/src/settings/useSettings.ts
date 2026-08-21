@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ALL_SETS, type SetId } from '@sr/engine'
+import { ALL_SETS, COMMAND_DECKS, type SetId } from '@sr/engine'
 
 /**
  * Пользовательские настройки отображения.
@@ -32,10 +32,16 @@ export interface Settings {
    */
   gambits: number
   missions: number
+  /**
+   * A Command Deck for the player, or '' for the ordinary starting deck. Only
+   * the player's own seat: the opponent keeps the standard deck, because
+   * choosing for them is not a setting, it is a different game mode.
+   */
+  commandDeck: string
 }
 
 export const DEFAULTS: Settings = {
-  cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0,
+  cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '',
 }
 
 export const LIMITS = {
@@ -61,6 +67,9 @@ export function sanitize(raw: unknown): Settings {
     sets: sanitizeSets(o.sets),
     gambits: clamp(Math.round(Number(o.gambits) || 0), LIMITS.gambits.min, LIMITS.gambits.max),
     missions: clamp(Math.round(Number(o.missions) || 0), LIMITS.missions.min, LIMITS.missions.max),
+    // An unknown id from an older or foreign record falls back to no deck, which
+    // is always a legal setup.
+    commandDeck: COMMAND_DECKS.some((c) => c.id === o.commandDeck) ? String(o.commandDeck) : '',
   }
 }
 

@@ -57,7 +57,9 @@ describe('base-set data integrity', () => {
         // Some cards do their work by existing: Energy Shield soaks damage,
         // Veteran Pilots and Black Market are read where they apply.
         c.damageReduction !== undefined || (c.onReveal?.length ?? 0) > 0 ||
-        c.objective !== undefined || c.removeOnDestroy === true
+        c.objective !== undefined || c.removeOnDestroy === true ||
+        c.splinter.length > 0 || c.baseDefenseBonus !== undefined ||
+        (c.onFirstAuthority?.length ?? 0) > 0 || c.commander !== undefined
       expect(hasSomething, `${c.name} does nothing`).toBe(true)
     }
   })

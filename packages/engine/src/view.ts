@@ -26,7 +26,7 @@ export interface InPlayCardView {
   readonly used: {
     readonly primary: boolean; readonly ally: boolean
     readonly ally2: boolean; readonly ally3: boolean; readonly ally4: boolean
-    readonly doubleAlly: boolean; readonly scrap: boolean
+    readonly doubleAlly: boolean; readonly scrap: boolean; readonly splinter: boolean
   }
   readonly playedThisTurn: boolean
 }
@@ -66,7 +66,7 @@ export interface SelfView {
   readonly gambits: readonly CardInstance[]
   readonly missions: readonly CardInstance[]
   /** Revealed gambits and completed missions are public. */
-  readonly gambitsInPlay: readonly CardInstance[]
+  readonly gambitsInPlay: readonly InPlayCardView[]
   readonly missionsDone: readonly CardDefId[]
   /**
    * Per-turn history a mission objective reads. Yours and public to you, and
@@ -89,7 +89,7 @@ export interface OpponentView {
   readonly gambitCount: number
   readonly missionCount: number
   /** Face up, so public. */
-  readonly gambitsInPlay: readonly CardInstance[]
+  readonly gambitsInPlay: readonly InPlayCardView[]
   readonly missionsDone: readonly CardDefId[]
   readonly discard: readonly CardInstance[]
   readonly inPlay: readonly InPlayCardView[]
@@ -154,7 +154,7 @@ function viewInPlay(c: InPlayCard): InPlayCardView {
     used: {
       primary: c.used.primary, ally: c.used.ally,
       ally2: c.used.ally2, ally3: c.used.ally3, ally4: c.used.ally4,
-      doubleAlly: c.used.doubleAlly, scrap: c.used.scrap,
+      doubleAlly: c.used.doubleAlly, scrap: c.used.scrap, splinter: c.used.splinter,
     },
     playedThisTurn: c.playedThisTurn,
   }
@@ -207,7 +207,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       pendingRedirects: meState.pendingRedirects.map((r) => ({ ...r })),
       gambits: meState.gambits.map((c) => ({ iid: c.iid, def: c.def })),
       missions: meState.missions.map((c) => ({ iid: c.iid, def: c.def })),
-      gambitsInPlay: meState.gambitsInPlay.map((c) => ({ iid: c.iid, def: c.def })),
+      gambitsInPlay: meState.gambitsInPlay.map(viewInPlay),
       missionsDone: [...meState.missionsDone],
       shipsPlayedThisTurn: meState.shipsPlayedThisTurn.map((c) => ({ iid: c.iid, def: c.def })),
       alliesUsedThisTurn: meState.alliesUsedThisTurn.map((u) => ({ def: u.def, slot: u.slot })),
@@ -219,7 +219,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       handCount: oppState.hand.length,
       gambitCount: oppState.gambits.length,
       missionCount: oppState.missions.length,
-      gambitsInPlay: oppState.gambitsInPlay.map((c) => ({ iid: c.iid, def: c.def })),
+      gambitsInPlay: oppState.gambitsInPlay.map(viewInPlay),
       missionsDone: [...oppState.missionsDone],
       discard: oppState.discard.map((c) => ({ iid: c.iid, def: c.def })),
       inPlay: oppState.inPlay.map(viewInPlay),

@@ -58,6 +58,7 @@ const SET_RU = {
   gambits: 'Гамбиты',
   'cosmic-gambits': 'Cosmic Gambit',
   missions: 'United: Миссии',
+  'command-decks': 'Командные колоды',
 }
 
 function engineTestCount() {

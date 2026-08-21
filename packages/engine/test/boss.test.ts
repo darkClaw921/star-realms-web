@@ -386,7 +386,7 @@ describe('printed faction tables', () => {
       iid: 'mybase' as never, def: asDefId('the-hive'), copiedDef: null, chosenFaction: null,
       used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
       playedThisTurn: false,
     }

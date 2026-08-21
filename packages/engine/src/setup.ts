@@ -1,9 +1,10 @@
-import { CARDS, EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
+import { CARDS, cardDef, EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
+import { COMMAND_DECKS, type CommandDeckSpec } from './cards/commandDecks'
 import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
 import type { ScenarioSetup } from './scenario'
-import { opponentOf, PLAYERS } from './ids'
+import { asDefId, opponentOf, PLAYERS } from './ids'
 import { nextHex, seedRng, shuffle, type RngState } from './rng'
 import {
   ENGINE_VERSION, EXPLORER_PILE_SIZE, FIRST_TURN_HAND_SIZE, HAND_SIZE,
@@ -37,6 +38,12 @@ export interface MatchSetup {
    * alternate win condition on.
    */
   readonly missionsPerPlayer?: number | undefined
+  /**
+   * A Command Deck per seat. Replaces that player's starting deck, sets their
+   * hand size and starting authority from the Legendary Commander, deals them
+   * its two gambits, and shuffles its megaship into the trade deck.
+   */
+  readonly commandDeck?: Partial<Record<PlayerId, string>> | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -80,9 +87,13 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     missions: [],
     missionsDone: [],
     gainedThisTurn: { trade: 0, combat: 0, authority: 0 },
+    gainedAuthorityThisTurn: false,
+    pendingDiscounts: [],
     alliesUsedThisTurn: [],
     scrappedThisTurn: 0,
     returnAtEndOfTurn: [],
+    handSize: HAND_SIZE,
+    commander: null,
   }
 }
 
@@ -96,10 +107,20 @@ export function createGame(setup: MatchSetup): GameState {
   let rng = seedRng(setup.seed)
   const sc = setup.scenario
 
+  // A Command Deck replaces the starting deck outright, so it is resolved before
+  // anything is minted.
+  const cmd: Partial<Record<PlayerId, CommandDeckSpec>> = {}
+  for (const pid of PLAYERS) {
+    const id = setup.commandDeck?.[pid]
+    const spec = id ? COMMAND_DECKS.find((c) => c.id === id) : undefined
+    if (spec) cmd[pid] = spec
+  }
+
   const decks: Record<PlayerId, CardInstance[]> = { p1: [], p2: [] }
   for (const pid of PLAYERS) {
     let cards: CardInstance[]
-    ;[cards, rng] = mintAll(rng, sc?.starterDeck[pid] ?? starterDeck())
+    const personal = cmd[pid]?.deck.map((x) => asDefId(x))
+    ;[cards, rng] = mintAll(rng, personal ?? sc?.starterDeck[pid] ?? starterDeck())
     // A stacked deck stays stacked: Blob Assault's ten cards are dealt in the
     // order the rulebook prints them, and shuffling would erase the challenge.
     if (!sc?.unshuffled?.includes(pid)) [cards, rng] = shuffle(rng, cards)
@@ -109,11 +130,39 @@ export function createGame(setup: MatchSetup): GameState {
   let tradeDeck: CardInstance[]
   const sets = setup.sets ?? ['core']
   ;[tradeDeck, rng] = mintAll(rng, tradeDeckComposition(sc?.tradeDeckOnly ?? undefined, sets))
+  // Each Command Deck contributes exactly one card to the shared trade deck:
+  // its eight-cost megaship. Both players' megaships go in, which is what makes
+  // a mirror match still contain two of them.
+  for (const pid of PLAYERS) {
+    const ship = cmd[pid]?.megaship
+    if (!ship) continue
+    let one: CardInstance[]
+    ;[one, rng] = mintAll(rng, [asDefId(ship)])
+    tradeDeck.push(...one)
+  }
   ;[tradeDeck, rng] = shuffle(rng, tradeDeck)
 
+  const startingAuthority = (pid: PlayerId): number => {
+    const c = cmd[pid]
+    if (c) return cardDef(asDefId(c.commander)).commander?.authority ?? STARTING_AUTHORITY
+    return sc?.authority[pid] ?? STARTING_AUTHORITY
+  }
   const players: Record<PlayerId, PlayerState> = {
-    p1: newPlayer(decks.p1, sc?.authority.p1 ?? STARTING_AUTHORITY),
-    p2: newPlayer(decks.p2, sc?.authority.p2 ?? STARTING_AUTHORITY),
+    p1: newPlayer(decks.p1, startingAuthority('p1')),
+    p2: newPlayer(decks.p2, startingAuthority('p2')),
+  }
+
+  // The commander sets the hand size, and its two gambits are dealt face up in
+  // hand terms but face down like any other gambit: they start unrevealed.
+  for (const pid of PLAYERS) {
+    const c = cmd[pid]
+    if (!c) continue
+    const def = cardDef(asDefId(c.commander))
+    players[pid].commander = def.id
+    players[pid].handSize = def.commander?.handSize ?? HAND_SIZE
+    let gs: CardInstance[]
+    ;[gs, rng] = mintAll(rng, c.gambits.map((x) => asDefId(x)))
+    players[pid].gambits.push(...gs)
   }
 
   // Cards that open in a discard pile (Blob Assault's face-up Spike Cluster).
@@ -136,7 +185,7 @@ export function createGame(setup: MatchSetup): GameState {
         iid: c.iid, def: c.def, copiedDef: null, chosenFaction: null,
         used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
         playedThisTurn: false,
       })
@@ -185,7 +234,13 @@ export function createGame(setup: MatchSetup): GameState {
   for (let i = 0; i < TRADE_ROW_SIZE; i++) tradeRow.push(tradeDeck.shift() ?? null)
 
   const second = setup.firstPlayer === 'p1' ? 'p2' : 'p1'
-  for (let i = 0; i < FIRST_TURN_HAND_SIZE; i++) {
+  // The first player's short opening hand is two fewer than their normal one,
+  // which is what FIRST_TURN_HAND_SIZE is against the standard five -- so a
+  // commander with a different hand size keeps the same handicap.
+  const firstHand = Math.max(
+    1, players[setup.firstPlayer].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE),
+  )
+  for (let i = 0; i < firstHand; i++) {
     const c = players[setup.firstPlayer].deck.shift()
     if (c) players[setup.firstPlayer].hand.push(c)
   }
@@ -193,7 +248,7 @@ export function createGame(setup: MatchSetup): GameState {
   const bossSeat = setup.boss ? opponentOf(setup.firstPlayer) : null
   const secondHand = setup.boss && setup.boss.kind === 'deck' && second === bossSeat
     ? setup.boss.handSize
-    : HAND_SIZE
+    : players[second].handSize
   for (let i = 0; i < secondHand; i++) {
     const c = players[second].deck.shift()
     if (c) players[second].hand.push(c)

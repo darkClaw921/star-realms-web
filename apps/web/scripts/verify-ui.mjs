@@ -162,7 +162,7 @@ async function main() {
     })
     await sleep(500)
     // Два ползунка отображения (размер карты и текста) плюс два раздачи
-    // (гамбиты и миссии).
+    // (гамбиты и миссии). Командная колода -- радиокнопки, не ползунок.
     const sliders = await page.$$eval('input[type=range]', (els) => els.length)
     record('панель настроек открывается', sliders === 4, `ползунков: ${sliders}`)
     shots.push(await shot(page, 'settings', 'Настройки отображения. Предпросмотр показывает настоящие карты, включая самую многословную в наборе, — на ней и видно, когда текст перестаёт помещаться.'))
@@ -306,9 +306,12 @@ async function main() {
         ['Гамбиты', 0],
         ['Cosmic Gambit', 0],
         ['United: Миссии', 0],
+        // Command decks contribute nothing to a shared trade deck either: a
+        // megaship joins it only when its commander is actually playing.
+        ['Командные колоды', 0],
       ]
 
-      const labels = await page.$$eval('.sets .switch', (els) =>
+      const labels = await page.$$eval('.sets:not(.sets--decks) .switch', (els) =>
         els.map((e) => (e.textContent ?? '').trim()))
       record('все наборы карт перечислены',
         labels.length === SETS.length && SETS.every(([n], i) => labels[i] === n),
@@ -316,7 +319,7 @@ async function main() {
       record('партия начинается с базового набора', before === 80, `колода ${before}`)
 
       // Последний включённый набор выключить нельзя -- иначе колода пуста.
-      const coreLocked = await page.$eval('.sets .switch input', (e) => e.disabled)
+      const coreLocked = await page.$eval('.sets:not(.sets--decks) .switch input', (e) => e.disabled)
       record('последний набор выключить нельзя', coreLocked === true, `заблокирован: ${coreLocked}`)
 
       let expected = 80
@@ -324,7 +327,7 @@ async function main() {
       const seen = []
       for (let i = 1; i < SETS.length; i++) {
         await page.evaluate((n) => {
-          const boxes = [...document.querySelectorAll('.sets .switch input')]
+          const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .switch input')]
           if (boxes[n] && !boxes[n].checked) boxes[n].click()
         }, i)
         await sleep(300)
@@ -338,7 +341,7 @@ async function main() {
 
       // Вернуть всё, кроме Frontiers: следующая проверка ждёт две колоды.
       await page.evaluate(() => {
-        const boxes = [...document.querySelectorAll('.sets .switch input')]
+        const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .switch input')]
         boxes.forEach((b, i) => { if (i > 1 && b.checked) b.click() })
       })
       await sleep(400)
@@ -416,6 +419,48 @@ async function main() {
           const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
           localStorage.setItem('sr:settings', JSON.stringify({
             ...raw, sets: ['core'], gambits: 0, missions: 0,
+          }))
+        } catch { /* */ }
+      })
+    }
+
+    // ── 2b-ter. командная колода ──────────────────────────────────────────
+    {
+      // Заменяет стартовую колоду целиком: свои карты, свой авторитет, свой
+      // размер руки и два гамбита с самого начала.
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({
+            ...raw, sets: ['core', 'command-decks'], commandDeck: 'lost-fleet',
+            gambits: 0, missions: 0,
+          }))
+        } catch { /* */ }
+      })
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.band--hand .card', { timeout: 10000 })
+      await sleep(900)
+
+      const hand = await page.$$eval('.band--hand .card__name', (els) =>
+        els.map((e) => (e.textContent ?? '').trim()))
+      const authority = await page.evaluate(() =>
+        (document.querySelector('.band--hand')?.textContent ?? '').trim())
+      record('командная колода заменяет стартовую',
+        hand.length === 5 && hand.every((n) => /осколок/i.test(n)),
+        hand.join(' · '))
+      record('стартовый авторитет командира применён',
+        /72/.test(authority), authority.slice(0, 90))
+      shots.push(await shot(page, 'command-deck',
+        'Командная колода «Потерянный флот». Стартовая колода заменена осколками, ' +
+        'авторитет и размер руки взяты у легендарного командира, два его гамбита ' +
+        'лежат закрытыми, а восьмистоимостный «Потерянный дредноут» замешан в ' +
+        'общую торговую колоду.'))
+
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({
+            ...raw, sets: ['core'], commandDeck: '',
           }))
         } catch { /* */ }
       })

@@ -98,6 +98,7 @@ export const UI = {
     gambits: 'Гамбиты',
     'cosmic-gambits': 'Cosmic Gambit',
     missions: 'United: Миссии',
+    'command-decks': 'Командные колоды',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -114,6 +115,21 @@ export const UI = {
   claimMission: (name: string): string => `Выполнить миссию «${name}»`,
   missionPending: (name: string): string => `«${name}» — задача ещё не выполнена`,
   missionsDone: (done: number, total: number): string => `Миссий выполнено: ${done} из ${total}`,
+  commandDeckName: 'Командная колода',
+  commandDeckNone: 'Без командной колоды',
+  commandDeckHint: 'Заменяет вашу стартовую колоду: свои десять карт, свой размер руки ' +
+    'и свой стартовый авторитет, два гамбита в начале и один восьмистоимостный корабль ' +
+    'в торговую колоду. Соперник играет обычной колодой.',
+  commandDeckRu: {
+    '': 'Без командной колоды',
+    alliance: 'Альянс — директор флота Нанди',
+    alignment: 'Согласие — божественный адмирал Ле',
+    coalition: 'Коалиция — верховный директор Валкен',
+    pact: 'Пакт — оверлорд Ньюберг',
+    union: 'Союз — адмирал улья Маккриди',
+    unity: 'Единство — биолорд Уолш',
+    'lost-fleet': 'Потерянный флот — верховный адмирал Йохум',
+  } as Record<string, string>,
   gambitsName: 'Гамбиты',
   gambitsHint: 'Сколько гамбитов раздать каждому игроку в начале партии. ' +
     'Нужен включённый набор с гамбитами.',
@@ -171,6 +187,7 @@ export const UI = {
   slotAlly2: 'Союзное 2',
   slotAlly3: 'Союзное 3',
   slotAlly4: 'Союзное 4',
+  slotSplinter: 'Сплинтер',
   slotScrap: 'Утиль',
 
   // передача устройства
@@ -310,6 +327,9 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return 'Заплатите стоимость карты из утиля и возьмите её в руку'
     case 'REVEAL_SPLIT':
       return 'Разложите открытые карты: в руку, в сброс и на верх колоды'
+    // ── Командные колоды ───────────────────────────────────────────────────
+    case 'SCRAP_THEN_GAIN':
+      return `Утилизируйте до ${n} карт — награда зависит от их числа`
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { ALL_SETS, asDefId, tradeDeckComposition, type SetId } from '@sr/engine'
+import { ALL_SETS, asDefId, COMMAND_DECKS, tradeDeckComposition, type SetId } from '@sr/engine'
 import { UI } from '@/i18n/ui'
 import { DEFAULTS, LIMITS, useSettings, type Settings } from '@/settings/useSettings'
 import { Card } from './Card'
@@ -119,6 +119,33 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
               })}
             </div>
             <p className="setting__hint">{UI.setsHint}</p>
+          </div>
+
+          <div>
+            <div className="setting__head">
+              <span className="setting__name">{UI.commandDeckName}</span>
+            </div>
+            {/* A radio group, not a set toggle: you play ONE command deck, and
+              * choosing it replaces your starting deck rather than adding to a
+              * shared pool. */}
+            {/* Its own class, not `sets`: these are a radio group choosing ONE
+              * deck, and sharing a class with the set toggles would make every
+              * "how many sets are there" question ambiguous. */}
+            <div className="sets sets--decks">
+              {[{ id: '', name: UI.commandDeckNone }, ...COMMAND_DECKS].map((c) => (
+                <label key={c.id} className="switch switch--deck">
+                  <input
+                    type="radio"
+                    name="command-deck"
+                    checked={settings.commandDeck === c.id}
+                    onChange={() => set('commandDeck', c.id)}
+                  />
+                  <span className="track" />
+                  <span>{UI.commandDeckRu[c.id] ?? c.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="setting__hint">{UI.commandDeckHint}</p>
           </div>
 
           {/* Dealt at setup, so like the sets these only affect the NEXT game. */}

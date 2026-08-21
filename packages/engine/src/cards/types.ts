@@ -15,6 +15,14 @@ export type CardRole =
   | 'mission'
   /** A card that only ever enters play from another card. Secret Outpost. */
   | 'token'
+  /**
+   * A Command Deck card: it makes up that commander's personal starting deck
+   * and is never in the trade deck. The one exception per deck -- the 8-cost
+   * megaship -- carries `role: 'trade_deck'` instead and IS shuffled in.
+   */
+  | 'command'
+  /** The Legendary Commander itself: hand size and starting authority, no more. */
+  | 'commander'
 
 /**
  * Which product a card comes from.
@@ -46,6 +54,7 @@ export type SetId =
   | 'gambits'
   | 'cosmic-gambits'
   | 'missions'
+  | 'command-decks'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -62,6 +71,8 @@ export interface CardText {
   readonly ally2?: string
   readonly ally3?: string
   readonly ally4?: string
+  /** Lost Fleet: what three matching Shards buy. */
+  readonly splinter?: string
   /** Frontiers: needs TWO other cards of the faction, not one. */
   readonly doubleAlly?: string
   readonly scrap: string
@@ -145,6 +156,27 @@ export interface CardDef {
    * has to get through to destroy this card" and belongs to bases alone.
    */
   readonly damageReduction?: number
+  /**
+   * An ongoing gambit whose primary is ACTIVATED once per turn rather than
+   * granted at the start of it. Frontier Fleet pays automatically; Alliance
+   * Procurement waits to be asked.
+   */
+  readonly activated?: boolean
+  /** Unity Warcraft: your bases get +1 defense and the opponent's get -1. */
+  readonly baseDefenseBonus?: number
+  /** Pact Dominion: the first time you gain authority each turn, also do this. */
+  readonly onFirstAuthority?: readonly Effect[]
+  /** Legendary Commanders set the hand size and the starting authority. */
+  readonly commander?: { readonly handSize: number; readonly authority: number }
+  /**
+   * Lost Fleet's Splinter: play three matching Shards in a turn and you may
+   * discard that set of three from play to use this. A slot of its own, because
+   * the cost is the three cards -- nothing else in the game spends its own
+   * copies that way.
+   */
+  readonly splinter: readonly Effect[]
+  /** Command Shard: counts as any Shard name when matching a Splinter set. */
+  readonly splinterWildcard?: boolean
   readonly role: CardRole
   /** Ships: resolved immediately and mandatorily on play. Bases: activatable once per turn. */
   readonly primary: readonly Effect[]
@@ -193,10 +225,10 @@ export type CardRegistry = ReadonlyMap<CardDefId, CardDef>
 export type Spec =
   Omit<CardDef,
     'id' | 'set' | 'ally' | 'ally2' | 'ally3' | 'ally4'
-    | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'> &
+    | 'doubleAlly' | 'scrap' | 'splinter' | 'triggers' | 'factionWildcard'> &
   Partial<Pick<CardDef,
     'set' | 'ally' | 'ally2' | 'ally3' | 'ally4'
-    | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'>>
+    | 'doubleAlly' | 'scrap' | 'splinter' | 'triggers' | 'factionWildcard'>>
 
 /** Fills in everything a spec leaves out. Shared by every set's card table. */
 export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, CardDef][] {
@@ -208,6 +240,7 @@ export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, C
       ...s,
       ally: s.ally ?? [],
       ally2: s.ally2 ?? [],
+      splinter: s.splinter ?? [],
       ally3: s.ally3 ?? [],
       ally4: s.ally4 ?? [],
       doubleAlly: s.doubleAlly ?? [],

@@ -7,7 +7,8 @@ import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
-  allySlotFaction, allyCountFor, canAttackFace, costFor, effectiveDefId, factionsOf,
+  allySlotFaction, allyCountFor, canAttackFace, costFor, defenseOf, effectiveDefId,
+  factionsOf,
   findInPlay, isBase,
   isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets, objectiveMet,
 } from './helpers'
@@ -15,7 +16,7 @@ import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './id
 import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
 import { nextHex, nextInt, shuffle } from './rng'
 import {
-  EXPLORER_COST, HAND_SIZE, TRADE_ROW_SIZE, emptyFactionCounts,
+  EXPLORER_COST, TRADE_ROW_SIZE, emptyFactionCounts,
   type CardInstance, type ChoiceCont, type EffectCtx, type GameState, type InPlayCard,
   type PlayerState, type ResolutionFrame,
 } from './state'
@@ -66,6 +67,18 @@ function gain(d: D, pid: PlayerId, what: 'trade' | 'combat' | 'authority', n: nu
   // Diversify asks what you GAINED, not what you still have, so a spent point
   // still counts. Losses are not negative gains and are not counted.
   if (n > 0) p.gainedThisTurn[what] += n
+  // Pact Dominion. Fires once, on the FIRST authority gain of the turn, and the
+  // flag is set before the follow-up runs so a follow-up that also gains
+  // authority cannot re-enter.
+  if (what === 'authority' && n > 0 && !p.gainedAuthorityThisTurn) {
+    p.gainedAuthorityThisTurn = true
+    for (const g of p.gambitsInPlay) {
+      const then = cardDef(g.def).onFirstAuthority
+      if (then && then.length > 0) {
+        pushEffects(d, then, { controller: pid, source: g.iid, slot: 'trigger' })
+      }
+    }
+  }
   ev.push({ e: 'GAIN', player: pid, what, n })
 }
 
@@ -286,6 +299,16 @@ function acquire(
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
+  if (dest === 'deck_shuffle') {
+    // Shuffled IN, not put on top: the card is somewhere in the deck and the
+    // owner does not know where, which is the whole difference from topdecking.
+    p.deck.push(inst)
+    const [shuffled, next] = shuffle(d.rng, p.deck as CardInstance[])
+    d.rng = next as Draft<GameState>['rng']
+    p.deck = shuffled as DP['deck']
+    fireAcquireSelf(d, pid, inst, ev)
+    return
+  }
   if (dest === 'in_play') { enterPlay(d, pid, inst, ev); fireAcquireSelf(d, pid, inst, ev); return }
   p.discard.push(inst)
   fireAcquireSelf(d, pid, inst, ev)
@@ -371,7 +394,7 @@ function enterPlay(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): vo
     copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
     playedThisTurn: false,
   } as Draft<InPlayCard>)
@@ -642,6 +665,31 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'SCRAP_FROM_ZONES': {
+      // Coalition Efficiency replaces a scrap you were about to make, so it is
+      // offered BEFORE the scrap choice rather than after it resolves. Once per
+      // turn, and only when a scrap from your own zones is on the table.
+      const owned = effect.zones.includes('hand') || effect.zones.includes('discard')
+      if (owned) {
+        const swap = p.gambitsInPlay.find(
+          (g) => !g.used.primary && cardDef(g.def).triggers.some((t) => t.on === 'WOULD_SCRAP'),
+        )
+        if (swap) {
+          const t = cardDef(swap.def).triggers.find((x) => x.on === 'WOULD_SCRAP')
+          // Marked used before the branch resolves: whichever way it goes, the
+          // offer was made, and "once per turn" counts offers, not acceptances.
+          swap.used.primary = true
+          // "INSTEAD of scrapping", so the two are branches of one choice --
+          // taking the substitute must not also perform the scrap.
+          pushEffects(d, [{
+            k: 'CHOOSE_ONE',
+            branches: [
+              { label: 'Scrap as normal', then: [{ ...effect }] },
+              { label: cardDef(swap.def).name, then: [...(t?.effects ?? [])] },
+            ],
+          }], { ...ctx, source: swap.iid })
+          return
+        }
+      }
       const opts: ChoiceOption[] = []
       if (effect.zones.includes('hand')) opts.push(...cardOpts(p.hand as CardInstance[], 'hand', me))
       if (effect.zones.includes('discard')) opts.push(...cardOpts(p.discard as CardInstance[], 'discard', me))
@@ -845,6 +893,34 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       pushChoice(d, makeChoice(d, me, 'SET_ASIDE_FROM_ROW',
         'Set a trade row card aside; anyone may acquire it for the rest of the game',
         effect.min, 1, opts, ctx.source))
+      return
+    }
+
+    case 'DISCOUNT_NEXT_ACQUIRED': {
+      p.pendingDiscounts.push({ faction: effect.faction, n: effect.n })
+      return
+    }
+
+    case 'SCRAP_THEN_GAIN': {
+      const opts: ChoiceOption[] = []
+      if (effect.zones.includes('hand')) opts.push(...cardOpts(p.hand as CardInstance[], 'hand', me))
+      if (effect.zones.includes('discard')) opts.push(...cardOpts(p.discard as CardInstance[], 'discard', me))
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to scrap' }); return }
+      pushChoice(d, makeChoice(d, me, 'SCRAP_THEN_GAIN',
+        `Scrap up to ${effect.max} cards`, 0, Math.min(effect.max, opts.length), opts, ctx.source),
+        { c: 'SCRAP_GAIN', per: effect.per, what: effect.what })
+      return
+    }
+
+    case 'SCRAP_DRAW_DISCARD': {
+      const opts: ChoiceOption[] = []
+      if (effect.zones.includes('hand')) opts.push(...cardOpts(p.hand as CardInstance[], 'hand', me))
+      if (effect.zones.includes('discard')) opts.push(...cardOpts(p.discard as CardInstance[], 'discard', me))
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to scrap' }); return }
+      pushChoice(d, makeChoice(d, me, 'SCRAP_THEN_GAIN',
+        `Scrap up to ${effect.max} cards, then draw and discard that many`,
+        0, Math.min(effect.max, opts.length), opts, ctx.source),
+        { c: 'SCRAP_DRAW_DISCARD' })
       return
     }
 
@@ -1124,6 +1200,8 @@ function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
       // "Including this one": the card asking has already entered play, so the
       // ordinary in-play scan answers the question with no special case.
       return d.players[me].inPlay.some((c) => c.playedThisTurn && isBase(c))
+    case 'SCRAPPED_THIS_TURN':
+      return d.players[me].scrappedThisTurn >= cond.n
   }
 }
 
@@ -1421,6 +1499,25 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'SCRAP_THEN_GAIN': {
+      let n = 0
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        const inst = removeFromZone(d, me, o.zone, o.iid)
+        if (!inst) continue
+        toScrapHeap(d, inst, o.zone, me, ev)
+        n++
+      }
+      if (n === 0) return
+      if (cont?.c === 'SCRAP_GAIN') {
+        gain(d, me, cont.what, n * cont.per, ev)
+      } else {
+        // Mech Battleship: draw as many as were scrapped, then discard as many.
+        pushEffects(d, [{ k: 'DRAW', n }, { k: 'SELF_DISCARD', n }], ctx)
+      }
+      return
+    }
+
     case 'BUY_FROM_SCRAP_HEAP': {
       const o = selected[0]
       if (!o || o.o !== 'CARD') return
@@ -1636,7 +1733,7 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
     playedThisTurn: true,
   }
@@ -1679,13 +1776,34 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   if (queued.length > 0) pushEffects(d, queued, ctx)
 }
 
+/**
+ * The three Shards a Splinter ability would spend, or an empty list.
+ *
+ * "Play three matching Shards on a turn, then discard that set of three from
+ * play." Command Shard counts as any name, so it fills a gap in a set rather
+ * than forming one of its own.
+ */
+export function splinterSet(
+  p: { inPlay: readonly Pick<InPlayCard, 'iid' | 'def' | 'playedThisTurn'>[] },
+  card: Pick<InPlayCard, 'iid' | 'def'>,
+): Pick<InPlayCard, 'iid' | 'def'>[] {
+  const played = p.inPlay.filter((c) => c.playedThisTurn)
+  const same = played.filter((c) => c.def === card.def)
+  const wild = played.filter((c) => c.def !== card.def && cardDef(c.def).splinterWildcard)
+  const set = [...same, ...wild].slice(0, 3)
+  return set.length === 3 && set.some((c) => c.iid === card.iid) ? set : []
+}
+
 function activate(
   d: D, me: PlayerId, iid: CardIid,
-  slot: 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap',
+  slot:
+    | 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap' | 'splinter',
   ev: GameEvent[],
 ): void {
   const p = d.players[me]
-  const card = p.inPlay.find((c) => c.iid === iid)
+  // Revealed gambits are activated exactly like cards in play; they simply live
+  // beside the board rather than on it.
+  const card = p.inPlay.find((c) => c.iid === iid) ?? p.gambitsInPlay.find((c) => c.iid === iid)
   if (!card) throw new IllegalActionError(`card ${iid} is not in play`)
   if (card.used[slot]) throw new IllegalActionError(`${slot} already used this turn`)
 
@@ -1729,7 +1847,7 @@ function activate(
   ev.push({ e: 'ABILITY_USED', player: me, iid: card.iid, def: card.def, slot })
   // Remembered for Needle Lancer, which copies an ally ability used earlier this
   // turn. Stored as definition + slot so it survives the card leaving play.
-  if (slot !== 'primary' && slot !== 'scrap') {
+  if (slot !== 'primary' && slot !== 'scrap' && slot !== 'splinter') {
     // A copy ability is not itself copyable: there would be nothing behind it,
     // and two Needle Lancers pointing at each other would never terminate.
     if (!effects.some((e) => e.k === 'COPY_USED_ALLY')) {
@@ -1737,7 +1855,35 @@ function activate(
     }
   }
 
+  if (slot === 'splinter') {
+    // The cost of a Splinter ability is the three matching Shards themselves:
+    // they are discarded from play, and their primaries have already resolved.
+    const set = splinterSet(p, card)
+    for (const c of set) {
+      const at = p.inPlay.findIndex((x) => x.iid === c.iid)
+      if (at < 0) continue
+      p.inPlay.splice(at, 1)
+      p.discard.push({ iid: c.iid, def: c.def })
+      ev.push({ e: 'DISCARD', player: me, iid: c.iid, def: c.def })
+    }
+    for (const g of p.gambitsInPlay) {
+      for (const t of cardDef(g.def).triggers) {
+        if (t.on !== 'SPLINTER') continue
+        pushEffects(d, t.effects, { controller: me, source: g.iid, slot: 'trigger' })
+      }
+    }
+  }
+
   if (slot === 'scrap') {
+    // Alignment Ingenuity watches this: "whenever you use a scrap ability of a
+    // ship or base". Gambits scrap themselves too, and are not ships or bases,
+    // so the watcher only fires for cards that were in play.
+    for (const g of p.gambitsInPlay) {
+      for (const t of cardDef(g.def).triggers) {
+        if (t.on !== 'SCRAP_ABILITY') continue
+        pushEffects(d, t.effects, { controller: me, source: g.iid, slot: 'trigger' })
+      }
+    }
     // Using a card's own scrap ability removes it from play permanently. Its
     // other abilities may have been used first, which is the standard line.
     const idx = p.inPlay.findIndex((c) => c.iid === iid)
@@ -1773,6 +1919,14 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     && d.blackMarketOwner === me
     && !d.blackMarketUsedThisTurn
   if (fromMarket) cost = Math.max(0, cost - 1)
+  // Federation Scout: one armed discount, spent on the next card of its faction.
+  const discount = p.pendingDiscounts.findIndex(
+    (x) => factionsOf({ def: inst.def, copiedDef: null }).includes(x.faction),
+  )
+  if (discount >= 0) {
+    cost = Math.max(0, cost - (p.pendingDiscounts[discount]?.n ?? 0))
+    p.pendingDiscounts.splice(discount, 1)
+  }
   if (p.trade < cost) throw new IllegalActionError('not enough trade')
   p.trade -= cost
   if (fromMarket) d.blackMarketUsedThisTurn = true
@@ -1853,6 +2007,8 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.phantomFactions = []
   p.alliesUsedThisTurn = []
   p.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
+  p.gainedAuthorityThisTurn = false
+  p.pendingDiscounts = []
   // Stealth Tower copies a base "until your turn ends", so the copy is dropped
   // HERE rather than at the start of your next turn. The difference is not
   // cosmetic: a copied outpost left standing would shield you through the
@@ -1861,7 +2017,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
 
   // A deck boss draws what its challenge card says, not the standard five.
   const bossHand = d.boss && d.boss.kind === 'deck' && me === bossSeat(d) ? d.boss.handSize : 0
-  if (!scriptBoss) drawCards(d, me, bossHand > 0 ? bossHand : HAND_SIZE, ev)
+  if (!scriptBoss) drawCards(d, me, bossHand > 0 ? bossHand : p.handSize, ev)
 
   d.activePlayer = opponentOf(me)
   d.turn += 1
@@ -1877,11 +2033,22 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.phantomFactions = []
   next.alliesUsedThisTurn = []
   next.gainedThisTurn = { trade: 0, combat: 0, authority: 0 }
+  next.gainedAuthorityThisTurn = false
+  next.pendingDiscounts = []
+  // Revealed gambits recharge with everything else in play.
+  for (const g of next.gambitsInPlay) {
+    g.used = {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false, splinter: false,
+    }
+  }
   d.blackMarketUsedThisTurn = false
   // Frontier Fleet and its kind: an ongoing gambit that pays at the start of
   // every one of your turns, so it is granted here rather than by an action.
   for (const g of next.gambitsInPlay) {
-    const turnStart = cardDef(g.def).primary
+    const def = cardDef(g.def)
+    // An ACTIVATED gambit waits to be asked; only the automatic ones pay here.
+    const turnStart = def.activated ? [] : def.primary
     if (turnStart.length > 0) {
       pushEffects(d, turnStart, { controller: d.activePlayer, source: g.iid, slot: 'primary' })
     }
@@ -1889,7 +2056,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   for (const c of next.inPlay) {
     c.used = {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     }
     c.playedThisTurn = false
     // Copy state is cleared when its own turn ends, not here -- see above.
@@ -2066,7 +2233,7 @@ function playCardFor(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[], c
     iid: inst.iid, def: inst.def, copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
-      doubleAlly: false, scrap: false,
+      doubleAlly: false, scrap: false, splinter: false,
     },
     playedThisTurn: true,
   })
@@ -2331,7 +2498,14 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       if (def.scrap.length > 0) {
         d.scrapHeap.push(inst)
       } else {
-        p.gambitsInPlay.push(inst)
+        p.gambitsInPlay.push({
+          iid: inst.iid, def: inst.def, copiedDef: null, chosenFaction: null,
+          used: {
+            primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+            doubleAlly: false, scrap: false, splinter: false,
+          },
+          playedThisTurn: false,
+        } as Draft<InPlayCard>)
       }
       const onReveal = def.onReveal ?? []
       const body = def.scrap.length > 0 ? def.scrap : []
@@ -2362,7 +2536,7 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       const targets = legalAttackTargets(d as unknown as GameState, me)
       const target = targets.find((c) => c.iid === action.base)
       if (!target) throw new IllegalActionError('not a legal base target')
-      const defense = cardDef(target.def).defense ?? 0
+      const defense = defenseOf(d.players, opponentOf(me), cardDef(target.def).defense ?? 0)
       if (p.combat < defense) throw new IllegalActionError('not enough combat')
       // Spend EXACTLY the defense value; the remainder stays in the pool.
       p.combat -= defense

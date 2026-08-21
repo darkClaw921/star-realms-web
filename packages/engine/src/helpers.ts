@@ -228,3 +228,24 @@ export function objectiveMet(p: ObjectiveContext, o: MissionObjective): boolean 
         && p.gainedThisTurn.authority >= o.authority
   }
 }
+
+/**
+ * What a base actually has to survive.
+ *
+ * Unity Warcraft reads "your bases get +1 defense, your opponent's get -1", so
+ * the modifier is the owner's bonus minus the other side's. Every place that
+ * compares combat against a base has to go through here, or a base will be
+ * destroyable by an amount the UI said was not enough.
+ */
+export function defenseOf(
+  players: Record<PlayerId, { gambitsInPlay: readonly { def: CardDefId }[] }>,
+  owner: PlayerId,
+  def: number,
+): number {
+  const bonus = (pid: PlayerId): number => {
+    let n = 0
+    for (const g of players[pid].gambitsInPlay) n += cardDef(g.def).baseDefenseBonus ?? 0
+    return n
+  }
+  return Math.max(1, def + bonus(owner) - bonus(opponentOf(owner)))
+}

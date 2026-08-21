@@ -88,6 +88,17 @@ const SOURCES = [
     },
   },
   {
+    // The Command Decks, one prefix per deck (SRCMDALL, SRCMDUNN, SRCMDLF, ...).
+    set: 'command-decks',
+    url: `${BASE_API}&per_page=100&search=SRCMD`,
+    pages: 3,
+    // Most cards were uploaded more than once across the seven decks.
+    expect: 88,
+    keep: (title: string): boolean =>
+      /^SRCMD/.test(title) && SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
     // Gambits and Missions. Their faces were uploaded under bare lowercase
     // names, so like United they are matched against the ids we already have.
     set: 'gambits-and-missions',
@@ -290,6 +301,12 @@ function toCardId(title: string): string {
 
 const SIZES = [320, 640] as const
 
+/** Extra ids that get a copy of another card's picture. See the write loop. */
+const ALIASES: Record<string, readonly string[]> = {
+  scout: ['cd-scout'],
+  viper: ['cd-viper'],
+}
+
 /**
  * The publisher serves COMPLETE CARD FACES, not isolated artwork -- frame, name
  * banner, cost, printed text and all. Layering our own frame over that produces
@@ -358,8 +375,16 @@ async function main(): Promise<void> {
         height: Math.round(h * c.height),
       }
       for (const size of SIZES) {
-        await sharp(buf).extract(box).resize({ width: size }).webp({ quality: 82 })
-          .toFile(join(ART_DIR, `${id}-${size}.webp`))
+        const out = sharp(buf).extract(box).resize({ width: size }).webp({ quality: 82 })
+        await out.toFile(join(ART_DIR, `${id}-${size}.webp`))
+        // A Command Deck's Scout and Viper are the same cards as the base set's
+        // but carry their own ids, so that they stay out of the trade deck.
+        // Same picture, so the file is written twice rather than the renderer
+        // learning about aliases.
+        for (const alias of ALIASES[id] ?? []) {
+          await sharp(buf).extract(box).resize({ width: size }).webp({ quality: 82 })
+            .toFile(join(ART_DIR, `${alias}-${size}.webp`))
+        }
       }
       ok++
       process.stdout.write(`  ${id.padEnd(20)} ${w}x${h} -> art ${box.width}x${box.height}\n`)
