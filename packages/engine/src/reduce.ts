@@ -64,16 +64,44 @@ function gain(d: D, pid: PlayerId, what: 'trade' | 'combat' | 'authority', n: nu
   ev.push({ e: 'GAIN', player: pid, what, n })
 }
 
+function win(d: D, who: PlayerId, ev: GameEvent[]): void {
+  d.winner = who
+  d.phase = 'gameOver'
+  d.resolution = []
+  ev.push({ e: 'GAME_OVER', winner: who })
+}
+
+/**
+ * Zero authority always ends the game, in every scenario -- a mission can add a
+ * way to win, never take away the way to lose. Only when nobody is dead does an
+ * objective get consulted, so a hero who completes their objective on the same
+ * turn they are killed still loses.
+ */
 function checkWin(d: D, ev: GameEvent[]): void {
   if (d.winner) return
   for (const pid of PLAYERS) {
     if (d.players[pid].authority <= 0) {
-      d.winner = opponentOf(pid)
-      d.phase = 'gameOver'
-      d.resolution = []
-      ev.push({ e: 'GAME_OVER', winner: d.winner })
+      win(d, opponentOf(pid), ev)
       return
     }
+  }
+
+  const sc = d.scenario
+  if (!sc) return
+  const hero = sc.hero
+  switch (sc.objective.k) {
+    case 'AUTHORITY':
+      return
+    case 'SURVIVE':
+      // The turn counter has already advanced past the last turn to survive.
+      if (d.turn > sc.objective.turns) win(d, hero, ev)
+      return
+    case 'DESTROY_BASES':
+      if (d.basesDestroyed[hero] >= sc.objective.n) win(d, hero, ev)
+      return
+    case 'REACH_AUTHORITY':
+      if (d.players[hero].authority >= sc.objective.n) win(d, hero, ev)
+      return
   }
 }
 
@@ -179,10 +207,17 @@ function acquire(
   }
 }
 
-function destroyBase(d: D, owner: PlayerId, card: InPlayCard, by: 'combat' | 'effect', ev: GameEvent[]): void {
+function destroyBase(
+  d: D, owner: PlayerId, card: InPlayCard, by: 'combat' | 'effect', ev: GameEvent[],
+  destroyer: PlayerId = opponentOf(owner),
+): void {
   const p = d.players[owner]
   const idx = p.inPlay.findIndex((c) => c.iid === card.iid)
   if (idx < 0) return
+  // Only enemy bases count. "Destroy target base" may legally target your own,
+  // and a mission asking you to break a blockade must not be satisfiable by
+  // demolishing your own outpost.
+  if (destroyer !== owner) d.basesDestroyed[destroyer] += 1
   p.inPlay.splice(idx, 1)
   // Destroyed bases go to their OWNER'S discard pile, not the scrap heap --
   // they cycle back into that player's deck.
@@ -444,7 +479,9 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       for (const o of selected) {
         if (o.o !== 'CARD') continue
         const found = findInPlay(d as unknown as GameState, o.iid)
-        if (found) destroyBase(d, found.owner, found.card, 'effect', ev)
+        // `me` resolves the choice, so `me` is the destroyer -- which matters
+        // because the target may legally be one of their own bases.
+        if (found) destroyBase(d, found.owner, found.card, 'effect', ev, me)
       }
       return
     }
@@ -693,7 +730,22 @@ function endTurn(d: D, ev: GameEvent[]): void {
     // A Stealth Needle never survives a turn (it is a ship), so no copy state
     // can leak across turns; bases have none.
   }
+  // A scenario's per-turn funding is granted like any other gain: at the start
+  // of the turn, spendable by the normal rules, and lost at end of turn if
+  // unspent. This is the whole of what makes a boss a boss -- no second card
+  // type, no special-cased combat.
+  const sc = d.scenario
+  if (sc) {
+    const to = d.activePlayer
+    if (sc.turnStartCombat[to] > 0) gain(d, to, 'combat', sc.turnStartCombat[to], ev)
+    if (sc.turnStartTrade[to] > 0) gain(d, to, 'trade', sc.turnStartTrade[to], ev)
+  }
+
   ev.push({ e: 'TURN_START', player: d.activePlayer, turn: d.turn })
+
+  // A SURVIVE objective is decided by the clock, so the clock has to be read
+  // where it advances.
+  checkWin(d, ev)
 }
 
 function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {

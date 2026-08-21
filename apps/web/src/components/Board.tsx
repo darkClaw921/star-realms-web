@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { cardDef, EXPLORER, type Action, type CardIid, type PlayerId } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
+import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
 import { UI } from '@/i18n/ui'
 import type { MatchSnapshot } from '@/match/types'
 import { Card } from './Card'
@@ -128,6 +129,20 @@ export function Board({
       </section>
 
       {/* ── the market ───────────────────────────────────────────────────── */}
+      {v.scenario && (
+        <div className="objective">
+          <span className="objective__label">{UI.objectiveLabel}</span>
+          <span className="objective__text">{objectiveRu(v.scenario.objective)}</span>
+          {(() => {
+            const p = objectiveProgressRu(
+              v.scenario.objective, v.turn,
+              v.basesDestroyed[v.scenario.hero], v.me.authority,
+            )
+            return p ? <span className="objective__progress">{p}</span> : null
+          })()}
+        </div>
+      )}
+
       <section className="band band--market">
         <div className="zone__head">
           <span className="eyebrow">{UI.tradeRow}</span>
@@ -277,10 +292,12 @@ export function Board({
           <div className="sheet" style={{ textAlign: 'center' }}>
             <p className="eyebrow">{UI.gameOver}</p>
             <h2 className="sheet__title" style={{ fontSize: 28, margin: '6px 0 14px' }}>
-              {UI.wins(seatNames[v.winner as PlayerId])}
+              {v.scenario
+                ? (v.winner === v.scenario.hero ? UI.missionComplete : UI.missionFailed)
+                : UI.wins(seatNames[v.winner as PlayerId])}
             </h2>
             <button type="button" className="btn btn--primary" onClick={onExit}>
-              {UI.toMenu}
+              {v.scenario ? UI.toCampaign : UI.toMenu}
             </button>
           </div>
         </div>

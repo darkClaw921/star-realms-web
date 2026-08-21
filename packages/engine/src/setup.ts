@@ -1,5 +1,6 @@
 import { EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
 import type { CardDefId, CardIid, PlayerId } from './ids'
+import type { ScenarioSetup } from './scenario'
 import { PLAYERS } from './ids'
 import { nextHex, seedRng, shuffle, type RngState } from './rng'
 import {
@@ -13,6 +14,8 @@ export interface MatchSetup {
   /** Hex string from a CSPRNG, generated OUTSIDE the engine. */
   readonly seed: string
   readonly firstPlayer: PlayerId
+  /** A campaign mission, or absent for the standard game. */
+  readonly scenario?: ScenarioSetup | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -36,9 +39,9 @@ function starterDeck(): CardDefId[] {
   return [...Array(8).fill(SCOUT), ...Array(2).fill(VIPER)] as CardDefId[]
 }
 
-function newPlayer(deck: CardInstance[]): PlayerState {
+function newPlayer(deck: CardInstance[], authority: number): PlayerState {
   return {
-    authority: STARTING_AUTHORITY,
+    authority,
     deck,
     hand: [],
     discard: [],
@@ -60,22 +63,40 @@ function newPlayer(deck: CardInstance[]): PlayerState {
  */
 export function createGame(setup: MatchSetup): GameState {
   let rng = seedRng(setup.seed)
+  const sc = setup.scenario
 
   const decks: Record<PlayerId, CardInstance[]> = { p1: [], p2: [] }
   for (const pid of PLAYERS) {
     let cards: CardInstance[]
-    ;[cards, rng] = mintAll(rng, starterDeck())
+    ;[cards, rng] = mintAll(rng, sc?.starterDeck[pid] ?? starterDeck())
     ;[cards, rng] = shuffle(rng, cards)
     decks[pid] = cards
   }
 
   let tradeDeck: CardInstance[]
-  ;[tradeDeck, rng] = mintAll(rng, tradeDeckComposition())
+  ;[tradeDeck, rng] = mintAll(rng, sc?.tradeDeckOnly
+    ? tradeDeckComposition(sc.tradeDeckOnly)
+    : tradeDeckComposition())
   ;[tradeDeck, rng] = shuffle(rng, tradeDeck)
 
   const players: Record<PlayerId, PlayerState> = {
-    p1: newPlayer(decks.p1),
-    p2: newPlayer(decks.p2),
+    p1: newPlayer(decks.p1, sc?.authority.p1 ?? STARTING_AUTHORITY),
+    p2: newPlayer(decks.p2, sc?.authority.p2 ?? STARTING_AUTHORITY),
+  }
+
+  // Bases a mission starts you (or the boss) with. They are already standing,
+  // so playedThisTurn is false and their abilities are available immediately --
+  // exactly like a base held over from a previous turn.
+  for (const pid of PLAYERS) {
+    for (const def of sc?.startingBases[pid] ?? []) {
+      let c: CardInstance
+      ;[c, rng] = mint(rng, def)
+      players[pid].inPlay.push({
+        iid: c.iid, def: c.def, copiedDef: null,
+        used: { primary: false, ally: false, scrap: false },
+        playedThisTurn: false,
+      })
+    }
   }
 
   const tradeRow: (CardInstance | null)[] = []
@@ -106,6 +127,8 @@ export function createGame(setup: MatchSetup): GameState {
     resolution: [],
     rng,
     winner: null,
+    scenario: sc?.rules ?? null,
+    basesDestroyed: { p1: 0, p2: 0 },
   }
 }
 

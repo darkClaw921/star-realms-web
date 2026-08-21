@@ -18,6 +18,12 @@ const MODES = [
     fc: FACTION_VAR.trade_federation,
   },
   {
+    href: '/campaign',
+    name: UI.modeCampaign,
+    desc: UI.modeCampaignDesc,
+    fc: FACTION_VAR.machine_cult,
+  },
+  {
     href: '/online',
     name: UI.modeOnline,
     desc: UI.modeOnlineDesc,

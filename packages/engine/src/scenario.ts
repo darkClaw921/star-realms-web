@@ -1,0 +1,58 @@
+import type { CardDefId, PlayerId } from './ids'
+
+/**
+ * Scenario rules: the part of a campaign mission the engine has to keep
+ * enforcing for the whole game, as opposed to the part that only shapes the
+ * opening position.
+ *
+ * Deliberately narrow. A mission is DATA, never code, for the same reason card
+ * abilities are: it has to survive JSON round-tripping, replay and version
+ * migration. Anything a mission wants that this cannot express should become a
+ * new variant here, so the vocabulary stays reviewable, rather than an escape
+ * hatch that takes a function.
+ */
+export type Objective =
+  /** The printed game: reduce the opponent to zero authority. */
+  | { k: 'AUTHORITY' }
+  /** Hold out. Reaching this turn number without dying is a win. */
+  | { k: 'SURVIVE'; turns: number }
+  /** Break the blockade: destroy this many enemy bases. */
+  | { k: 'DESTROY_BASES'; n: number }
+  /** Win the peace: climb to this much authority. */
+  | { k: 'REACH_AUTHORITY'; n: number }
+
+export interface ScenarioRules {
+  readonly id: string
+  /** Whose objective it is. The other side always wins by authority. */
+  readonly hero: PlayerId
+  readonly objective: Objective
+  /**
+   * Combat and trade handed to a side at the start of each of its turns.
+   *
+   * This is how a boss gets to be a boss without inventing a second kind of
+   * card: it is simply better funded every turn. Applied at TURN_START, so it
+   * behaves like any other gain and is spent or lost by the same rules.
+   */
+  readonly turnStartCombat: Record<PlayerId, number>
+  readonly turnStartTrade: Record<PlayerId, number>
+}
+
+/** The opening position. Applied once, by createGame, and then forgotten. */
+export interface ScenarioSetup {
+  readonly rules: ScenarioRules
+  /** Overrides STARTING_AUTHORITY per side. */
+  readonly authority: Partial<Record<PlayerId, number>>
+  /** Replaces the 8 Scout / 2 Viper starting deck. */
+  readonly starterDeck: Partial<Record<PlayerId, readonly CardDefId[]>>
+  /** Bases already standing when the game opens. */
+  readonly startingBases: Partial<Record<PlayerId, readonly CardDefId[]>>
+  /**
+   * Restricts the trade deck to these cards, at their printed copy counts.
+   * null means the full 80-card deck.
+   */
+  readonly tradeDeckOnly: readonly CardDefId[] | null
+}
+
+export function noScenarioCounters(): Record<PlayerId, number> {
+  return { p1: 0, p2: 0 }
+}

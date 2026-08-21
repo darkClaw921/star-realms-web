@@ -2,17 +2,22 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { Action, PlayerId } from '@sr/engine'
+import { missionById, type Action, type PlayerId } from '@sr/engine'
 import type { Difficulty } from '@/bot/bot'
 import { Board } from '@/components/Board'
 import { UI } from '@/i18n/ui'
 import { LocalMatchClient } from '@/match/LocalMatchClient'
 import { useMatch } from '@/match/useMatch'
+import { markBeaten } from '@/campaign/progress'
 
 function Play(): React.JSX.Element {
   const params = useSearchParams()
   const router = useRouter()
-  const mode = params.get('mode') === 'hotseat' ? 'hotseat' : 'bot'
+  const urlMode = params.get('mode')
+  const mission = urlMode === 'campaign' ? missionById(params.get('mission') ?? '') : null
+  // A campaign mission is a bot game with a scenario attached; an unknown
+  // mission id degrades to a plain bot game rather than to a broken screen.
+  const mode = urlMode === 'hotseat' ? 'hotseat' : 'bot'
   const difficulty = (params.get('difficulty') ?? 'normal') as Difficulty
 
   // One seed per mount. Deliberately not derived from the URL so a refresh deals
@@ -23,8 +28,11 @@ function Play(): React.JSX.Element {
   )
 
   const factory = useCallback(
-    () => new LocalMatchClient({ seed, firstPlayer: 'p1', mode, humanSeat: 'p1', difficulty }),
-    [seed, mode, difficulty],
+    () => new LocalMatchClient({
+      seed, firstPlayer: 'p1', mode, humanSeat: 'p1', difficulty,
+      scenario: mission?.setup,
+    }),
+    [seed, mode, difficulty, mission],
   )
   const { snapshot, client } = useMatch(factory)
 
@@ -34,7 +42,17 @@ function Play(): React.JSX.Element {
   }, [snapshot, revealed])
 
   const onAction = useCallback((a: Action) => { client?.send(a) }, [client])
-  const onExit = useCallback(() => { router.push('/') }, [router])
+  const onExit = useCallback(
+    () => { router.push(mission ? '/campaign' : '/') },
+    [router, mission],
+  )
+
+  // Recording the win here rather than inside the engine keeps progress out of
+  // the rules: the same mission has to produce the same game every attempt.
+  const won = snapshot?.view.winner
+  useEffect(() => {
+    if (mission && won === 'p1') markBeaten(mission.id)
+  }, [mission, won])
 
   if (!snapshot) {
     return <main className="menu"><p className="eyebrow">{UI.dealing}</p></main>

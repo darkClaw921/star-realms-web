@@ -2,6 +2,7 @@ import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
 import type { AbilitySlot, AcquireDest, Effect, EffectBranch } from './effects'
 import type { PendingChoice } from './choices'
 import type { RngState } from './rng'
+import type { ScenarioRules } from './scenario'
 
 export const ENGINE_VERSION = 1
 
@@ -120,6 +121,14 @@ export interface GameState {
   /** SERVER ONLY. Must never appear in any PlayerView, event, log or error. */
   rng: RngState
   winner: PlayerId | null
+  /**
+   * Campaign rules in force, or null for a standard game. Public: both sides
+   * must be able to see what they are playing under.
+   */
+  scenario: ScenarioRules | null
+  /** Enemy bases each side has destroyed. Only a DESTROY_BASES objective reads
+   *  it, but it is cheap and public, so it is always tracked. */
+  basesDestroyed: Record<PlayerId, number>
 }
 
 export function emptyFactionCounts(): Record<Faction, number> {

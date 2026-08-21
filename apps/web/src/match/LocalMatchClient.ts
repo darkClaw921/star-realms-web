@@ -1,6 +1,6 @@
 import {
   actorOf, createGame, enumerateLegalActions, redact, redactEvent, reduce,
-  type Action, type GameState, type PlayerId,
+  type Action, type GameState, type PlayerId, type ScenarioSetup,
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
@@ -16,6 +16,8 @@ export interface LocalOptions {
   readonly difficulty?: Difficulty
   /** Minimum time the bot appears to think, purely for pacing. */
   readonly botDelayMs?: number
+  /** A campaign mission. Absent means the standard game. */
+  readonly scenario?: ScenarioSetup | undefined
 }
 
 /**
@@ -39,6 +41,7 @@ export class LocalMatchClient implements MatchClient {
       matchId: `local-${opts.seed}`,
       seed: opts.seed,
       firstPlayer: opts.firstPlayer,
+      scenario: opts.scenario,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()

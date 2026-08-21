@@ -257,6 +257,60 @@ async function main() {
         cardAfter === cardBefore ? 'слот не изменился' : `${cardBefore} → ${cardAfter}`)
     }
 
+    // ── 2c. кампания ──────────────────────────────────────────────────────
+    await page.goto(`${BASE}/campaign`, { waitUntil: 'networkidle2' })
+    await page.waitForSelector('.camp', { timeout: 10000 })
+    await sleep(600)
+    {
+      const camps = await page.$$eval('.camp', (e) => e.length)
+      const missions = await page.$$eval('.mission', (e) => e.length)
+      const locked = await page.$$eval('.mission.is-locked', (e) => e.length)
+      record('кампании перечислены', camps === 3 && missions === 12,
+        `кампаний ${camps}, вылетов ${missions}`)
+      // Открыт только первый вылет каждой кампании: 12 - 3 = 9 закрыто.
+      record('вылеты открываются по порядку', locked === 9, `закрыто: ${locked}`)
+      shots.push(await shot(page, 'campaign', 'Выбор вылета. Три кампании по четыре задания; каждое следующее открывается после предыдущего.'))
+
+      // Прогресс -- это состояние браузера, а не правило игры, поэтому
+      // проверяется ровно так, как его пишет игра.
+      await page.evaluate(() => {
+        try { localStorage.setItem('sr:campaign', JSON.stringify({ 'frontier-1': true })) } catch { /* */ }
+      })
+      await page.reload({ waitUntil: 'networkidle2' })
+      await page.waitForSelector('.camp', { timeout: 10000 })
+      await sleep(500)
+      const lockedAfter = await page.$$eval('.mission.is-locked', (e) => e.length)
+      const beaten = await page.$$eval('.mission.is-beaten', (e) => e.length)
+      record('пройденный вылет открывает следующий',
+        lockedAfter === 8 && beaten === 1, `закрыто ${lockedAfter}, пройдено ${beaten}`)
+      await page.evaluate(() => {
+        try { localStorage.removeItem('sr:campaign') } catch { /* */ }
+      })
+    }
+
+    // Сама миссия: изменённая расстановка должна доехать до стола.
+    await page.goto(`${BASE}/play?mode=campaign&mission=hive-2`, { waitUntil: 'networkidle2' })
+    await page.waitForSelector('.table', { timeout: 10000 })
+    await sleep(1200)
+    {
+      const objective = await textOf(page, '.objective')
+      // Не привязываемся к числу ходов: оно -- предмет балансировки.
+      record('задача вылета показана на столе',
+        /Пережить\s+\d+/.test(objective) && /ход\s+1\s+из\s+\d+/.test(objective),
+        objective.replace(/\s+/g, ' ').trim())
+
+      const myBases = await page.$$eval('.band--board .card', (e) => e.length)
+      record('стартовая база вылета стоит в игре', myBases === 1, `баз: ${myBases}`)
+
+      // Пул миссии -- две фракции из четырёх, поэтому колода заведомо меньше
+      // полных 80 карт минус пятёрка ряда.
+      const deckText = await textOf(page, '.band--market .zone__head')
+      const n = Number((deckText.match(/(\d+)/) ?? [])[1] ?? 0)
+      record('торговая колода ограничена пулом вылета', n > 20 && n < 60, `в колоде: ${n}`)
+
+      shots.push(await shot(page, 'mission', 'Вылет «Держать линию». Полоса задачи ведёт счёт ходам, оборонный центр выдан на старте, торговая колода собрана только из двух фракций.'))
+    }
+
     // ── 3. hot-seat pass screen ───────────────────────────────────────────
     await page.goto(`${BASE}/play?mode=hotseat`, { waitUntil: 'networkidle2' })
     await page.waitForSelector('.table', { timeout: 10000 })

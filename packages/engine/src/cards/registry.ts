@@ -392,10 +392,20 @@ export const VIPER = asDefId('viper')
 export const EXPLORER = asDefId('explorer')
 
 /** The 80-card trade deck, as a flat list of definition ids with duplicates. */
-export function tradeDeckComposition(): CardDefId[] {
+/**
+ * The trade deck as a flat list of card ids, one entry per physical copy.
+ *
+ * `only` restricts it to a subset -- a campaign mission fighting one faction
+ * should not be offering the other three. Copy counts stay as printed, so a
+ * restricted deck is a real subset of the real deck rather than a reweighted
+ * one.
+ */
+export function tradeDeckComposition(only?: readonly CardDefId[]): CardDefId[] {
+  const allow = only ? new Set<string>(only) : null
   const out: CardDefId[] = []
   for (const def of CARDS.values()) {
     if (def.role !== 'trade_deck') continue
+    if (allow && !allow.has(def.id)) continue
     for (let i = 0; i < def.copies; i++) out.push(def.id)
   }
   return out

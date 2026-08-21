@@ -860,6 +860,137 @@ input[type='range'] {
 .log__line { padding: 1px 0; }
 .log__line b { color: var(--ink); font-weight: 600; }
 
+/* ── campaign ───────────────────────────────────────────────────────────── */
+.menu__inner--wide { width: min(1040px, 100%); }
+
+.camp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin: 26px 0 20px;
+}
+
+.camp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--rule);
+  border-top: 3px solid var(--fc);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  min-width: 0;
+}
+.camp__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.camp__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1;
+  text-transform: uppercase;
+  margin: 4px 0 0;
+  color: var(--fc);
+}
+.camp__count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.camp__intro { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-dim); }
+
+.mission-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mission {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+/* Locked is a state, not a colour: the row also loses its brief, so it reads
+ * as locked without relying on opacity alone. */
+.mission.is-locked { opacity: 0.55; }
+.mission.is-beaten { border-color: color-mix(in srgb, var(--ok) 40%, var(--rule)); }
+
+.mission__no {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  width: 1.4em;
+  text-align: center;
+}
+.mission.is-beaten .mission__no { color: var(--ok); }
+
+.mission__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mission__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mission__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.mission__diff, .mission__done {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.mission__done { color: var(--ok); }
+.mission__brief { font-size: 12.5px; line-height: 1.45; color: var(--ink-dim); }
+.mission__goal {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fc);
+  margin-top: 2px;
+}
+
+.camp-foot { display: flex; gap: 10px; margin-top: 4px; }
+
+/* ── objective strip, shown only in a mission ───────────────────────────── */
+.objective {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--authority) 34%, var(--rule));
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--authority) 9%, var(--panel)) 0%, var(--hull) 100%);
+}
+.objective__label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.objective__text { font-size: 13.5px; color: var(--ink); }
+.objective__progress {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--authority);
+}
+
 /* ── menu ───────────────────────────────────────────────────────────────── */
 .menu {
   min-height: 100dvh;
