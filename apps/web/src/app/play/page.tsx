@@ -10,6 +10,7 @@ import type { Difficulty } from '@/bot/bot'
 import { Board } from '@/components/Board'
 import { UI } from '@/i18n/ui'
 import { LocalMatchClient } from '@/match/LocalMatchClient'
+import type { VariantId } from '@sr/engine'
 import { useMatch } from '@/match/useMatch'
 import { markBeaten, markChallengeBeaten } from '@/campaign/progress'
 import { readSettings } from '@/settings/useSettings'
@@ -43,7 +44,7 @@ function Play(): React.JSX.Element {
     const st = readSettings()
     return {
       sets: st.sets, gambits: st.gambits, missions: st.missions,
-      commandDeck: st.commandDeck,
+      commandDeck: st.commandDeck, variant: st.variant,
     }
   }, [])
   const sets = dealt.sets
@@ -73,6 +74,9 @@ function Play(): React.JSX.Element {
       commandDeck: challenge || mission || !dealt.commandDeck
         ? undefined
         : { p1: dealt.commandDeck },
+      variant: challenge || mission || !dealt.variant
+        ? undefined
+        : (dealt.variant as VariantId),
     }),
     [seed, mode, difficulty, mission, challenge, sets, dealt],
   )

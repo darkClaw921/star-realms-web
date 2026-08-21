@@ -1,6 +1,8 @@
 'use client'
 
-import { ALL_SETS, asDefId, COMMAND_DECKS, tradeDeckComposition, type SetId } from '@sr/engine'
+import {
+  ALL_SETS, asDefId, COMMAND_DECKS, tradeDeckComposition, VARIANTS, type SetId,
+} from '@sr/engine'
 import { UI } from '@/i18n/ui'
 import { DEFAULTS, LIMITS, useSettings, type Settings } from '@/settings/useSettings'
 import { Card } from './Card'
@@ -119,6 +121,27 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
               })}
             </div>
             <p className="setting__hint">{UI.setsHint}</p>
+          </div>
+
+          <div>
+            <div className="setting__head">
+              <span className="setting__name">{UI.variantName}</span>
+            </div>
+            <div className="sets sets--decks">
+              {['', ...VARIANTS].map((id) => (
+                <label key={id} className="switch switch--deck">
+                  <input
+                    type="radio"
+                    name="variant"
+                    checked={settings.variant === id}
+                    onChange={() => set('variant', id)}
+                  />
+                  <span className="track" />
+                  <span>{UI.variantRu[id] ?? id}</span>
+                </label>
+              ))}
+            </div>
+            <p className="setting__hint">{UI.variantHint}</p>
           </div>
 
           <div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ALL_SETS, COMMAND_DECKS, type SetId } from '@sr/engine'
+import { ALL_SETS, COMMAND_DECKS, VARIANTS, type SetId } from '@sr/engine'
 
 /**
  * Пользовательские настройки отображения.
@@ -38,10 +38,12 @@ export interface Settings {
    * choosing for them is not a setting, it is a different game mode.
    */
   commandDeck: string
+  /** An Arena scenario, or '' for the ordinary game. Applies to both players. */
+  variant: string
 }
 
 export const DEFAULTS: Settings = {
-  cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '',
+  cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '', variant: '',
 }
 
 export const LIMITS = {
@@ -70,6 +72,7 @@ export function sanitize(raw: unknown): Settings {
     // An unknown id from an older or foreign record falls back to no deck, which
     // is always a legal setup.
     commandDeck: COMMAND_DECKS.some((c) => c.id === o.commandDeck) ? String(o.commandDeck) : '',
+    variant: (VARIANTS as readonly string[]).includes(String(o.variant)) ? String(o.variant) : '',
   }
 }
 

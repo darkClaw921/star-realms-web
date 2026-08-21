@@ -296,6 +296,13 @@ function acquire(
   // land, so this is one rule for both.
   const acquiredType = cardDef(inst.def).type
   if (acquiredType === 'hero' || acquiredType === 'tech') dest = 'in_play'
+  // Two Arena scenarios reroute every acquisition, and they do it before any
+  // card's own redirect: the scenario is the rule, the card is the exception.
+  const isBaseType = acquiredType === 'base' || acquiredType === 'outpost'
+  if (d.variant?.id === 'rushed-defenses' && isBaseType) dest = 'in_play'
+  if (d.variant?.id === 'recruiting-drive' && acquiredType === 'ship' && dest === 'discard') {
+    dest = 'deck_top'
+  }
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
@@ -431,7 +438,9 @@ function destroyBase(
   // demolishing your own outpost.
   if (destroyer !== owner) d.basesDestroyed[destroyer] += 1
   p.inPlay.splice(idx, 1)
-  if (cardDef(card.def).removeOnDestroy) {
+  // Rushed Defenses: a destroyed base is scrapped rather than going back to its
+  // owner's discard pile, which is what makes buying one a real commitment.
+  if (cardDef(card.def).removeOnDestroy || d.variant?.id === 'rushed-defenses') {
     // Secret Outpost: a token, not a card you own. Destroyed means gone.
     d.scrapHeap.push({ iid: card.iid, def: card.def })
     ev.push({ e: 'BASE_DESTROYED', owner, iid: card.iid, def: card.def, by })
@@ -1524,7 +1533,7 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       const idx = d.scrapHeap.findIndex((x) => x.iid === o.iid)
       if (idx < 0) return
       const inst = d.scrapHeap[idx] as CardInstance
-      const price = costFor(cardDef(inst.def), p.inPlay)
+      const price = costFor(cardDef(inst.def), p.inPlay, { variant: d.variant, buyer: me })
       if (p.trade < price) return
       p.trade -= price
       d.scrapHeap.splice(idx, 1)
@@ -1744,6 +1753,11 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
 
   const ctx: EffectCtx = { controller: me, source: inst.iid, slot: 'primary' }
   const queued: Effect[] = []
+  // Commitment to the Cause: the three starter ships each produce one more.
+  if (d.variant?.id === 'commitment-to-the-cause') {
+    if (inst.def === SCOUT || inst.def === EXPLORER) queued.push({ k: 'GAIN_TRADE', n: 1 })
+    if (inst.def === VIPER) queued.push({ k: 'GAIN_COMBAT', n: 1 })
+  }
   if (def.type === 'ship') {
     // A ship's primary ability is mandatory and immediate. A base's is not: the
     // player chooses when to activate it during their main phase.
@@ -1805,6 +1819,9 @@ function activate(
   // beside the board rather than on it.
   const card = p.inPlay.find((c) => c.iid === iid) ?? p.gambitsInPlay.find((c) => c.iid === iid)
   if (!card) throw new IllegalActionError(`card ${iid} is not in play`)
+  // A gambit or scenario card is not on the table, it is beside it: the rules
+  // about what a ship's primary means do not apply to it.
+  const besideTheBoard = p.gambitsInPlay.some((c) => c.iid === iid)
   if (card.used[slot]) throw new IllegalActionError(`${slot} already used this turn`)
 
   const def = cardDef(effectiveDefId(card))
@@ -1828,7 +1845,7 @@ function activate(
       throw new IllegalActionError('double ally condition not met')
     }
   }
-  if (slot === 'primary' && cardDef(card.def).type === 'ship') {
+  if (slot === 'primary' && !besideTheBoard && cardDef(card.def).type === 'ship') {
     throw new IllegalActionError('a ship primary resolves on play')
   }
   if (slot === 'primary' && cardDef(card.def).type === 'hero') {
@@ -1912,7 +1929,7 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   const inst = d.tradeRow[idx] as CardInstance
   // High Alert prices some cards against your board, so the price is computed
   // here rather than read off the card -- see costFor.
-  let cost = costFor(cardDef(inst.def), p.inPlay)
+  let cost = costFor(cardDef(inst.def), p.inPlay, { variant: d.variant, buyer: me })
   // Black Market: one point off, once per turn, for whoever revealed it, and
   // only from the slots the Black Market itself added.
   const fromMarket = idx >= TRADE_ROW_SIZE

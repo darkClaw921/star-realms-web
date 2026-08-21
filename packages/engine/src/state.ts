@@ -4,6 +4,7 @@ import type { PendingChoice } from './choices'
 import type { RngState } from './rng'
 import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
+import type { VariantState } from './variants'
 
 export const ENGINE_VERSION = 1
 
@@ -259,6 +260,8 @@ export interface GameState {
   basesDestroyed: Record<PlayerId, number>
   /** A Frontiers Challenge boss, or null. Entirely public. */
   boss: BossState | null
+  /** The Arena scenario in force, or null. Entirely public. */
+  variant: VariantState | null
 }
 
 export function emptyFactionCounts(): Record<Faction, number> {

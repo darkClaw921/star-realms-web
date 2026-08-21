@@ -394,7 +394,15 @@ async function main() {
         gambitCount === 2 && missionCount === 3,
         `гамбитов ${gambitCount}, миссий ${missionCount}`)
 
-      // Раскрытие гамбита -- обычное действие своего хода.
+      // Раскрытие гамбита -- обычное действие своего хода, поэтому сначала
+      // дожидаемся, пока ход действительно наш и карта стала кликабельной:
+      // клик по неактивной карте прошёл бы молча и проверка врала бы.
+      await page.waitForFunction(
+        () => [...document.querySelectorAll('.band--sides .zone')].some(
+          (z) => (z.querySelector('.eyebrow')?.textContent ?? '').includes('закрыт')
+            && z.querySelector('.card.is-playable')),
+        { timeout: 10000 },
+      )
       const revealed = await page.evaluate(() => {
         const zones = [...document.querySelectorAll('.band--sides .zone')]
         const z = zones.find((x) => (x.querySelector('.eyebrow')?.textContent ?? '').includes('закрыт')
@@ -420,6 +428,39 @@ async function main() {
           localStorage.setItem('sr:settings', JSON.stringify({
             ...raw, sets: ['core'], gambits: 0, missions: 0,
           }))
+        } catch { /* */ }
+      })
+    }
+
+    // ── 2b-quater. сценарий ───────────────────────────────────────────────
+    {
+      // Сценарий меняет одно правило на всю партию, для обоих игроков.
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({
+            ...raw, sets: ['core'], variant: 'frantic-preparations',
+          }))
+        } catch { /* */ }
+      })
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.band--hand .card', { timeout: 10000 })
+      await sleep(900)
+      // «Лихорадочные сборы»: из колоды убраны разведчик и штурмовик, значит
+      // на руке три карты, а в колоде пять вместо семи.
+      const deckText = await page.evaluate(() =>
+        (document.querySelector('.band--hand')?.textContent ?? ''))
+      record('сценарий доезжает до раздачи', /Колода 5/.test(deckText),
+        deckText.replace(/\s+/g, ' ').slice(0, 80))
+      shots.push(await shot(page, 'variant',
+        'Сценарий «Лихорадочные сборы»: перед партией из колоды каждого игрока ' +
+        'убраны разведчик и штурмовик. Реализованы те десять сценариев, точный ' +
+        'текст которых опубликован издателем.'))
+
+      await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('sr:settings') ?? '{}')
+          localStorage.setItem('sr:settings', JSON.stringify({ ...raw, variant: '' }))
         } catch { /* */ }
       })
     }

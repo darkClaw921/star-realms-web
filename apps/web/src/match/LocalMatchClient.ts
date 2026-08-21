@@ -1,6 +1,7 @@
 import {
   actorOf, createGame, enumerateLegalActions, redact, redactEvent, reduce,
   type Action, type BossState, type GameState, type PlayerId, type ScenarioSetup, type SetId,
+  type VariantId,
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
@@ -28,6 +29,8 @@ export interface LocalOptions {
   readonly missionsPerPlayer?: number | undefined
   /** A Command Deck per seat. Replaces that seat's starting deck entirely. */
   readonly commandDeck?: Partial<Record<PlayerId, string>> | undefined
+  /** An Arena scenario: one rule changed for the whole game. */
+  readonly variant?: VariantId | undefined
 }
 
 /**
@@ -57,6 +60,7 @@ export class LocalMatchClient implements MatchClient {
       gambitsPerPlayer: opts.gambitsPerPlayer,
       missionsPerPlayer: opts.missionsPerPlayer,
       commandDeck: opts.commandDeck,
+      variant: opts.variant,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()

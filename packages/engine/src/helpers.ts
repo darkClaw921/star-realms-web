@@ -1,5 +1,6 @@
 import { cardDef } from './cards/registry'
 import type { CardDef, MissionObjective } from './cards/types'
+import type { VariantState } from './variants'
 import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
 import { FACTIONS } from './ids'
 import { opponentOf } from './ids'
@@ -83,15 +84,32 @@ export function isTech(c: Pick<InPlayCard, 'def'>): boolean {
  * through here -- the trade row, the buy, and the UI -- or the three will
  * disagree and a card will look affordable and then be refused.
  */
-export function costFor(def: CardDef, inPlay: readonly Pick<InPlayCard, 'def'>[]): number {
-  if (!def.discount) return def.cost
-  const { faction, per } = def.discount
-  let n = 0
-  for (const c of inPlay) {
-    const d = cardDef(c.def)
-    if (d.faction === faction || d.faction2 === faction) n++
+export function costFor(
+  def: CardDef,
+  inPlay: readonly Pick<InPlayCard, 'def'>[],
+  /** The Arena scenario and who is buying, where one of them changes prices. */
+  ctx?: { variant: VariantState | null; buyer: PlayerId },
+): number {
+  let cost = def.cost
+  if (def.discount) {
+    const { faction, per } = def.discount
+    let n = 0
+    for (const c of inPlay) {
+      const d = cardDef(c.def)
+      if (d.faction === faction || d.faction2 === faction) n++
+    }
+    cost -= n * per
   }
-  return Math.max(0, def.cost - n * per)
+  const v = ctx?.variant
+  if (v && ctx) {
+    // Recruiting Drive: bases are a point cheaper for everyone.
+    if (v.id === 'recruiting-drive' && (def.type === 'base' || def.type === 'outpost')) cost -= 1
+    // Entrenched Loyalties: your assigned faction is a point cheaper for you.
+    const mine = v.faction?.[ctx.buyer]
+    if (v.id === 'entrenched-loyalties' && mine
+        && (def.faction === mine || def.faction2 === mine)) cost -= 1
+  }
+  return Math.max(0, cost)
 }
 
 export function isOutpost(c: Pick<InPlayCard, 'def'>): boolean {

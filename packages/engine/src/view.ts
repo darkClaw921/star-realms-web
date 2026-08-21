@@ -3,6 +3,7 @@ import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import type { GameEvent } from './events'
 import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
+import type { VariantState } from './variants'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId } from './ids'
 import { opponentOf } from './ids'
 import { actorOf, currentChoice, type CardInstance, type GameState, type InPlayCard } from './state'
@@ -144,6 +145,8 @@ export interface PlayerView {
    * have to be readable or the player cannot plan.
    */
   readonly boss: BossState | null
+  /** The Arena scenario in force. Public: both sides play under it. */
+  readonly variant: VariantState | null
 }
 
 function viewInPlay(c: InPlayCard): InPlayCardView {
@@ -239,6 +242,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     scenario: s.scenario,
     basesDestroyed: { p1: s.basesDestroyed.p1, p2: s.basesDestroyed.p2 },
     boss: s.boss,
+    variant: s.variant ? { ...s.variant } : null,
   }
 }
 

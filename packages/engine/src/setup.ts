@@ -4,8 +4,10 @@ import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
 import type { ScenarioSetup } from './scenario'
-import { asDefId, opponentOf, PLAYERS } from './ids'
-import { nextHex, seedRng, shuffle, type RngState } from './rng'
+import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
+import type { Faction } from './ids'
+import { nextHex, nextInt, seedRng, shuffle, type RngState } from './rng'
+import { VARIANT_CARD, type VariantId, type VariantState } from './variants'
 import {
   ENGINE_VERSION, EXPLORER_PILE_SIZE, FIRST_TURN_HAND_SIZE, HAND_SIZE,
   STARTING_AUTHORITY, TRADE_ROW_SIZE,
@@ -44,6 +46,8 @@ export interface MatchSetup {
    * its two gambits, and shuffles its megaship into the trade deck.
    */
   readonly commandDeck?: Partial<Record<PlayerId, string>> | undefined
+  /** An Arena scenario: one rule changed for the whole game, for both players. */
+  readonly variant?: VariantId | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -120,7 +124,23 @@ export function createGame(setup: MatchSetup): GameState {
   for (const pid of PLAYERS) {
     let cards: CardInstance[]
     const personal = cmd[pid]?.deck.map((x) => asDefId(x))
-    ;[cards, rng] = mintAll(rng, personal ?? sc?.starterDeck[pid] ?? starterDeck())
+    // Two scenarios change the starting deck itself, and nothing else.
+    const base: CardDefId[] = [...(personal ?? sc?.starterDeck[pid] ?? starterDeck())]
+    if (setup.variant === 'frontier-expedition') {
+      // Two Explorers in the place of two Scouts.
+      for (let i = 0; i < 2; i++) {
+        const at = base.indexOf(SCOUT)
+        if (at >= 0) base[at] = EXPLORER
+      }
+    }
+    if (setup.variant === 'frantic-preparations') {
+      // One Viper and one Scout removed.
+      for (const gone of [SCOUT, VIPER]) {
+        const at = base.indexOf(gone)
+        if (at >= 0) base.splice(at, 1)
+      }
+    }
+    ;[cards, rng] = mintAll(rng, base)
     // A stacked deck stays stacked: Blob Assault's ten cards are dealt in the
     // order the rulebook prints them, and shuffling would erase the challenge.
     if (!sc?.unshuffled?.includes(pid)) [cards, rng] = shuffle(rng, cards)
@@ -230,6 +250,42 @@ export function createGame(setup: MatchSetup): GameState {
     }
   }
 
+  // The scenario is rolled before anything else it touches: Entrenched
+  // Loyalties assigns a faction per player at setup, and that assignment is
+  // public from the first turn.
+  let variant: VariantState | null = null
+  if (setup.variant) {
+    if (setup.variant === 'entrenched-loyalties') {
+      const pool = FACTIONS.filter((f) => f !== 'unaligned')
+      const pick: Record<PlayerId, Faction> = { p1: 'blob', p2: 'blob' }
+      for (const pid of PLAYERS) {
+        let i: number
+        ;[i, rng] = nextInt(rng, pool.length)
+        pick[pid] = pool[i] as Faction
+      }
+      variant = { id: setup.variant, faction: pick }
+    } else {
+      variant = { id: setup.variant }
+    }
+    // A scenario with an activated ability gets a card in front of each player,
+    // face up from the start.
+    const face = VARIANT_CARD[setup.variant]
+    if (face) {
+      for (const pid of PLAYERS) {
+        let c: CardInstance
+        ;[c, rng] = mint(rng, face)
+        players[pid].gambitsInPlay.push({
+          iid: c.iid, def: c.def, copiedDef: null, chosenFaction: null,
+          used: {
+            primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+            doubleAlly: false, scrap: false, splinter: false,
+          },
+          playedThisTurn: false,
+        })
+      }
+    }
+  }
+
   const tradeRow: (CardInstance | null)[] = []
   for (let i = 0; i < TRADE_ROW_SIZE; i++) tradeRow.push(tradeDeck.shift() ?? null)
 
@@ -277,6 +333,7 @@ export function createGame(setup: MatchSetup): GameState {
     scenario: sc?.rules ?? null,
     basesDestroyed: { p1: 0, p2: 0 },
     boss: setup.boss ?? null,
+    variant,
   }
 }
 

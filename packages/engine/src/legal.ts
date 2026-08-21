@@ -109,7 +109,7 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   for (const c of v.tradeRow) {
     // High Alert prices some cards against your board, so the affordability
     // test has to go through the same function the purchase does.
-    if (c && costFor(cardDef(c.def), me.inPlay) <= me.trade) {
+    if (c && costFor(cardDef(c.def), me.inPlay, { variant: v.variant, buyer: seat }) <= me.trade) {
       out.push({ t: 'BUY_CARD', card: c.iid })
     }
   }
@@ -126,7 +126,9 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
 
   for (const c of v.setAside) {
     // Bought exactly as a row card is, so it goes through the same price.
-    if (costFor(cardDef(c.def), me.inPlay) <= me.trade) out.push({ t: 'BUY_CARD', card: c.iid })
+    if (costFor(cardDef(c.def), me.inPlay, { variant: v.variant, buyer: seat }) <= me.trade) {
+      out.push({ t: 'BUY_CARD', card: c.iid })
+    }
   }
   if (v.explorerPile > 0 && me.trade >= EXPLORER_COST) out.push({ t: 'BUY_EXPLORER' })
 
