@@ -275,22 +275,56 @@ async function main() {
         return Number((el?.textContent ?? '').match(/(\d+)/)?.[1] ?? 0)
       })
       const before = await deckSize()
-      const toggles = await page.$$eval('.sets .switch input', (e) => e.length)
-      record('наборы карт переключаются', toggles === 2 && before === 80,
-        `переключателей ${toggles}, колода ${before}`)
+      // Каждый набор добавляет ровно столько карт, сколько в нём напечатано,
+      // поэтому размер колоды прямо считает, что именно доехало до раздачи.
+      // Список обязан совпадать с ALL_SETS по порядку -- если добавлен набор,
+      // а строка сюда не дописана, проверка падает, а не молчит.
+      const SETS = [
+        ['Базовый набор', 80],
+        ['Frontiers', 80],
+        ['Colony Wars', 80],
+        ['Crisis: Базы и линкоры', 12],
+        ['Crisis: Флоты и крепости', 12],
+        ['Crisis: Герои', 12],
+        ['Crisis: События', 12],
+        ['United: Штурм', 12],
+        ['United: Командование', 12],
+      ]
+
+      const labels = await page.$$eval('.sets .switch', (els) =>
+        els.map((e) => (e.textContent ?? '').trim()))
+      record('все наборы карт перечислены',
+        labels.length === SETS.length && SETS.every(([n], i) => labels[i] === n),
+        labels.join(' · '))
+      record('партия начинается с базового набора', before === 80, `колода ${before}`)
 
       // Последний включённый набор выключить нельзя -- иначе колода пуста.
       const coreLocked = await page.$eval('.sets .switch input', (e) => e.disabled)
       record('последний набор выключить нельзя', coreLocked === true, `заблокирован: ${coreLocked}`)
 
+      let expected = 80
+      let ok = true
+      const seen = []
+      for (let i = 1; i < SETS.length; i++) {
+        await page.evaluate((n) => {
+          const boxes = [...document.querySelectorAll('.sets .switch input')]
+          if (boxes[n] && !boxes[n].checked) boxes[n].click()
+        }, i)
+        await sleep(300)
+        expected += SETS[i][1]
+        const got = await deckSize()
+        seen.push(`${SETS[i][0]}=${got}`)
+        if (got !== expected) ok = false
+      }
+      record('каждый набор добавляет напечатанное число карт', ok, seen.join(' · '))
+      shots.push(await shot(page, 'sets', 'Наборы карт в настройках. Каждый набор включается отдельно; состав читается только при раздаче новой партии.'))
+
+      // Вернуть всё, кроме Frontiers: следующая проверка ждёт две колоды.
       await page.evaluate(() => {
         const boxes = [...document.querySelectorAll('.sets .switch input')]
-        if (boxes[1] && !boxes[1].checked) boxes[1].click()
+        boxes.forEach((b, i) => { if (i > 1 && b.checked) b.click() })
       })
       await sleep(400)
-      const after = await deckSize()
-      record('Frontiers удваивает торговую колоду', after === 160, `${before} → ${after}`)
-      shots.push(await shot(page, 'sets', 'Наборы карт в настройках. Frontiers включается и выключается; состав читается только при раздаче новой партии.'))
 
       // Настройка обязана дойти до новой партии, а не только до панели.
       await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })

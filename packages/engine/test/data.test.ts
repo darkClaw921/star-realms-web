@@ -36,10 +36,15 @@ describe('base-set data integrity', () => {
     expect(tradeDeck.every((c) => c.faction !== 'unaligned')).toBe(true)
   })
 
-  it('gives every base a defense and every ship none', () => {
+  it('gives every base a defense and everything else none', () => {
+    // Defense is what an attack has to get through, so only bases have one.
+    // Ships, Crisis' Heroes and Crisis' Events cannot be attacked at all.
     for (const c of CARDS.values()) {
-      if (c.type === 'ship') expect(c.defense, c.name).toBeNull()
-      else expect(c.defense, c.name).toBeGreaterThan(0)
+      if (c.type === 'base' || c.type === 'outpost') {
+        expect(c.defense, c.name).toBeGreaterThan(0)
+      } else {
+        expect(c.defense, c.name).toBeNull()
+      }
     }
   })
 
@@ -133,5 +138,125 @@ describe('Frontiers data integrity', () => {
   it('has no id colliding with the base set', () => {
     const core = new Set([...CARDS.values()].filter((c) => c.set === 'core').map((c) => c.id))
     for (const c of frontiers) expect(core.has(c.id)).toBe(false)
+  })
+})
+
+
+/**
+ * Star Realms: Colony Wars.
+ *
+ * A standalone base set rather than an add-on, so the same 80/20-per-faction
+ * shape as the core set -- but it ships its own Scouts, Vipers and Explorers,
+ * which we deliberately do NOT duplicate. Enabling it therefore adds exactly the
+ * trade deck, which is what the combined-count check pins down.
+ */
+describe('Colony Wars data integrity', () => {
+  const cw = [...CARDS.values()]
+    .filter((c) => c.role === 'trade_deck' && c.set === 'colony-wars')
+
+  it('has exactly 43 distinct trade-deck cards', () => {
+    expect(cw).toHaveLength(43)
+  })
+
+  it('has exactly 80 copies, 20 per faction', () => {
+    expect(tradeDeckComposition(undefined, ['colony-wars'])).toHaveLength(80)
+    const byFaction: Partial<Record<Faction, number>> = {}
+    for (const c of cw) byFaction[c.faction] = (byFaction[c.faction] ?? 0) + c.copies
+    expect(byFaction).toEqual({
+      trade_federation: 20,
+      blob: 20,
+      star_empire: 20,
+      machine_cult: 20,
+    })
+  })
+
+  it('adds only its trade deck, never a second set of starters', () => {
+    expect(tradeDeckComposition(undefined, ['core', 'colony-wars'])).toHaveLength(160)
+    expect(cw.some((c) => c.role !== 'trade_deck')).toBe(false)
+  })
+
+  it('gives every card an ability and printed text', () => {
+    for (const c of cw) {
+      expect(c.primary.length + c.ally.length + c.scrap.length + c.triggers.length,
+        `${c.name} does nothing`).toBeGreaterThan(0)
+      expect(c.text.primary.length, c.name).toBeGreaterThan(0)
+      if (c.text.ally) expect(c.ally.length, c.name).toBeGreaterThan(0)
+      if (c.text.scrap) expect(c.scrap.length, c.name).toBeGreaterThan(0)
+    }
+  })
+
+  it('gives bases a defense and ships none', () => {
+    for (const c of cw) {
+      if (c.type === 'ship') expect(c.defense, c.name).toBeNull()
+      else expect(c.defense, c.name).toBeGreaterThan(0)
+    }
+  })
+
+  it('has no id colliding with any other set', () => {
+    const others = new Set(
+      [...CARDS.values()].filter((c) => c.set !== 'colony-wars').map((c) => c.id),
+    )
+    for (const c of cw) expect(others.has(c.id), c.name).toBe(false)
+  })
+
+  it('carries the four acquire-to-hand triggers, one per faction', () => {
+    const withTrigger = cw.filter((c) => c.triggers.some((t) => t.on === 'ACQUIRE_SELF'))
+    expect(withTrigger.map((c) => c.faction).sort()).toEqual(
+      ['blob', 'machine_cult', 'star_empire', 'trade_federation'],
+    )
+  })
+})
+
+
+/**
+ * The Crisis mini-expansions.
+ *
+ * Twelve cards each, shuffled INTO the trade deck rather than replacing it, and
+ * sold separately -- so each pack is its own set and the checks are per pack.
+ * Unlike a base set they are deliberately NOT 20-per-faction, so the test pins
+ * the printed totals instead of imposing a symmetry that is not printed.
+ */
+describe('Crisis data integrity', () => {
+  const packs = [
+    { set: 'crisis-bases' as const, distinct: 8, copies: 12 },
+    { set: 'crisis-fleets' as const, distinct: 8, copies: 12 },
+  ]
+
+  for (const pack of packs) {
+    const cards = [...CARDS.values()].filter((c) => c.set === pack.set)
+
+    it(`${pack.set} has ${pack.distinct} cards in ${pack.copies} copies`, () => {
+      expect(cards).toHaveLength(pack.distinct)
+      expect(tradeDeckComposition(undefined, [pack.set])).toHaveLength(pack.copies)
+    })
+
+    it(`${pack.set} adds to the base deck rather than replacing it`, () => {
+      expect(tradeDeckComposition(undefined, ['core', pack.set]))
+        .toHaveLength(80 + pack.copies)
+    })
+
+    it(`${pack.set} collides with no other set`, () => {
+      const others = new Set(
+        [...CARDS.values()].filter((c) => c.set !== pack.set).map((c) => c.id),
+      )
+      for (const c of cards) expect(others.has(c.id), c.name).toBe(false)
+    })
+
+    it(`${pack.set} gives every card an ability`, () => {
+      for (const c of cards) {
+        expect(c.primary.length + c.ally.length + c.scrap.length + c.triggers.length,
+          `${c.name} does nothing`).toBeGreaterThan(0)
+        if (c.text.ally) expect(c.ally.length, c.name).toBeGreaterThan(0)
+        if (c.text.scrap) expect(c.scrap.length, c.name).toBeGreaterThan(0)
+        if (c.text.primary) expect(c.primary.length, c.name).toBeGreaterThan(0)
+      }
+    })
+  }
+
+  it('lets Fighter Base be an ally-only card with nothing to activate alone', () => {
+    const fb = CARDS.get('fighter-base' as never)!
+    expect(fb.primary).toHaveLength(0)
+    expect(fb.text.primary).toBe('')
+    expect(fb.ally).toHaveLength(1)
   })
 })

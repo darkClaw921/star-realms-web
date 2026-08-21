@@ -11,7 +11,16 @@ export type CardRole = 'trade_deck' | 'starter' | 'explorer'
  * turning a set on or off is then a filter over the registry, and a card can
  * never end up in a deck whose set is disabled.
  */
-export type SetId = 'core' | 'frontiers'
+export type SetId =
+  | 'core'
+  | 'frontiers'
+  | 'colony-wars'
+  | 'crisis-bases'
+  | 'crisis-fleets'
+  | 'crisis-heroes'
+  | 'crisis-events'
+  | 'united-assault'
+  | 'united-command'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -24,6 +33,8 @@ export type SetId = 'core' | 'frontiers'
 export interface CardText {
   readonly primary: string
   readonly ally: string
+  /** United: the second faction's ally ability on a dual-faction card. */
+  readonly ally2?: string
   /** Frontiers: needs TWO other cards of the faction, not one. */
   readonly doubleAlly?: string
   readonly scrap: string
@@ -34,6 +45,11 @@ export interface CardDef {
   readonly set: SetId
   readonly name: string
   readonly faction: Faction
+  /**
+   * United: a card can belong to TWO factions at once. It counts as both for
+   * every ally condition, and each faction may carry its own ally ability.
+   */
+  readonly faction2?: Faction
   readonly cost: number
   readonly type: CardType
   /** null for ships. */
@@ -45,6 +61,15 @@ export interface CardDef {
   readonly primary: readonly Effect[]
   /** Needs another card of the same faction in play. Once per turn, optional. */
   readonly ally: readonly Effect[]
+  /**
+   * Which faction unlocks `ally`. Undefined means "any of this card's own
+   * factions" -- which is both the ordinary single-faction case and United's
+   * "Coalition Ally (Machine Cult or Trade Federation)", where either will do.
+   */
+  readonly allyFaction?: Faction
+  /** United: the second faction's ally ability. Independent of `ally`. */
+  readonly ally2: readonly Effect[]
+  readonly ally2Faction?: Faction
   /**
    * Frontiers' Double Ally: needs TWO other cards of the faction, so three of
    * that faction in play counting this one. A separate slot rather than a flag
@@ -69,8 +94,10 @@ export type CardRegistry = ReadonlyMap<CardDefId, CardDef>
  * it without importing the registry that imports the set.
  */
 export type Spec =
-  Omit<CardDef, 'id' | 'set' | 'ally' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'> &
-  Partial<Pick<CardDef, 'set' | 'ally' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'>>
+  Omit<CardDef,
+    'id' | 'set' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'> &
+  Partial<Pick<CardDef,
+    'set' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'>>
 
 /** Fills in everything a spec leaves out. Shared by every set's card table. */
 export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, CardDef][] {
@@ -81,6 +108,7 @@ export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, C
       set: s.set ?? set,
       ...s,
       ally: s.ally ?? [],
+      ally2: s.ally2 ?? [],
       doubleAlly: s.doubleAlly ?? [],
       scrap: s.scrap ?? [],
       triggers: s.triggers ?? [],

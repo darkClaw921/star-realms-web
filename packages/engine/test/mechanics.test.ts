@@ -45,13 +45,13 @@ describe('2. acquisition routing (topdeck effects)', () => {
       { t: 'PLAY_CARD', card: handIid(s, 'p1', 'federation-shuttle') },
     ).state
     st = run(st, { t: 'ACTIVATE', card: playIid(st, 'p1', 'freighter'), slot: 'ally' }).state
-    expect(st.players.p1.pendingTopdeck).toBe(1)
+    expect(st.players.p1.pendingRedirects).toHaveLength(1)
 
     st = run(st, { t: 'BUY_CARD', card: rowIid(st, 'ram') }).state
-    expect(pending(st)?.prompt).toBe('TOPDECK_ACQUIRED')
-    st = run(st, choose(st, byDef('ram'))).state
+    expect(pending(st)?.prompt).toBe('REDIRECT_ACQUIRED')
+    st = run(st, choose(st, byBranch(0))).state
     expect(st.players.p1.deck[0]?.def).toBe(D('ram'))
-    expect(st.players.p1.pendingTopdeck).toBe(0)
+    expect(st.players.p1.pendingRedirects).toHaveLength(0)
   })
 
   it('lets the player decline, leaving the card in the discard pile', () => {
@@ -435,19 +435,21 @@ describe('18. end-of-turn bookkeeping', () => {
       { t: 'PLAY_CARD', card: handIid(s, 'p1', 'federation-shuttle') },
     ).state
     st = run(st, { t: 'ACTIVATE', card: playIid(st, 'p1', 'freighter'), slot: 'ally' }).state
-    expect(st.players.p1.pendingTopdeck).toBe(1)
+    expect(st.players.p1.pendingRedirects).toHaveLength(1)
 
     st = run(st, { t: 'END_TURN' }).state
     const p = st.players.p1
     expect(p.trade).toBe(0)                       // unspent trade is LOST
     expect(p.combat).toBe(0)                      // unspent combat is LOST
-    expect(p.pendingTopdeck).toBe(0)              // armed topdeck expires
+    expect(p.pendingRedirects).toEqual([])        // armed topdeck expires
     expect(p.factionPlayedThisTurn.blob).toBe(0)
     expect(p.shipsPlayedThisTurn).toEqual([])
     expect(p.allyUnlocked).toEqual([])
     expect(p.hand).toHaveLength(5)                // old hand discarded, next hand drawn
     expect(p.inPlay.map((c) => c.def)).toEqual([D('blob-wheel')]) // bases stay
-    expect(p.inPlay[0]!.used).toEqual({ primary: false, ally: false, scrap: false })
+    expect(p.inPlay[0]!.used).toEqual({
+      primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false,
+    })
   })
 
   it('refuses to end the turn while a choice is pending', () => {

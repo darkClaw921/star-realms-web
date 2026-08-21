@@ -16,9 +16,9 @@ import { SettingsPanel } from './SettingsPanel'
 import { OpponentHud, SelfHud } from './Hud'
 import { FACTION_VAR, Icon } from './Icons'
 
-const SLOT_LABEL: Record<'primary' | 'ally' | 'doubleAlly' | 'scrap', string> = {
+const SLOT_LABEL: Record<'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap', string> = {
   primary: UI.slotPrimary, ally: UI.slotAlly,
-  doubleAlly: UI.slotDoubleAlly, scrap: UI.slotScrap,
+  ally2: UI.slotAlly2, doubleAlly: UI.slotDoubleAlly, scrap: UI.slotScrap,
 }
 
 /** Localised card name, falling back to the engine's English. */
@@ -276,7 +276,7 @@ export function Board({
                   <Card def={c.copiedDef ?? c.def} title={nameOf(c.def)} />
                   {slots && slots.size > 0 && (
                     <div className="actions">
-                      {(['primary', 'ally', 'doubleAlly', 'scrap'] as const).filter((s) => slots.has(s)).map((s) => (
+                      {(['primary', 'ally', 'ally2', 'doubleAlly', 'scrap'] as const).filter((s) => slots.has(s)).map((s) => (
                         <button
                           key={s}
                           type="button"

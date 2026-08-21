@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import sharp from 'sharp'
+import { CARDS } from '@sr/engine'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ART_DIR = join(HERE, '..', 'public', 'cards', 'art')
@@ -25,12 +26,18 @@ const FIELDS = '&_fields=slug,title,source_url,media_details'
 const BASE_API = 'https://www.starrealms.com/wp-json/wp/v2/media?media_type=image' + FIELDS
 
 /**
- * The two upload batches that hold the card faces.
+ * The upload batches that hold the card faces, one per set.
  *
  * Base set: April 2015, exactly 49 items and nothing else in the window, so one
  * page is the whole set. Frontiers: October 2018, mixed in with a year of other
  * uploads, so it is paged through and filtered by the publisher's own
- * `SRFRN_Card_` naming.
+ * `SRFRN_Card_` naming. Colony Wars: a single day, 19 August 2016 -- 43 faces at
+ * 427x600, plus one unrelated convention banner that the name filter drops.
+ *
+ * Colony Wars was uploaded three more times (2015 at 225x308, 2017 at 300x420,
+ * 2018 as foil variants), and the 2016 batch is the one worth taking: it is the
+ * only one large enough that the cropped illustration still clears our 320px
+ * output without upscaling.
  */
 const SOURCES = [
   {
@@ -55,6 +62,49 @@ const SOURCES = [
         .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
         .toLowerCase(),
   },
+  {
+    set: 'crisis',
+    url: `${BASE_API}&per_page=100&after=2015-05-01T00:00:00&before=2015-06-01T00:00:00`,
+    pages: 2,
+    expect: 31,
+    // The May 2015 batch mixes all four Crisis packs in with re-uploads of the
+    // base set. Crisis cards carry a TWO-digit card number in the middle of the
+    // name; the base-set re-uploads carry three. That one digit is the whole
+    // filter, and it is the publisher's own numbering rather than a guess.
+    keep: (title: string): boolean => /^CardsWBorders_\d{4}_\d{2}_/.test(title),
+    id: (title: string): string =>
+      title.replace(/^CardsWBorders_\d+_\d+_/, '')
+        // WordPress duplicate-upload suffixes: " copy" and an en-dash " – Copy".
+        .replace(/(\s+copy)?(\s+(&#8211;|–)\s+Copy)?$/i, '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
+  {
+    set: 'united',
+    url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
+    pages: 1,
+    expect: 16,
+    // The whole United release landed on one day, named in squashed lowercase.
+    // Heroes and Missions are in the same batch and are dropped here simply by
+    // not matching a card we have -- see SQUASHED_IDS.
+    keep: (title: string): boolean => SQUASHED_IDS.has(title.toLowerCase()),
+    id: (title: string): string => SQUASHED_IDS.get(title.toLowerCase()) ?? title,
+  },
+  {
+    set: 'colony-wars',
+    url: `${BASE_API}&per_page=100&after=2016-08-18T00:00:00&before=2016-08-20T00:00:00`,
+    pages: 1,
+    expect: 43,
+    // Bare CamelCase names, so anything with a digit, dash or entity in it is
+    // not a card -- which is exactly the one convention banner in the window.
+    // WordPress appends " (1)" on a re-upload; that is part of the title, not
+    // of the name.
+    keep: (title: string): boolean => /^[A-Z][A-Za-z]*( \(\d+\))?$/.test(title),
+    id: (title: string): string =>
+      title.replace(/ \(\d+\)$/, '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
 ] as const
 
 /**
@@ -65,6 +115,27 @@ const SOURCES = [
  */
 const TITLE_FIXES: Record<string, string> = {
   'Trading Port': 'trading-post', // the card is Trading POST
+}
+
+/**
+ * Every registry id with its hyphens removed, back to the id.
+ *
+ * The United batch is named in squashed lowercase -- "coalitionfreighter" --
+ * with no separators to split on, so word boundaries cannot be recovered from
+ * the filename. Matching against the ids we already have recovers them exactly,
+ * and has the useful property that a card we have not implemented yet simply
+ * fails to match instead of inventing an id nothing will ever look up.
+ */
+const SQUASHED_IDS = new Map<string, string>(
+  [...CARDS.keys()].map((id) => [String(id).replace(/-/g, ''), String(id)]),
+)
+
+/**
+ * Scans whose filename spells the card differently from the printed card.
+ * Applied to the derived id, after each source's own naming rule.
+ */
+const ID_FIXES: Record<string, string> = {
+  'admiral-rasmussen': 'admiral-rasmusson', // the card is Rasmusson
 }
 
 interface MediaItem {
@@ -108,7 +179,8 @@ async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; 
     for (const item of items) {
       const title = item.title.rendered
       if (!src.keep(title)) continue
-      out.push({ item, id: src.id(title) })
+      const derived = src.id(title)
+      out.push({ item, id: ID_FIXES[derived] ?? derived })
     }
   }
   console.log(`  ${src.set}: ${out.length} card faces (expected ${src.expect})`)

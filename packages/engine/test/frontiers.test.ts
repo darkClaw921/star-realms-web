@@ -214,19 +214,21 @@ describe('Long Hauler: top-deck the next BASE, not the next ship', () => {
       tradeRow: ['spike-cluster', 'stinger', 'scout', 'viper', 'explorer'],
     })
     let st = run(s, { t: 'ACTIVATE', card: playIid(s, 'p1', 'long-hauler'), slot: 'scrap' }).state
-    expect(st.players.p1.pendingTopdeckBase).toBe(1)
-    expect(st.players.p1.pendingTopdeck).toBe(0)
+    expect(st.players.p1.pendingRedirects).toEqual([
+      { filter: 'base', dest: 'deck_top', optional: false },
+    ])
 
     // Buying a ship must not consume it or offer the redirect.
     st = run(st, { t: 'BUY_CARD', card: rowIid(st, 'stinger') }).state
     expect(pending(st)).toBeNull()
-    expect(st.players.p1.pendingTopdeckBase).toBe(1)
+    expect(st.players.p1.pendingRedirects).toHaveLength(1)
 
+    // Long Hauler's text has no "you may", so with one armed redirect and one
+    // destination there is nothing to decide and the choice auto-resolves.
     st = run(st, { t: 'BUY_CARD', card: rowIid(st, 'spike-cluster') }).state
-    expect(pending(st)?.prompt).toBe('TOPDECK_ACQUIRED')
-    st = run(st, choose(st, byDef('spike-cluster'))).state
+    expect(pending(st)).toBeNull()
     expect(st.players.p1.deck[0]?.def).toBe(D('spike-cluster'))
-    expect(st.players.p1.pendingTopdeckBase).toBe(0)
+    expect(st.players.p1.pendingRedirects).toHaveLength(0)
   })
 })
 

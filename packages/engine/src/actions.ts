@@ -12,7 +12,7 @@ export type Action =
   | { t: 'PLAY_CARD'; card: CardIid }
   /** Convenience: play every ship in hand, in the given order. */
   | { t: 'PLAY_ALL' }
-  | { t: 'ACTIVATE'; card: CardIid; slot: 'primary' | 'ally' | 'doubleAlly' | 'scrap' }
+  | { t: 'ACTIVATE'; card: CardIid; slot: 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' }
   | { t: 'BUY_CARD'; card: CardIid }
   | { t: 'BUY_EXPLORER' }
   | { t: 'ATTACK_PLAYER'; amount: number }

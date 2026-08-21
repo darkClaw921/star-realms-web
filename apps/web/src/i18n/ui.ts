@@ -75,7 +75,17 @@ export const UI = {
   setsName: 'Наборы карт',
   setsHint: 'Влияет только на НОВЫЕ партии: менять состав торговой колоды посреди игры — ' +
     'значит менять правила на ходу. Последний включённый набор выключить нельзя.',
-  setName: { core: 'Базовый набор', frontiers: 'Frontiers' } as Record<string, string>,
+  setName: {
+    core: 'Базовый набор',
+    frontiers: 'Frontiers',
+    'colony-wars': 'Colony Wars',
+    'crisis-bases': 'Crisis: Базы и линкоры',
+    'crisis-fleets': 'Crisis: Флоты и крепости',
+    'crisis-heroes': 'Crisis: Герои',
+    'crisis-events': 'Crisis: События',
+    'united-assault': 'United: Штурм',
+    'united-command': 'United: Командование',
+  } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
   // приключения Frontiers
@@ -125,6 +135,7 @@ export const UI = {
   slotPrimary: 'Применить',
   slotDoubleAlly: 'Двойной союз',
   slotAlly: 'Союзное',
+  slotAlly2: 'Союзное 2',
   slotScrap: 'Утиль',
 
   // передача устройства
@@ -215,18 +226,36 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
     case 'CHOOSE_BRANCH':
       return 'Выберите одно'
     case 'ACQUIRE_FREE':
-      return 'Получите корабль бесплатно'
+      return 'Получите карту бесплатно'
     case 'COPY_SHIP':
       return 'Скопируйте корабль, разыгранный в этот ход'
     case 'DISCARD_THEN_DRAW':
       return `Сбросьте до ${n} карт, затем доберите столько же`
     case 'SCRAP_THEN_DRAW':
       return `Утилизируйте до ${n} карт, затем доберите по одной за каждую`
-    case 'TOPDECK_ACQUIRED':
+    case 'REDIRECT_ACQUIRED':
+      // Формулировка не называет направление: их может быть два сразу — на верх
+      // колоды и в руку, — и выбирает игрок.
       return sourceName
-        ? `Положить «${sourceName}» на верх колоды?`
-        : 'Положить купленный корабль на верх колоды?'
+        ? `Куда отправить «${sourceName}»?`
+        : 'Куда отправить купленную карту?'
     case 'MAY':
       return 'Применить свойство?'
+    // ── Colony Wars ────────────────────────────────────────────────────────
+    case 'COPY_BASE':
+      return 'Скопируйте любую базу в игре'
+    // ── Crisis ─────────────────────────────────────────────────────────────
+    case 'RETURN_BASE_TO_HAND':
+      return c.min === 0
+        ? 'Можете вернуть выбранную базу в руку её владельца'
+        : 'Верните выбранную базу в руку её владельца'
+    case 'DISCARD_OR_LOSE':
+      return `Сбросьте до ${n} карт — за каждую недостающую потеряете авторитет`
+    case 'DESTROY_OWN_BASE_OR_LOSE':
+      return 'Уничтожьте свою базу или потеряйте авторитет'
+    case 'TOPDECK_FROM_HAND':
+      return `Верните ${n} карты на верх колоды — порядок выбора и будет порядком в колоде`
+    case 'DISCARD_FOR_TRADE_OR_COMBAT':
+      return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }
 }

@@ -15,12 +15,24 @@ import type { CardDefId, Faction, Zone } from './ids'
  * VERSIONED: bump EFFECT_VOCABULARY_VERSION when the shape of any variant
  * changes, so stored replays can be refused rather than silently misread.
  */
-export const EFFECT_VOCABULARY_VERSION = 1
+export const EFFECT_VOCABULARY_VERSION = 2
 
 /** Conditions evaluated against the state at resolution time. */
 export type Condition =
   /** Embassy Yacht: "If you have two or more bases in play". Outposts are bases. */
   | { c: 'BASES_IN_PLAY_AT_LEAST'; n: number }
+  /**
+   * Colony Wars' Lancer ("if an opponent controls a base", n = 1) and Crisis'
+   * Obliterator ("if your opponent has two or more bases in play", n = 2).
+   * Outposts are bases.
+   */
+  | { c: 'OPPONENT_BASES_AT_LEAST'; n: number }
+  /**
+   * Colony Wars' acquire-to-hand cards: "if you've played a Blob card this turn".
+   * Reads the same counter Blob World does, so a Stealth Needle copy does not
+   * satisfy it -- the copy is not a card played.
+   */
+  | { c: 'FACTION_PLAYED_THIS_TURN'; faction: Faction; n: number }
 
 /** Counters that PER can multiply an effect by. */
 export type CounterRef =
@@ -31,8 +43,34 @@ export type CounterRef =
    */
   | { counter: 'faction_played_this_turn'; faction: Faction }
 
-/** Where an acquired card is routed. Acquisition is not hard-wired to the discard pile. */
-export type AcquireDest = 'discard' | 'deck_top'
+/**
+ * Where an acquired card is routed. Acquisition is not hard-wired to the discard
+ * pile: Blob Carrier tops the deck, and Colony Wars routes cards straight into
+ * hand, which is a real tempo difference and not a reskin of topdecking.
+ */
+export type AcquireDest = 'discard' | 'deck_top' | 'hand' | 'in_play'
+
+/**
+ * An armed "put the next card you acquire this turn somewhere other than the
+ * discard pile" effect.
+ *
+ * One shape rather than a counter per destination, because Colony Wars adds a
+ * third axis (ship / base / either) and a second destination (hand), and the
+ * cross-product of counters would be six fields that must all be reset in the
+ * same two places.
+ */
+export interface AcquireRedirect {
+  readonly filter: 'ship' | 'base' | 'any'
+  /**
+   * `in_play` is Crisis' Construction Hauler: the base you buy skips the discard
+   * pile AND the deck and starts defending immediately. Only ever paired with
+   * filter 'base' -- a ship put "into play" would be a ship whose primary never
+   * resolved, which the printed cards never ask for.
+   */
+  readonly dest: 'deck_top' | 'hand' | 'in_play'
+  /** The printed text says "you may". Freighter does; Factory World does not. */
+  readonly optional: boolean
+}
 
 export type Effect =
   // ---- resource gains -------------------------------------------------------
@@ -57,14 +95,17 @@ export type Effect =
    * Machine Base restricts zones to ['hand'] only.
    */
   | { k: 'SCRAP_FROM_ZONES'; zones: readonly Zone[]; min: number; max: number }
-  /** Battle Pod / Blob Destroyer. min:0 when the text says "you may". */
-  | { k: 'SCRAP_TRADE_ROW'; min: 0 | 1; max: 1 }
+  /**
+   * Battle Pod / Blob Destroyer. min:0 when the text says "you may".
+   * Colony Wars' Ravager scraps up to TWO, which is why max is not fixed at 1.
+   */
+  | { k: 'SCRAP_TRADE_ROW'; min: number; max: number }
   /**
    * Brain World: "Scrap up to two cards from your hand and/or discard pile.
    * Draw a card for each card scrapped this way." The draw count is coupled to
    * the actual number scrapped, which is why this is not SEQ[SCRAP, DRAW].
    */
-  | { k: 'SCRAP_THEN_DRAW'; zones: readonly Zone[]; max: number }
+  | { k: 'SCRAP_THEN_DRAW'; zones: readonly Zone[]; max: number; factions?: readonly Faction[] }
   /**
    * Recycling Station: "discard up to two cards, then draw that many cards."
    * All discards happen BEFORE any draw -- if the deck empties during the draws,
@@ -73,14 +114,18 @@ export type Effect =
   | { k: 'DISCARD_THEN_DRAW'; max: number }
 
   // ---- acquisition ----------------------------------------------------------
-  /** Blob Carrier: "Acquire any ship for free and put it on top of your deck." */
-  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest }
   /**
-   * Freighter / Central Office. Arms a pending redirection consumed by the next
-   * qualifying acquisition. Multiple copies STACK (official ruling): each
-   * acquisition consumes exactly one, and unused ones expire at end of turn.
+   * Blob Carrier: "Acquire any ship for free and put it on top of your deck."
+   * `min` is 0 where the text says "you may" (Crisis' Customs Frigate).
    */
-  | { k: 'TOPDECK_NEXT_ACQUIRED'; filter: 'ship' | 'base'; min: 0 | 1 }
+  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest; min: 0 | 1 }
+  /**
+   * Freighter / Central Office / Factory World. Arms a pending redirection
+   * consumed by the next qualifying acquisition. Multiple copies STACK (official
+   * ruling): each acquisition consumes exactly one, and unused ones expire at
+   * end of turn.
+   */
+  | { k: 'REDIRECT_NEXT_ACQUIRED'; redirect: AcquireRedirect }
 
   // ---- Stealth Needle -------------------------------------------------------
   /**
@@ -90,6 +135,12 @@ export type Effect =
    * Machine Cult ship with no abilities -- never block the play.
    */
   | { k: 'COPY_SHIP' }
+  /**
+   * Colony Wars' Stealth Tower. Same idea as the Needle, one axis different in
+   * each direction: it copies a BASE, the base may be ANY base in play including
+   * the opponent's, and the base need not have been played this turn.
+   */
+  | { k: 'COPY_BASE' }
 
   // ---- control flow ---------------------------------------------------------
   /** The printed "OR" on Trading Post, Barter World, Blob World, Patrol Mech, ... */
@@ -107,7 +158,12 @@ export type Effect =
   /** Neural Nexus: scrap from hand or discard, gain combat equal to its cost. */
   | { k: 'SCRAP_FOR_COMBAT'; zones: readonly Zone[]; min: 0 | 1; max: 1 }
   /** Repair Mech: put a base from your discard pile on top of your deck. */
-  | { k: 'TOPDECK_BASE_FROM_DISCARD'; min: 0 | 1 }
+  /**
+   * Repair Mech ("a base") and United's Coalition Messenger ("a card of cost
+   * five or less"). One effect with two knobs rather than two near-identical
+   * ones, because the only difference between them is the filter.
+   */
+  | { k: 'TOPDECK_FROM_DISCARD'; filter: 'base' | 'any'; maxCost: number | null; min: 0 | 1 }
   /** Warpgate Cruiser: discard any number of cards, gaining combat for each. */
   | { k: 'DISCARD_FOR_COMBAT'; per: number }
   /**
@@ -119,6 +175,77 @@ export type Effect =
   | { k: 'COMBAT_PER_SCRAPPED'; per: number }
   /** Mobile Market: at end of turn it comes back from the scrap heap. */
   | { k: 'RETURN_SELF_AT_END_OF_TURN' }
+
+  // ── Crisis ────────────────────────────────────────────────────────────────
+  /**
+   * Mega Mech: "You may return target base from play to its owner's hand."
+   *
+   * Not destruction: the base goes to HAND, so its owner replays it for free
+   * next turn. It also ignores the outpost shield, because returning is not an
+   * attack -- the shield is worded against attacks and targeting by destruction.
+   */
+  | { k: 'RETURN_BASE_TO_HAND'; min: 0 | 1 }
+  /**
+   * Crisis' Heroes: "Gain a Blob Ally -- until end of turn, you may use all of
+   * your Blob ally abilities."
+   *
+   * Unlocks the faction outright rather than adding a card of it, so it works
+   * from a single card and, like every other ally unlock, survives the enabler
+   * leaving play.
+   */
+  | { k: 'GAIN_ALLY'; faction: Faction }
+  /**
+   * Crisis' Events, every one of which is worded "each player ...".
+   *
+   * Resolves `then` once per player with THAT player as the controller, active
+   * player first. Without it, every event would need its own two-sided handler.
+   */
+  | { k: 'EACH_PLAYER'; then: readonly Effect[] }
+  /** Events deal in losses, which are not negative gains: authority floors at 0. */
+  | { k: 'LOSE_AUTHORITY'; n: number }
+  /**
+   * Black Hole: "may discard up to two cards; for each card less than two that a
+   * player discards, that player loses 4 Authority." The penalty is computed
+   * from how many were actually discarded, so it cannot be SEQ of two effects.
+   */
+  | { k: 'DISCARD_OR_LOSE'; max: number; per: number }
+  /** Bombardment: "either destroys a base they control or loses 6 Authority." */
+  | { k: 'DESTROY_OWN_BASE_OR_LOSE'; n: number }
+  /** Supernova: the whole trade row goes to the scrap heap. */
+  | { k: 'SCRAP_WHOLE_TRADE_ROW' }
+  /** Put N cards from hand back on top of your deck, in the player's order. */
+  | { k: 'TOPDECK_FROM_HAND'; n: number }
+  /**
+   * Warp Jump: "draws three cards, then puts two of THOSE cards back on top of
+   * their deck in any order."
+   *
+   * One effect rather than DRAW followed by TOPDECK_FROM_HAND, because "those
+   * cards" is a real restriction: the cards already in hand are not eligible.
+   * Building the choice from the cards this effect just drew keeps that exact,
+   * and keeps it out of persistent state.
+   */
+  | { k: 'DRAW_THEN_TOPDECK'; draw: number; back: number }
+  /** Trade Mission: the OTHER player draws, while the active one gets the trade. */
+  | { k: 'OPPONENT_DRAW'; n: number }
+  /**
+   * Re-fill the trade row, resolving any event that turns up. Pushed by the
+   * refill itself when an event appears, so that the event can ask a question
+   * and the refill resumes afterwards.
+   */
+  | { k: 'REFILL_TRADE_ROW' }
+
+  // ── Colony Wars ───────────────────────────────────────────────────────────
+  /**
+   * "You may put this card directly into your hand" on the card just acquired.
+   * Only ever reached from an ACQUIRE_SELF trigger, where ctx.source is the
+   * freshly acquired instance sitting in the discard pile.
+   */
+  | { k: 'MOVE_SELF_TO_HAND' }
+  /**
+   * Supply Depot: "Discard up to 2 cards. Gain 2 Trade or 2 Combat for each card
+   * discarded this way." The choice is per card, so a mixed split is legal.
+   */
+  | { k: 'DISCARD_FOR_TRADE_OR_COMBAT'; max: number; per: number }
 
   // ── Frontiers Challenges: the script bosses ───────────────────────────────
   // A boss turn is pushed onto the resolution stack like any other effect, so a
@@ -162,14 +289,28 @@ export interface EffectBranch {
  * and so does not fit a once-per-turn activated slot.
  */
 export interface Trigger {
-  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'ACQUIRE'
+  /**
+   * PLAY_SHIP / PLAY_BASE fire on OTHER cards entering play, watched by a card
+   * already there (Fleet HQ).
+   *
+   * The two SELF forms fire on the card itself, and exist because a base has no
+   * on-play slot at all: its `primary` is an activated ability the player spends
+   * a click on. PLAY_SELF is how Stealth Tower copies "after it enters play"
+   * (publisher FAQ) while leaving its primary free -- so the copied base's own
+   * ability is still available that turn, which is the whole point of copying an
+   * outpost. ACQUIRE_SELF fires on the card being bought, for Colony Wars'
+   * "when you acquire this card" clause.
+   */
+  readonly on: 'PLAY_SHIP' | 'PLAY_BASE' | 'PLAY_SELF' | 'ACQUIRE_SELF'
+  /** Colony Wars' Command Center fires only on ships of one faction. */
+  readonly faction?: Faction
   readonly effects: readonly Effect[]
 }
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
-export type AbilitySlot = 'primary' | 'ally' | 'doubleAlly' | 'scrap' | 'trigger'
+export type AbilitySlot = 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'trigger'
 
-/** Copy-source for Stealth Needle; null on every other card. */
+/** Copy-source for Stealth Needle and Stealth Tower; null on every other card. */
 export interface CopyState {
   readonly copiedDef: CardDefId
 }

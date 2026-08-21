@@ -90,6 +90,12 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
           * procedural ground and both cases end up identical. */}
         {/* Under the veil, so it can never sit on top of the ability text. */}
         <FactionMark faction={c.faction} className="card__faction" />
+        {/* United's dual-faction cards carry both marks: which factions a card
+          * counts as is the whole reason to buy one, so it has to be readable
+          * without opening the card. */}
+        {c.faction2 && (
+          <FactionMark faction={c.faction2} className="card__faction card__faction--2" />
+        )}
         <span className="card__veil" />
       </span>
 
@@ -120,6 +126,13 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
                   <span className="card__rule" />
                   <span className="card__slot-label">Союз</span>{' '}
                   <CardText src={text.ally} />
+                </>
+              )}
+              {text.ally2 && (
+                <>
+                  <span className="card__rule" />
+                  <span className="card__slot-label">Союз 2</span>{' '}
+                  <CardText src={text.ally2} />
                 </>
               )}
               {text.doubleAlly && (
@@ -160,6 +173,17 @@ export interface CardProps {
  * for the preview dialog's label. Derived from the same structured text the
  * card renders, so the two can never drift apart.
  */
+/** Как тип карты называется вслух. Оборона озвучивается только там, где она есть. */
+function TYPE_RU(c: ReturnType<typeof cardDef>): string {
+  switch (c.type) {
+    case 'outpost': return `аванпост, оборона ${c.defense}`
+    case 'base': return `база, оборона ${c.defense}`
+    case 'hero': return 'герой'
+    case 'event': return 'событие'
+    case 'ship': return 'корабль'
+  }
+}
+
 export function cardLabel(def: CardDefId): string {
   const c = cardDef(def)
   const ru = cardRu(def)
@@ -167,11 +191,11 @@ export function cardLabel(def: CardDefId): string {
   return [
     ru?.name ?? c.name,
     c.role === 'starter' ? '' : `стоимость ${c.cost}`,
-    FACTION_RU[c.faction],
-    c.type === 'outpost' ? `аванпост, оборона ${c.defense}`
-      : c.type === 'base' ? `база, оборона ${c.defense}` : 'корабль',
+    c.faction2 ? `${FACTION_RU[c.faction]} и ${FACTION_RU[c.faction2]}` : FACTION_RU[c.faction],
+    TYPE_RU(c),
     speak(text.primary),
     text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
+    text.ally2 ? `Второе союзное свойство: ${speak(text.ally2)}` : '',
     text.doubleAlly ? `Двойное союзное свойство: ${speak(text.doubleAlly)}` : '',
     text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
   ].filter(Boolean).join('. ')
@@ -182,8 +206,10 @@ export function Card({
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
   // Orientation follows the printed card everywhere: a base lies landscape in
-  // the trade row and in hand exactly as it does on the table.
-  const isBase = c.type !== 'ship'
+  // the trade row and in hand exactly as it does on the table. Heroes and
+  // Events are printed portrait, so this is a whitelist rather than "not a
+  // ship" -- which would silently turn every Hero on its side.
+  const isBase = c.type === 'base' || c.type === 'outpost'
   const cls = [
     'card',
     isBase ? 'is-base' : '',
@@ -202,9 +228,15 @@ export function Card({
   const cardRef = useRef<HTMLButtonElement>(null)
   const tilt = useTilt({ target: cardRef })
 
+  // A dual-faction card is tinted from both ends, so the pair reads at a glance
+  // in a row of five. The line colour stays on the primary, or the border would
+  // stop being a reliable faction cue.
+  const fc = FACTION_VAR[c.faction]
+  const fc2 = c.faction2 ? FACTION_VAR[c.faction2] : fc
   const style = {
-    '--fc': FACTION_VAR[c.faction],
-    '--fc-line': `color-mix(in srgb, ${FACTION_VAR[c.faction]} 30%, var(--rule))`,
+    '--fc': fc,
+    '--fc2': fc2,
+    '--fc-line': `color-mix(in srgb, ${fc} 30%, var(--rule))`,
   } as React.CSSProperties
 
   return (

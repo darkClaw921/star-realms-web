@@ -52,8 +52,13 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     if (!card.used.primary && printed.type !== 'ship' && eff.primary.length > 0) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'primary' })
     }
-    if (!card.used.ally && eff.ally.length > 0 && allyReady(card, me.allyUnlocked)) {
+    if (!card.used.ally && eff.ally.length > 0
+        && allyReady(card, me.allyUnlocked, eff.allyFaction)) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'ally' })
+    }
+    if (!card.used.ally2 && eff.ally2.length > 0
+        && allyReady(card, me.allyUnlocked, eff.ally2Faction)) {
+      out.push({ t: 'ACTIVATE', card: card.iid, slot: 'ally2' })
     }
     if (!card.used.doubleAlly && eff.doubleAlly.length > 0
         && allyReady(card, me.doubleAllyUnlocked)) {
@@ -73,7 +78,9 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   const shielded = v.opponent.inPlay.some((c) => cardDef(c.def).type === 'outpost')
   for (const c of v.opponent.inPlay) {
     const def = cardDef(c.def)
-    if (def.type === 'ship') continue
+    // Only bases are attackable. A Hero sits in the play area and cannot be
+    // attacked at all, which a "not a ship" test would get wrong.
+    if (def.type !== 'base' && def.type !== 'outpost') continue
     if (shielded && def.type !== 'outpost') continue
     if (me.combat >= (def.defense ?? 0)) out.push({ t: 'ATTACK_BASE', base: c.iid })
   }
@@ -103,9 +110,21 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   return out
 }
 
-function allyReady(card: InPlayCardView, unlocked: readonly string[]): boolean {
-  const own = cardDef(card.def).faction
-  if (unlocked.includes(own)) return true
+/**
+ * Is this ally slot switched on?
+ *
+ * `pinned` is United's per-faction slot: that faction and no other. Unpinned
+ * means any faction the card counts as -- its printed one or two, plus a Stealth
+ * Needle's copied faction -- which is also United's "Coalition Ally (Machine
+ * Cult or Trade Federation)", where either half will do.
+ */
+function allyReady(
+  card: InPlayCardView, unlocked: readonly string[], pinned?: string,
+): boolean {
+  if (pinned) return unlocked.includes(pinned)
+  const printed = cardDef(card.def)
+  if (unlocked.includes(printed.faction)) return true
+  if (printed.faction2 && unlocked.includes(printed.faction2)) return true
   if (card.copiedDef && unlocked.includes(cardDef(card.copiedDef).faction)) return true
   return false
 }

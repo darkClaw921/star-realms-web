@@ -150,6 +150,9 @@ button { font: inherit; color: inherit; }
    * card itself now: with full-bleed art there is no separate window to hold it. */
   background:
     radial-gradient(90% 120% at 30% 12%, color-mix(in srgb, var(--fc) 42%, transparent) 0%, transparent 66%),
+    /* Second faction, opposite corner. On a single-faction card --fc2 equals
+     * --fc, so this stop is invisible and costs nothing. */
+    radial-gradient(70% 100% at 92% 96%, color-mix(in srgb, var(--fc2, var(--fc)) 30%, transparent) 0%, transparent 62%),
     linear-gradient(158deg, color-mix(in srgb, var(--fc) 20%, var(--hull)) 0%, var(--void) 88%);
   border: 1px solid var(--fc-line, var(--rule));
   display: block;
@@ -273,6 +276,15 @@ button { font: inherit; color: inherit; }
   pointer-events: none;
 }
 .card.is-base .card__faction { width: 15cqi; height: 15cqi; bottom: 38%; }
+
+/* United's dual-faction cards wear both marks, side by side rather than stacked:
+ * which pair a card belongs to is the reason to buy it, and two overlapping
+ * silhouettes read as one unfamiliar shape rather than as two known ones. */
+.card__faction--2 {
+  right: 24cqi;
+  color: var(--fc2);
+}
+.card.is-base .card__faction--2 { right: 19cqi; }
 
 .card__body {
   position: relative;

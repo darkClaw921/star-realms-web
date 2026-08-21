@@ -60,7 +60,7 @@ export const FRONTIERS: Record<string, Spec> = {
     name: 'Burrower', faction: 'blob', cost: 3, type: 'ship',
     defense: null, copies: 2, role: 'trade_deck',
     primary: [combat(5)], ally: [draw(1)],
-    scrap: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 4, dest: 'discard' }],
+    scrap: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 4, dest: 'discard', min: 1 }],
     text: {
       primary: '{combat:5}', ally: 'Draw a card.',
       scrap: 'Acquire a card of cost 4 or less for free.',
@@ -234,7 +234,10 @@ export const FRONTIERS: Record<string, Spec> = {
     defense: null, copies: 2, role: 'trade_deck',
     primary: [chooseOne(
       { label: '{trade:3}', then: [trade(3)] },
-      { label: 'Top-deck a base', then: [{ k: 'TOPDECK_BASE_FROM_DISCARD', min: 1 }] },
+      {
+        label: 'Top-deck a base',
+        then: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'base', maxCost: null, min: 1 }],
+      },
     )],
     ally: [scrapHandDiscard(0, 1)],
     text: {
@@ -360,7 +363,7 @@ export const FRONTIERS: Record<string, Spec> = {
   gateship: {
     name: 'Gateship', faction: 'trade_federation', cost: 6, type: 'ship',
     defense: null, copies: 1, role: 'trade_deck',
-    primary: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 6, dest: 'deck_top' }],
+    primary: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 6, dest: 'deck_top', min: 1 }],
     ally: [authority(5)],
     text: {
       primary: 'Acquire a ship or base of cost 6 or less for free and put it on top of your deck.',
@@ -380,7 +383,7 @@ export const FRONTIERS: Record<string, Spec> = {
     name: 'Long Hauler', faction: 'trade_federation', cost: 4, type: 'ship',
     defense: null, copies: 2, role: 'trade_deck',
     primary: [trade(3)], ally: [trade(2)],
-    scrap: [{ k: 'TOPDECK_NEXT_ACQUIRED', filter: 'base', min: 1 }],
+    scrap: [{ k: 'REDIRECT_NEXT_ACQUIRED', redirect: { filter: 'base', dest: 'deck_top', optional: false } }],
     text: {
       primary: '{trade:3}', ally: '{trade:2}',
       scrap: 'Put the next base you acquire this turn on top of your deck.',
