@@ -82,7 +82,9 @@ export function createGame(setup: MatchSetup): GameState {
   for (const pid of PLAYERS) {
     let cards: CardInstance[]
     ;[cards, rng] = mintAll(rng, sc?.starterDeck[pid] ?? starterDeck())
-    ;[cards, rng] = shuffle(rng, cards)
+    // A stacked deck stays stacked: Blob Assault's ten cards are dealt in the
+    // order the rulebook prints them, and shuffling would erase the challenge.
+    if (!sc?.unshuffled?.includes(pid)) [cards, rng] = shuffle(rng, cards)
     decks[pid] = cards
   }
 
@@ -94,6 +96,15 @@ export function createGame(setup: MatchSetup): GameState {
   const players: Record<PlayerId, PlayerState> = {
     p1: newPlayer(decks.p1, sc?.authority.p1 ?? STARTING_AUTHORITY),
     p2: newPlayer(decks.p2, sc?.authority.p2 ?? STARTING_AUTHORITY),
+  }
+
+  // Cards that open in a discard pile (Blob Assault's face-up Spike Cluster).
+  for (const pid of PLAYERS) {
+    for (const def of sc?.startingDiscard?.[pid] ?? []) {
+      let c: CardInstance
+      ;[c, rng] = mint(rng, def)
+      players[pid].discard.push(c)
+    }
   }
 
   // Bases a mission starts you (or the boss) with. They are already standing,

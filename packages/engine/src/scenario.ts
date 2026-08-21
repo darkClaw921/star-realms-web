@@ -53,6 +53,13 @@ export interface ScenarioSetup {
    * null means the full 80-card deck.
    */
   readonly tradeDeckOnly: readonly CardDefId[] | null
+  /**
+   * Sides whose personal deck must NOT be shuffled. Blob Assault stacks its
+   * boss deck in a printed order, and that order is the challenge.
+   */
+  readonly unshuffled?: readonly PlayerId[]
+  /** Cards that start in a discard pile rather than a deck. */
+  readonly startingDiscard?: Partial<Record<PlayerId, readonly CardDefId[]>>
 }
 
 export function noScenarioCounters(): Record<PlayerId, number> {

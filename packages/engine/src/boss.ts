@@ -1,5 +1,6 @@
 import type { CardDefId, CardInstance, Faction, PlayerId } from './ids'
 import type { Objective, ScenarioSetup } from './scenario'
+import type { SetId } from './cards/types'
 
 /**
  * The eight solo/co-op Challenges from Star Realms: Frontiers, as a one-player
@@ -145,45 +146,71 @@ export interface ChallengeSpec {
   readonly bossDeck?: readonly CardDefId[]
   /** Trade deck restriction, where the challenge removes a faction from it. */
   readonly tradeDeckOnly?: readonly CardDefId[]
+  /**
+   * Blob Assault's deck is STACKED, not shuffled: the rulebook gives its ten
+   * cards in order, and the difficulty curve of the challenge is that order.
+   */
+  readonly bossDeckOrdered?: boolean
+  /** Cards already in the boss's discard pile at setup. */
+  readonly bossDiscard?: readonly CardDefId[]
 }
 
 const ids = (...xs: string[]): CardDefId[] => xs as CardDefId[]
 
-const TF = ids(
-  'federation-shuttle', 'cutter', 'embassy-yacht', 'freighter', 'trade-escort',
-  'flagship', 'command-ship', 'trading-post', 'barter-world', 'defense-center',
-  'central-office', 'port-of-call',
+/**
+ * The Frontiers cards each challenge actually calls for.
+ *
+ * These are the real decks now. Until the Frontiers set was in the registry
+ * these four challenges had to make do with base-set cards of the right colour;
+ * that substitution is gone and the challenge cards are followed as printed.
+ */
+
+/** Blob Assault's Blob deck, in the exact order the rulebook stacks it. */
+const BLOB_ASSAULT_DECK = ids(
+  'stinger', 'spike-cluster', 'burrower', 'crusher', 'nesting-ground',
+  'pulverizer', 'blob-alpha', 'swarm-cluster', 'infested-moon', 'hive-queen',
 )
-const BLOB = ids(
-  'blob-fighter', 'trade-pod', 'battle-pod', 'ram', 'blob-destroyer', 'blob-carrier',
-  'battle-blob', 'blob-wheel', 'the-hive', 'blob-world',
+
+/** All twenty Blob cards from Frontiers, by copy count. */
+const BLOB_FRONTIERS = ids(
+  'blob-alpha', 'blob-miner', 'blob-miner', 'blob-miner', 'burrower', 'burrower',
+  'crusher', 'crusher', 'hive-queen', 'infested-moon', 'moonwurm-hatchling',
+  'moonwurm-hatchling', 'nesting-ground', 'pulverizer', 'spike-cluster',
+  'spike-cluster', 'stinger', 'stinger', 'stinger', 'swarm-cluster',
 )
-const EMPIRE = ids(
-  'imperial-fighter', 'corvette', 'survey-ship', 'imperial-frigate', 'battlecruiser',
-  'dreadnaught', 'space-station', 'recycling-station', 'war-world', 'royal-redoubt',
-  'fleet-hq',
+
+/** All twenty Machine Cult cards from Frontiers, by copy count. */
+const CULT_FRONTIERS = ids(
+  'builder-bot', 'builder-bot', 'builder-bot', 'conversion-yard',
+  'defense-system', 'defense-system', 'destroyer-bot', 'destroyer-bot',
+  'destroyer-bot', 'enforcer-mech', 'integration-port', 'integration-port',
+  'nanobot-swarm', 'neural-nexus', 'plasma-bot', 'plasma-bot', 'plasma-bot',
+  'reclamation-station', 'repair-mech', 'repair-mech',
 )
-const CULT = ids(
-  'trade-bot', 'missile-bot', 'supply-bot', 'patrol-mech', 'stealth-needle',
-  'battle-mech', 'missile-mech', 'battle-station', 'mech-world', 'junkyard',
-  'machine-base', 'brain-world',
+
+/** All twenty Star Empire cards from Frontiers. */
+const EMPIRE_FRONTIERS = ids(
+  'captured-outpost', 'captured-outpost', 'cargo-craft', 'cargo-craft',
+  'cargo-craft', 'farm-ship', 'farm-ship', 'frontier-hawk', 'frontier-hawk',
+  'frontier-hawk', 'hammerhead', 'imperial-flagship', 'jamming-terminal',
+  'light-cruiser', 'light-cruiser', 'light-cruiser', 'orbital-gun-platform',
+  'orbital-gun-platform', 'siege-fortress', 'warpgate-cruiser',
+)
+
+/** All twenty Trade Federation cards from Frontiers. */
+const TF_FRONTIERS = ids(
+  'federation-battleship', 'federation-cruiser', 'frontier-runner',
+  'frontier-runner', 'frontier-runner', 'gateship', 'ion-station',
+  'long-hauler', 'long-hauler', 'mobile-market', 'mobile-market',
+  'orbital-shuttle', 'orbital-shuttle', 'orbital-shuttle', 'outland-station',
+  'outland-station', 'outland-station', 'patrol-boat', 'patrol-boat',
+  'transit-nexus',
 )
 
 const SCOUT = 'scout' as CardDefId
 const VIPER = 'viper' as CardDefId
 const std = (): CardDefId[] =>
   [...Array<CardDefId>(8).fill(SCOUT), ...Array<CardDefId>(2).fill(VIPER)]
-
-/**
- * A deck boss's personal deck: the faction's cards plus the starter chaff the
- * challenge calls for. Two copies of each faction card keeps the deck near the
- * ~20 cards the Frontiers version uses.
- */
-const factionDeck = (faction: readonly CardDefId[], scouts: number, vipers: number): CardDefId[] => [
-  ...faction, ...faction,
-  ...Array<CardDefId>(scouts).fill(SCOUT),
-  ...Array<CardDefId>(vipers).fill(VIPER),
-]
 
 export const CHALLENGES: readonly ChallengeSpec[] = [
   // ── script bosses: no hand, no deck, no discard pile ────────────────────
@@ -209,35 +236,46 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
   {
     id: 'blob-assault', kind: 'deck', handSize: 1,
     bossAuthority: 40, playerAuthority: 40,
-    // The challenge removes every Blob card from the trade deck and gives them
-    // to the boss.
-    bossDeck: factionDeck(BLOB, 0, 0),
-    tradeDeckOnly: [...TF, ...EMPIRE, ...CULT],
+    // "Remove all Blob cards from the Trade Deck. Put one Spike Cluster face up
+    // in the Blob's Discard Pile. Then create a Blob deck with the following
+    // cards in order..." -- and the remaining Blob cards are set aside unused.
+    bossDeck: BLOB_ASSAULT_DECK,
+    bossDeckOrdered: true,
+    bossDiscard: ids('spike-cluster'),
+    tradeDeckOnly: [...TF_FRONTIERS, ...EMPIRE_FRONTIERS, ...CULT_FRONTIERS],
   },
   {
     id: 'madness-of-the-machine', kind: 'deck', handSize: 2,
     bossAuthority: 40, playerAuthority: 60,
-    // Rulebook: the player's deck is 7 Scouts and 1 Viper, and the boss's deck
-    // is the Machine Cult cards plus 4 Scouts and 4 Vipers.
+    // "Remove all Machine Cult cards from the Trade Deck. Shuffle those cards,
+    // 4 Scouts, and 4 Vipers together to make the Machine Cult deck." The
+    // player's own deck is cut to 7 Scouts and 1 Viper.
     playerDeck: [...Array<CardDefId>(7).fill(SCOUT), VIPER],
-    bossDeck: factionDeck(CULT, 4, 4),
-    tradeDeckOnly: [...TF, ...BLOB, ...EMPIRE],
+    bossDeck: [
+      ...CULT_FRONTIERS,
+      ...Array<CardDefId>(4).fill(SCOUT), ...Array<CardDefId>(4).fill(VIPER),
+    ],
+    tradeDeckOnly: [...TF_FRONTIERS, ...BLOB_FRONTIERS, ...EMPIRE_FRONTIERS],
   },
   {
     id: 'defy-the-empire', kind: 'deck', handSize: 5,
     bossAuthority: 40, playerAuthority: 50,
-    // "The Boss and each player start with a standard Personal Deck", and the
-    // boss additionally acquires from its own Star Empire decks. Here the two
-    // are merged into one personal deck, since a private trade deck for the
-    // boss would need a second acquisition economy for no gain in solo play.
-    bossDeck: [...std(), ...EMPIRE],
-    tradeDeckOnly: [...TF, ...BLOB, ...CULT],
+    // "Remove all Star Empire cards from the Trade Deck." The boss starts with
+    // a standard personal deck and acquires from its own two Star Empire decks
+    // during play; those two decks are merged into its personal deck here,
+    // because a private acquisition economy has nothing to interact with in a
+    // solo game. The cards are the real twenty.
+    bossDeck: [...std(), ...EMPIRE_FRONTIERS],
+    tradeDeckOnly: [...TF_FRONTIERS, ...BLOB_FRONTIERS, ...CULT_FRONTIERS],
   },
   {
     id: 'cost-of-freedom', kind: 'deck', handSize: 2,
     bossAuthority: 40, playerAuthority: 30,
-    bossDeck: [...std(), ...TF],
-    tradeDeckOnly: [...BLOB, ...EMPIRE, ...CULT],
+    // "Remove all Trade Federation cards from the Trade Deck." Same treatment
+    // as Defy the Empire: the Acquisition Deck and the Assets Ledger fold into
+    // the boss's personal deck, built from the real twenty.
+    bossDeck: [...std(), ...TF_FRONTIERS],
+    tradeDeckOnly: [...BLOB_FRONTIERS, ...EMPIRE_FRONTIERS, ...CULT_FRONTIERS],
   },
 ]
 
@@ -265,6 +303,8 @@ export const BOSS_SEAT: PlayerId = 'p2'
 export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel): {
   scenario: ScenarioSetup
   boss: BossState
+  /** Challenges are played on the Frontiers trade deck, as the set intends. */
+  sets: readonly SetId[]
 } {
   const objective: Objective = spec.id === 'dimensional-horror'
     ? { k: 'DESTROY_TENTACLES' }
@@ -294,7 +334,10 @@ export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel): {
       },
       startingBases: {},
       tradeDeckOnly: spec.tradeDeckOnly ?? null,
+      ...(spec.bossDeckOrdered ? { unshuffled: [BOSS_SEAT] as const } : {}),
+      ...(spec.bossDiscard ? { startingDiscard: { p2: spec.bossDiscard } } : {}),
     },
     boss: newBossState(spec.id, spec.kind, level, spec.handSize ?? 0),
+    sets: ['frontiers'],
   }
 }

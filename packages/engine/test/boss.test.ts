@@ -14,8 +14,10 @@ import { redact } from '../src/view'
 function start(id: string, level: ChallengeLevel = 'veteran', seed = 'boss-seed'): GameState {
   const spec = challengeById(id)
   if (!spec) throw new Error(`no challenge ${id}`)
-  const { scenario, boss } = challengeSetup(spec, level)
-  return createGame({ matchId: 'c', seed, firstPlayer: 'p1', scenario, boss })
+  const { scenario, boss, sets } = challengeSetup(spec, level)
+  // Challenges are dealt from the Frontiers trade deck, which is what the set
+  // they come from is built around.
+  return createGame({ matchId: 'c', seed, firstPlayer: 'p1', scenario, boss, sets })
 }
 
 /** Pass turns; the boss's own turn resolves inside END_TURN. */
@@ -53,21 +55,83 @@ describe('challenge setup', () => {
       expect(s.players.p2.deck).toHaveLength(0)
       expect(s.players.p2.hand).toHaveLength(0)
       expect(s.players.p2.discard).toHaveLength(0)
-      // And it never acquires one: ten turns in, all three are still empty.
+
+      // It is never DEALT one either: ten turns in it still has no hand,
+      // because it never draws. (Automatons plays cards off the trade deck,
+      // and a card it plays may legitimately hand it one -- Gateship acquires
+      // to the deck top -- so deck and discard are not asserted empty. What
+      // matters is that no discard-and-draw phase ever runs for it.)
       const later = pass(s, 10)
-      expect(later.players.p2.deck).toHaveLength(0)
       expect(later.players.p2.hand).toHaveLength(0)
-      expect(later.players.p2.discard).toHaveLength(0)
     }
   })
 
   it('gives deck bosses a personal deck and removes their faction from the trade deck', () => {
     for (const spec of CHALLENGES.filter((c) => c.kind === 'deck')) {
       const s = start(spec.id)
-      expect(s.players.p2.deck.length + s.players.p2.hand.length).toBeGreaterThan(10)
+      const bossCards = s.players.p2.deck.length + s.players.p2.hand.length
+        + s.players.p2.discard.length
+      expect(bossCards).toBeGreaterThan(9)
       const allowed = new Set<string>(spec.tradeDeckOnly ?? [])
       for (const c of [...s.tradeDeck, ...s.tradeRow.filter((x) => x !== null)]) {
         expect(allowed.has(c.def)).toBe(true)
+      }
+    }
+  })
+
+  it('deals challenges from the Frontiers trade deck, not the base set', () => {
+    for (const spec of CHALLENGES) {
+      const s = start(spec.id)
+      for (const c of [...s.tradeDeck, ...s.tradeRow.filter((x) => x !== null)]) {
+        expect(cardDef(c.def).set).toBe('frontiers')
+      }
+    }
+  })
+
+  it('Blob Assault stacks its deck in the printed order and opens with a Spike Cluster', () => {
+    const s = start('blob-assault')
+    // Hand size is one, so the top card has already been drawn: Stinger first.
+    expect(s.players.p2.hand[0]?.def).toBe(asDefId('stinger'))
+    const rest = ['spike-cluster', 'burrower', 'crusher', 'nesting-ground',
+      'pulverizer', 'blob-alpha', 'swarm-cluster', 'infested-moon', 'hive-queen']
+    rest.forEach((def, i) => expect(s.players.p2.deck[i]?.def).toBe(asDefId(def)))
+    // "Put one Spike Cluster face up in the Blob's Discard Pile."
+    expect(s.players.p2.discard.map((c) => c.def)).toEqual([asDefId('spike-cluster')])
+  })
+
+  it('Madness of the Machine builds the deck the rulebook describes', () => {
+    const s = start('madness-of-the-machine')
+    const all = [...s.players.p2.deck, ...s.players.p2.hand]
+    // Twenty Machine Cult cards plus four Scouts and four Vipers.
+    expect(all).toHaveLength(28)
+    expect(all.filter((c) => c.def === asDefId('scout'))).toHaveLength(4)
+    expect(all.filter((c) => c.def === asDefId('viper'))).toHaveLength(4)
+    const cult = all.filter((c) => c.def !== asDefId('scout') && c.def !== asDefId('viper'))
+    expect(cult).toHaveLength(20)
+    for (const c of cult) {
+      expect(cardDef(c.def).faction).toBe('machine_cult')
+      expect(cardDef(c.def).set).toBe('frontiers')
+    }
+    // And the player's own deck is the cut-down 7 Scouts and 1 Viper.
+    expect([...s.players.p1.deck, ...s.players.p1.hand]).toHaveLength(8)
+  })
+
+  it('every deck boss uses its own faction, from Frontiers', () => {
+    const faction: Record<string, string> = {
+      'blob-assault': 'blob',
+      'madness-of-the-machine': 'machine_cult',
+      'defy-the-empire': 'star_empire',
+      'cost-of-freedom': 'trade_federation',
+    }
+    for (const [id, f] of Object.entries(faction)) {
+      const s = start(id)
+      const cards = [...s.players.p2.deck, ...s.players.p2.hand, ...s.players.p2.discard]
+        .map((c) => cardDef(c.def))
+        .filter((d) => d.role === 'trade_deck')
+      expect(cards.length).toBeGreaterThan(0)
+      for (const d of cards) {
+        expect(d.faction).toBe(f)
+        expect(d.set).toBe('frontiers')
       }
     }
   })

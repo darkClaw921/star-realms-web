@@ -428,11 +428,15 @@ async function main() {
       }
       const hasProbe = (await page.$$(probe)).length > 0
       const authorityAfter = await myAuthority()
-      // Три хода против любого из этих боссов обязаны оставить след: они все
-      // атакуют каждый ход. Ноль урона означает, что ход босса не состоялся.
-      record(`босс «${boss}» ведёт свой ход`,
-        hasProbe && authorityAfter < authorityBefore,
-        `панель: ${hasProbe}, авторитет ${authorityBefore} → ${authorityAfter}`)
+      // След от хода босса -- это либо урон, либо выложенные им карты.
+      // Автоматоны бьют только тем, что дают разыгранные ими карты, поэтому
+      // три торговых карты подряд действительно могут не нанести урона; но
+      // карты на столе появиться обязаны.
+      const bossCards = await page.$$eval('.band:first-of-type .card', (e) => e.length)
+      const acted = authorityAfter < authorityBefore || bossCards > 0
+      record(`босс «${boss}» ведёт свой ход`, hasProbe && acted,
+        `панель: ${hasProbe}, авторитет ${authorityBefore} → ${authorityAfter}, ` +
+        `карт у босса: ${bossCards}`)
       if (boss === 'dimensional-horror') {
         shots.push(await shot(page, 'boss-horror', 'Межпространственный ужас: авторитета у него нет, вместо этого четыре щупальца, каждое со своей обороной.'))
       }

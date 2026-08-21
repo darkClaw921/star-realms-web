@@ -53,7 +53,9 @@ function Play(): React.JSX.Element {
       boss: challenge?.boss,
       // A challenge or a mission fixes its own card pool, so the player's set
       // choice only applies to an ordinary game.
-      sets: mission || challenge ? undefined : sets,
+      // A challenge is played on the Frontiers trade deck regardless of the
+      // player's own set choice -- that is what the challenge is built for.
+      sets: challenge ? challenge.sets : mission ? undefined : sets,
     }),
     [seed, mode, difficulty, mission, challenge, sets],
   )
