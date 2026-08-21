@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { cardDef, type Action, type ChoiceOption, type PendingChoiceView } from '@sr/engine'
-import { BRANCH_RU, cardName } from '@/i18n/cards.ru'
+import { BRANCH_RU, cardName, FACTION_RU } from '@/i18n/cards.ru'
 import { promptTitle, UI } from '@/i18n/ui'
 import { Card } from './Card'
 import { CardText } from './cardText'
@@ -15,6 +15,17 @@ import { CardText } from './cardText'
  * than a sequence of single choices, which is what the printed cards actually say
  * ("scrap UP TO two cards").
  */
+/**
+ * Ветка выбора по-русски.
+ *
+ * Часть веток движок отдаёт как готовый текст со значками, часть — как
+ * идентификатор фракции (High Alert, «Маскировка»). Второй случай нельзя
+ * переводить в движке: он оперирует идентификаторами, а не языком.
+ */
+function branchLabel(label: string): string {
+  return FACTION_RU[label as keyof typeof FACTION_RU] ?? BRANCH_RU[label] ?? label
+}
+
 export function ChoiceSheet({
   choice, onResolve,
 }: {
@@ -88,7 +99,7 @@ export function ChoiceSheet({
                   {b.o === 'BRANCH' ? String(b.index + 1).padStart(2, '0') : ''}
                 </span>
                 <span>
-                  {b.o === 'BRANCH' && <CardText src={BRANCH_RU[b.label] ?? b.label} />}
+                  {b.o === 'BRANCH' && <CardText src={branchLabel(b.label)} />}
                 </span>
               </button>
             ))}

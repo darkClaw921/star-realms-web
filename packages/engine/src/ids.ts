@@ -41,14 +41,16 @@ export const FACTION_LABEL: Record<Faction, string> = {
 }
 
 /**
- * Crisis adds two card types that are neither ships nor bases.
+ * Three card types that are neither ships nor bases.
  *
- * A HERO goes straight into play when acquired, cannot be attacked or
- * destroyed, and waits there until you scrap it for its ability. An EVENT never
- * sits in the trade row at all: it resolves the instant it is turned up and is
- * replaced immediately.
+ * A HERO (Crisis, United) goes straight into play when acquired, cannot be
+ * attacked or destroyed, and waits there until you scrap it for its ability. An
+ * EVENT (Crisis) never sits in the trade row at all: it resolves the instant it
+ * is turned up and is replaced immediately. A TECH (High Alert) also goes
+ * straight into play, but unlike a Hero it is never spent: you pay trade to use
+ * its ability, once per turn, for the rest of the game.
  */
-export type CardType = 'ship' | 'base' | 'outpost' | 'hero' | 'event'
+export type CardType = 'ship' | 'base' | 'outpost' | 'hero' | 'event' | 'tech'
 
 /** Zones a card can occupy. `deck` and (an opponent's) `hand` are the hidden ones. */
 export type Zone = 'deck' | 'hand' | 'discard' | 'inPlay' | 'tradeRow' | 'scrapHeap' | 'explorerPile'

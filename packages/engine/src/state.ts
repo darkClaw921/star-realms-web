@@ -77,6 +77,12 @@ export interface PlayerState {
   pendingRedirects: AcquireRedirect[]
   /** Cards this player has scrapped this turn. Reclamation Station reads it. */
   scrappedThisTurn: number
+  /**
+   * High Alert's Stealth: factions you count as having an extra card of this
+   * turn. Phantom cards -- they satisfy ally conditions and nothing else, and
+   * they are cleared with the rest of the per-turn bookkeeping.
+   */
+  phantomFactions: Faction[]
   /** Cards that return from the scrap heap to the discard pile at end of turn. */
   returnAtEndOfTurn: CardIid[]
 }
@@ -111,6 +117,8 @@ export type ChoiceCont =
   | { c: 'DISCARD_OR_LOSE'; max: number; per: number }
   /** Bombardment: declining to destroy a base is choosing the authority loss. */
   | { c: 'DESTROY_OR_LOSE'; n: number }
+  /** Stealth: how many phantom cards of the chosen faction to add. */
+  | { c: 'PHANTOM'; n: number }
 
 /** One item on the resolution stack. Both variants are plain JSON. */
 export type ResolutionFrame =

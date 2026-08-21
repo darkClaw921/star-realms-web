@@ -1,4 +1,5 @@
 import { cardDef } from './cards/registry'
+import type { CardDef } from './cards/types'
 import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
 import { opponentOf } from './ids'
 import type { GameState, InPlayCard, PlayerState } from './state'
@@ -32,11 +33,17 @@ export function isWildcard(c: Pick<InPlayCard, 'def' | 'copiedDef'>): boolean {
  * so it counts here for all of them. A card's own ally needs this to be >= 2,
  * i.e. at least one OTHER qualifying card.
  */
-export function allyCountFor(p: Pick<PlayerState, 'inPlay'>, f: Faction): number {
+export function allyCountFor(
+  p: Pick<PlayerState, 'inPlay'> & Partial<Pick<PlayerState, 'phantomFactions'>>,
+  f: Faction,
+): number {
   let n = 0
   for (const c of p.inPlay) {
     if (isWildcard(c) || factionsOf(c).includes(f)) n++
   }
+  // Stealth's phantom card counts here and nowhere else: it satisfies ally
+  // conditions without being a card in play.
+  for (const pf of p.phantomFactions ?? []) if (pf === f) n++
   return n
 }
 
@@ -56,6 +63,30 @@ export function isBase(c: Pick<InPlayCard, 'def'>): boolean {
 /** Crisis' Heroes: in play, but not a base and not a ship. */
 export function isHero(c: Pick<InPlayCard, 'def'>): boolean {
   return cardDef(c.def).type === 'hero'
+}
+
+/** High Alert's Tech: in play permanently, and never spent by being used. */
+export function isTech(c: Pick<InPlayCard, 'def'>): boolean {
+  return cardDef(c.def).type === 'tech'
+}
+
+/**
+ * What this card costs THIS player right now.
+ *
+ * High Alert prices some cards against your board: "pay 1 Trade less for each
+ * Machine Cult card you have in play". Every place that reads a price has to go
+ * through here -- the trade row, the buy, and the UI -- or the three will
+ * disagree and a card will look affordable and then be refused.
+ */
+export function costFor(def: CardDef, inPlay: readonly Pick<InPlayCard, 'def'>[]): number {
+  if (!def.discount) return def.cost
+  const { faction, per } = def.discount
+  let n = 0
+  for (const c of inPlay) {
+    const d = cardDef(c.def)
+    if (d.faction === faction || d.faction2 === faction) n++
+  }
+  return Math.max(0, def.cost - n * per)
 }
 
 export function isOutpost(c: Pick<InPlayCard, 'def'>): boolean {

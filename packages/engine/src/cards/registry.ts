@@ -7,6 +7,10 @@ import { CRISIS_EVENTS } from './crisisEvents'
 import { CRISIS_HEROES } from './crisisHeroes'
 import { UNITED_ASSAULT, UNITED_COMMAND } from './united'
 import { UNITED_HEROES } from './unitedHeroes'
+import {
+  HIGH_ALERT_FIRST_STRIKE, HIGH_ALERT_HEROES, HIGH_ALERT_INVASION,
+  HIGH_ALERT_REQUISITION, HIGH_ALERT_TECH,
+} from './highAlert'
 import { FRONTIERS } from './frontiers'
 
 /**
@@ -384,6 +388,11 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(UNITED_ASSAULT, 'united-assault'),
   ...buildDefs(UNITED_COMMAND, 'united-command'),
   ...buildDefs(UNITED_HEROES, 'united-heroes'),
+  ...buildDefs(HIGH_ALERT_FIRST_STRIKE, 'high-alert-first-strike'),
+  ...buildDefs(HIGH_ALERT_TECH, 'high-alert-tech'),
+  ...buildDefs(HIGH_ALERT_REQUISITION, 'high-alert-requisition'),
+  ...buildDefs(HIGH_ALERT_INVASION, 'high-alert-invasion'),
+  ...buildDefs(HIGH_ALERT_HEROES, 'high-alert-heroes'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -426,4 +435,6 @@ export const ALL_SETS: readonly SetId[] = [
   'core', 'frontiers', 'colony-wars',
   'crisis-bases', 'crisis-fleets', 'crisis-heroes', 'crisis-events',
   'united-assault', 'united-command', 'united-heroes',
+  'high-alert-first-strike', 'high-alert-tech', 'high-alert-requisition',
+  'high-alert-invasion', 'high-alert-heroes',
 ]

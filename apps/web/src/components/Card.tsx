@@ -50,13 +50,19 @@ export interface CardFrameProps {
   def: CardDefId
   /** Suppresses the ability text; used for face-down-ish contexts like the scrap heap. */
   quiet?: boolean | undefined
+  /**
+   * What this card costs the viewer right now, when the board changes it --
+   * High Alert's "pay 1 less for each ... card you have in play". Absent means
+   * the printed price stands.
+   */
+  cost?: number | undefined
 }
 
 /**
  * The pure card. Knows only which card it is -- no game state -- so it is cheap
  * to re-render with 30+ on screen and reusable in the gallery and rules screens.
  */
-export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps): React.JSX.Element {
+export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrameProps): React.JSX.Element {
   const c = cardDef(def)
   // Russian is the only locale shipped; the engine's English text is the fallback
   // so a card can never render nameless if a translation is missing.
@@ -101,7 +107,14 @@ export const CardFrame = memo(function CardFrame({ def, quiet }: CardFrameProps)
 
       <span className="card__body">
         <span className="card__top">
-          {c.role !== 'starter' && <span className="card__cost">{c.cost}</span>}
+          {c.role !== 'starter' && (
+            /* `cost` overrides the printed number where the board changes it --
+             * High Alert discounts. Showing the printed price would offer a
+             * card at 7 and then charge 5, or worse, look unaffordable. */
+            <span className={`card__cost${cost !== undefined && cost !== c.cost ? ' is-discounted' : ''}`}>
+              {cost ?? c.cost}
+            </span>
+          )}
           <span className="card__name">{name}</span>
           {c.defense !== null && (
             <span className={`card__defense ${c.type === 'outpost' ? 'is-outpost' : 'is-base'}`}>
@@ -166,6 +179,8 @@ export interface CardProps {
   dimmed?: boolean | undefined
   title?: string | undefined
   quiet?: boolean | undefined
+  /** See CardFrameProps. */
+  cost?: number | undefined
 }
 
 /**
@@ -181,6 +196,7 @@ function TYPE_RU(c: ReturnType<typeof cardDef>): string {
     case 'hero': return 'герой'
     case 'event': return 'событие'
     case 'ship': return 'корабль'
+    case 'tech': return 'технология'
   }
 }
 
@@ -202,7 +218,7 @@ export function cardLabel(def: CardDefId): string {
 }
 
 export function Card({
-  def, onClick, playable, selected, dimmed, title, quiet,
+  def, onClick, playable, selected, dimmed, title, quiet, cost,
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
   // Orientation follows the printed card everywhere: a base lies landscape in
@@ -258,7 +274,7 @@ export function Card({
         title={title ?? (ru?.name ?? c.name)}
         {...hold.handlers}
       >
-        <CardFrame def={def} quiet={quiet} />
+        <CardFrame def={def} quiet={quiet} cost={cost} />
         {/* The fill is the whole affordance: without it a hold that has not
           * completed yet is indistinguishable from a click that did nothing. */}
         <span className="card__hold" aria-hidden="true" />

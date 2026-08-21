@@ -80,6 +80,32 @@ const SOURCES = [
         .toLowerCase(),
   },
   {
+    // Stragglers: cards the batch above them does not contain. Crisis' Supernova
+    // is the one such card -- it is absent from the May 2015 upload and only
+    // appears in the smaller December 2017 gallery re-upload. Listed by name
+    // rather than by window, so it stays one line rather than a whole source.
+    set: 'singles',
+    url: `${BASE_API}&per_page=100&after=2017-12-14T00:00:00&before=2017-12-16T00:00:00`,
+    pages: 3,
+    expect: 1,
+    keep: (title: string): boolean => title === 'Supernova',
+    id: (title: string): string => title.toLowerCase(),
+  },
+  {
+    set: 'high-alert',
+    // High Alert is not one upload batch but a decade of them, so this source is
+    // driven by the publisher's own naming instead of by a date window: every
+    // pack prefixes its card faces SRHAL<pack>_Card_.
+    url: `${BASE_API}&per_page=100&search=SRHAL`,
+    pages: 3,
+    expect: 54,
+    keep: (title: string): boolean => /^SRHAL[A-Z]*_Card_/.test(title),
+    id: (title: string): string =>
+      title.replace(/^SRHAL[A-Z]*_Card_/, '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
+  {
     set: 'united',
     url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
     pages: 1,
@@ -136,6 +162,10 @@ const SQUASHED_IDS = new Map<string, string>(
  */
 const ID_FIXES: Record<string, string> = {
   'admiral-rasmussen': 'admiral-rasmusson', // the card is Rasmusson
+  // High Alert's Heroes are hyphenated on the card and run together in the scan
+  // filenames, so the CamelCase split lands one word short.
+  'biocaptain-kalle': 'bio-captain-kalle',
+  'biowarrior-storm': 'bio-warrior-storm',
 }
 
 interface MediaItem {

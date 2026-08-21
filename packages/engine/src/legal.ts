@@ -1,6 +1,7 @@
 import type { Action } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef } from './cards/registry'
+import { costFor } from './helpers'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
 import type { InPlayCardView, PlayerView } from './view'
@@ -49,9 +50,11 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     const eff = cardDef(card.copiedDef ?? card.def)
 
     // A ship's primary resolved on play and a Hero's on acquisition; only a
-    // base's primary is something the player spends a click on.
+    // base's or a Tech's primary is something the player spends a click on --
+    // and a Tech's also costs trade, which has to be affordable before the
+    // action is offered at all.
     if (!card.used.primary && printed.type !== 'ship' && printed.type !== 'hero'
-        && eff.primary.length > 0) {
+        && eff.primary.length > 0 && me.trade >= (eff.primaryCost ?? 0)) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'primary' })
     }
     if (!card.used.ally && eff.ally.length > 0
@@ -72,7 +75,11 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   }
 
   for (const c of v.tradeRow) {
-    if (c && cardDef(c.def).cost <= me.trade) out.push({ t: 'BUY_CARD', card: c.iid })
+    // High Alert prices some cards against your board, so the affordability
+    // test has to go through the same function the purchase does.
+    if (c && costFor(cardDef(c.def), me.inPlay) <= me.trade) {
+      out.push({ t: 'BUY_CARD', card: c.iid })
+    }
   }
   if (v.explorerPile > 0 && me.trade >= EXPLORER_COST) out.push({ t: 'BUY_EXPLORER' })
 

@@ -86,6 +86,11 @@ export const UI = {
     'united-assault': 'United: Штурм',
     'united-command': 'United: Командование',
     'united-heroes': 'United: Герои',
+    'high-alert-first-strike': 'High Alert: Первый удар',
+    'high-alert-tech': 'High Alert: Технологии',
+    'high-alert-requisition': 'High Alert: Реквизиция',
+    'high-alert-invasion': 'High Alert: Вторжение',
+    'high-alert-heroes': 'High Alert: Герои',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -256,6 +261,11 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return 'Уничтожьте свою базу или потеряйте авторитет'
     case 'TOPDECK_FROM_HAND':
       return `Верните ${n} карты на верх колоды — порядок выбора и будет порядком в колоде`
+    // ── High Alert ─────────────────────────────────────────────────────────
+    case 'CHOOSE_FACTION':
+      return 'Выберите фракцию'
+    case 'SCRY':
+      return 'Одну карту — в сброс, другая останется на верху колоды'
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

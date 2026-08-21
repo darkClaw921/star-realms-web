@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import {
-  cardDef, EXPLORER, TENTACLE_FACTIONS,
+  cardDef, costFor, EXPLORER, TENTACLE_FACTIONS,
   type Action, type CardIid, type Faction, type PlayerId,
 } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
@@ -240,9 +240,10 @@ export function Board({
                 onClick={idx.buy.has(c.iid)
                   ? () => onAction({ t: 'BUY_CARD', card: c.iid as CardIid })
                   : undefined}
+                cost={costFor(cardDef(c.def), v.me.inPlay)}
                 title={idx.buy.has(c.iid)
-                  ? UI.buyFor(nameOf(c.def), cardDef(c.def).cost)
-                  : UI.costs(nameOf(c.def), cardDef(c.def).cost)}
+                  ? UI.buyFor(nameOf(c.def), costFor(cardDef(c.def), v.me.inPlay))
+                  : UI.costs(nameOf(c.def), costFor(cardDef(c.def), v.me.inPlay))}
               />
             ) : (
               <div key={`empty-${i}`} className="empty-slot" />

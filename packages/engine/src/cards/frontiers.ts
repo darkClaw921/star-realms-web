@@ -236,7 +236,7 @@ export const FRONTIERS: Record<string, Spec> = {
       { label: '{trade:3}', then: [trade(3)] },
       {
         label: 'Top-deck a base',
-        then: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'base', maxCost: null, min: 1 }],
+        then: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'base', maxCost: null, min: 1, max: 1 }],
       },
     )],
     ally: [scrapHandDiscard(0, 1)],

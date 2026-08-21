@@ -24,6 +24,9 @@ export type PromptKind =
   | 'DISCARD_OR_LOSE'
   | 'DESTROY_OWN_BASE_OR_LOSE'
   | 'TOPDECK_FROM_HAND'
+  // ── High Alert ────────────────────────────────────────────────────────────
+  | 'CHOOSE_FACTION'
+  | 'SCRY'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

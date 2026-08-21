@@ -7,8 +7,8 @@ import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
-  allyCountFor, canAttackFace, effectiveDefId, factionsOf, findInPlay, isBase,
-  isHero, isOutpost, legalAttackTargets, legalDestroyTargets,
+  allyCountFor, canAttackFace, costFor, effectiveDefId, factionsOf, findInPlay, isBase,
+  isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { FACTIONS, opponentOf, PLAYERS } from './ids'
@@ -125,17 +125,24 @@ function checkWin(d: D, ev: GameEvent[]): void {
  * Patrol Mech's ally permanently remove your own cards, so a deck really can run
  * dry. There is no deck-out loss condition.
  */
+/** Turn the discard pile into a fresh deck. No-op when there is nothing to shuffle. */
+function reshuffle(d: D, pid: PlayerId, ev: GameEvent[]): void {
+  const p = d.players[pid]
+  if (p.discard.length === 0) return
+  const [shuffled, next] = shuffle(d.rng, p.discard as CardInstance[])
+  d.rng = next as Draft<GameState>['rng']
+  ev.push({ e: 'RESHUFFLE', player: pid, n: p.discard.length })
+  p.deck = shuffled as DP['deck']
+  p.discard = []
+}
+
 function drawCards(d: D, pid: PlayerId, n: number, ev: GameEvent[]): CardDefId[] {
   const p = d.players[pid]
   const drawn: CardDefId[] = []
   for (let i = 0; i < n; i++) {
     if (p.deck.length === 0) {
       if (p.discard.length === 0) break
-      const [shuffled, next] = shuffle(d.rng, p.discard as CardInstance[])
-      d.rng = next as Draft<GameState>['rng']
-      p.deck = shuffled as DP['deck']
-      ev.push({ e: 'RESHUFFLE', player: pid, n: p.discard.length })
-      p.discard = []
+      reshuffle(d, pid, ev)
     }
     const c = p.deck.shift()
     if (!c) break
@@ -240,7 +247,11 @@ function acquire(
   const p = d.players[pid]
   // A Hero "goes directly into play instead of into your discard pile" -- not a
   // redirect the player may decline, but where Heroes simply go.
-  if (cardDef(inst.def).type === 'hero') dest = 'in_play'
+  // A Hero and a Tech both go straight into play when acquired. They differ in
+  // what happens next -- a Hero is spent, a Tech is not -- and not in where they
+  // land, so this is one rule for both.
+  const acquiredType = cardDef(inst.def).type
+  if (acquiredType === 'hero' || acquiredType === 'tech') dest = 'in_play'
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
@@ -510,7 +521,9 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'PER': {
-      const n = p.factionPlayedThisTurn[effect.ref.faction]
+      const n = effect.ref.counter === 'faction_in_play'
+        ? countFactionInPlay(p, effect.ref.faction)
+        : p.factionPlayedThisTurn[effect.ref.faction]
       if (n <= 0) { ev.push({ e: 'FIZZLE', label: 'nothing to count' }); return }
       const repeated: Effect[] = []
       for (let i = 0; i < n; i++) repeated.push(...effect.then)
@@ -619,10 +632,14 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
         if (!c) return
         const def = cardDef(c.def)
         if (effect.filter === 'ship' && def.type !== 'ship') return
+        if (effect.filter === 'base' && def.type !== 'base' && def.type !== 'outpost') return
         if (effect.maxCost !== null && def.cost > effect.maxCost) return
         opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'tradeRow', owner: null })
       })
-      if (d.explorerPile > 0 && (effect.maxCost === null || EXPLORER_COST <= effect.maxCost)) {
+      // The Explorer is a ship, so a base-only acquisition must not offer it.
+      if (effect.filter !== 'base'
+          && d.explorerPile > 0
+          && (effect.maxCost === null || EXPLORER_COST <= effect.maxCost)) {
         opts.push({ o: 'EXPLORER' })
       }
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to acquire' }); return }
@@ -739,6 +756,29 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
+    case 'PHANTOM_FACTION': {
+      const opts: ChoiceOption[] = FACTIONS
+        .filter((f) => f !== 'unaligned')
+        .map((f, i) => ({ o: 'BRANCH' as const, index: i, label: f }))
+      pushChoice(d, makeChoice(d, me, 'CHOOSE_FACTION', 'Choose a faction', 1, 1, opts, ctx.source),
+        { c: 'PHANTOM', n: effect.n })
+      return
+    }
+
+    case 'SCRY': {
+      if (p.deck.length < effect.n) reshuffle(d, me, ev)
+      // The cards STAY in the deck while the choice is open. "Look at" is
+      // exactly the redaction the choice already provides -- options go to the
+      // actor and nobody else -- and leaving them in place means an abandoned
+      // or invalid answer cannot strand them outside any zone.
+      const looked = (p.deck as CardInstance[]).slice(0, effect.n)
+      if (looked.length <= 1) { ev.push({ e: 'FIZZLE', label: 'not enough cards to look at' }); return }
+      pushChoice(d, makeChoice(d, me, 'SCRY',
+        'Put one of these into your discard pile; the other goes back on top',
+        1, 1, cardOpts(looked, 'deck', me), ctx.source))
+      return
+    }
+
     case 'OPPONENT_DRAW': {
       drawCards(d, opponentOf(me), effect.n, ev)
       return
@@ -823,6 +863,23 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
   }
 }
 
+/**
+ * Cards of a faction currently in play, dual-faction cards counted once.
+ *
+ * Deliberately NOT allyCountFor: that one folds in Mech World's wildcard and
+ * Stealth's phantom card, which satisfy ally conditions without being cards you
+ * "have in play" -- and Lunar Landing pays out per card, not per satisfied
+ * condition.
+ */
+function countFactionInPlay(p: Draft<PlayerState>, faction: Faction): number {
+  let n = 0
+  for (const c of p.inPlay) {
+    const def = cardDef(c.def)
+    if (def.faction === faction || def.faction2 === faction) n++
+  }
+  return n
+}
+
 function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
   switch (cond.c) {
     case 'BASES_IN_PLAY_AT_LEAST':
@@ -831,6 +888,10 @@ function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
       return d.players[opponentOf(me)].inPlay.filter(isBase).length >= cond.n
     case 'FACTION_PLAYED_THIS_TURN':
       return d.players[me].factionPlayedThisTurn[cond.faction] >= cond.n
+    case 'BASE_PLAYED_THIS_TURN':
+      // "Including this one": the card asking has already entered play, so the
+      // ordinary in-play scan answers the question with no special case.
+      return d.players[me].inPlay.some((c) => c.playedThisTurn && isBase(c))
   }
 }
 
@@ -1054,6 +1115,30 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'CHOOSE_FACTION': {
+      const o = selected[0]
+      if (!o || o.o !== 'BRANCH' || cont?.c !== 'PHANTOM') return
+      const faction = FACTIONS.filter((f) => f !== 'unaligned')[o.index]
+      if (!faction) return
+      for (let i = 0; i < cont.n; i++) p.phantomFactions.push(faction)
+      // A phantom card can complete an ally condition, so the unlock has to be
+      // recomputed exactly as it is when a real card enters play.
+      recomputeAlly(d, me, ev)
+      return
+    }
+
+    case 'SCRY': {
+      const o = selected[0]
+      if (!o || o.o !== 'CARD') return
+      const idx = p.deck.findIndex((x) => x.iid === o.iid)
+      if (idx < 0) return
+      // The unchosen card needs no move: it was never taken out of the deck, so
+      // removing the chosen one leaves it exactly on top.
+      p.discard.push(p.deck.splice(idx, 1)[0] as CardInstance)
+      ev.push({ e: 'DISCARD', player: me, iid: o.iid, def: o.def })
+      return
+    }
+
     case 'DISCARD_OR_LOSE': {
       const cfg = cont?.c === 'DISCARD_OR_LOSE' ? cont : { max: 2, per: 4 }
       let n = 0
@@ -1273,6 +1358,14 @@ function activate(
   if (slot === 'primary' && cardDef(card.def).type === 'hero') {
     throw new IllegalActionError('a hero primary resolves on acquisition')
   }
+  // High Alert's Tech is the one ability you PAY for. The trade is spent whether
+  // or not the effect finds a target, exactly as a purchase is.
+  const price = slot === 'primary' ? (def.primaryCost ?? 0) : 0
+  if (price > 0) {
+    if (p.trade < price) throw new IllegalActionError('not enough trade to activate')
+    p.trade -= price
+    ev.push({ e: 'GAIN', player: me, what: 'trade', n: -price })
+  }
 
   card.used[slot] = true
   ev.push({ e: 'ABILITY_USED', player: me, iid: card.iid, def: card.def, slot })
@@ -1292,7 +1385,9 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   const idx = d.tradeRow.findIndex((c) => c?.iid === iid)
   if (idx < 0) throw new IllegalActionError('card is not in the trade row')
   const inst = d.tradeRow[idx] as CardInstance
-  const cost = cardDef(inst.def).cost
+  // High Alert prices some cards against your board, so the price is computed
+  // here rather than read off the card -- see costFor.
+  const cost = costFor(cardDef(inst.def), p.inPlay)
   if (p.trade < cost) throw new IllegalActionError('not enough trade')
   p.trade -= cost
   d.tradeRow[idx] = null
@@ -1330,7 +1425,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
     for (const c of p.inPlay) {
       // Bases stay, and so do Heroes: a Hero waits in the play area across turns
       // until you spend it, which is the whole of what makes it a Hero.
-      if (isBase(c) || isHero(c)) { staying.push(c); continue }
+      if (isBase(c) || isHero(c) || isTech(c)) { staying.push(c); continue }
       p.discard.push({ iid: c.iid, def: c.def })
     }
     p.inPlay = staying
@@ -1357,6 +1452,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.doubleAllyUnlocked = []
   p.pendingRedirects = []
   p.scrappedThisTurn = 0
+  p.phantomFactions = []
   // Stealth Tower copies a base "until your turn ends", so the copy is dropped
   // HERE rather than at the start of your next turn. The difference is not
   // cosmetic: a copied outpost left standing would shield you through the
@@ -1378,6 +1474,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.doubleAllyUnlocked = []
   next.pendingRedirects = []
   next.scrappedThisTurn = 0
+  next.phantomFactions = []
   for (const c of next.inPlay) {
     c.used = { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false }
     c.playedThisTurn = false

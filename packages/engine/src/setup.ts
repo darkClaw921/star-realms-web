@@ -62,6 +62,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     allyUnlocked: [],
     doubleAllyUnlocked: [],
     pendingRedirects: [],
+    phantomFactions: [],
     scrappedThisTurn: 0,
     returnAtEndOfTurn: [],
   }

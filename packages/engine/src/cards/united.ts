@@ -70,7 +70,7 @@ export const UNITED_ASSAULT: Record<string, Spec> = {
     faction: 'machine_cult', faction2: 'trade_federation',
     cost: 3, type: 'ship', defense: null, copies: 2, role: 'trade_deck',
     primary: [trade(2)],
-    ally: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'any', maxCost: 5, min: 1 }],
+    ally: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'any', maxCost: 5, min: 1, max: 1 }],
     text: {
       primary: '{trade:2}',
       ally: 'Choose a card of cost five or less in your discard pile and put it ' +

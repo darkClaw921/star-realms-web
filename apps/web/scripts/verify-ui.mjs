@@ -290,6 +290,11 @@ async function main() {
         ['United: Штурм', 12],
         ['United: Командование', 12],
         ['United: Герои', 12],
+        ['High Alert: Первый удар', 22],
+        ['High Alert: Технологии', 12],
+        ['High Alert: Реквизиция', 12],
+        ['High Alert: Вторжение', 12],
+        ['High Alert: Герои', 12],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>

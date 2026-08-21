@@ -33,6 +33,8 @@ export type Condition =
    * satisfy it -- the copy is not a card played.
    */
   | { c: 'FACTION_PLAYED_THIS_TURN'; faction: Faction; n: number }
+  /** Promo bases: "if you played a base this turn (including this one)". */
+  | { c: 'BASE_PLAYED_THIS_TURN' }
 
 /** Counters that PER can multiply an effect by. */
 export type CounterRef =
@@ -42,6 +44,11 @@ export type CounterRef =
    * the copy happens after the card enters play).
    */
   | { counter: 'faction_played_this_turn'; faction: Faction }
+  /**
+   * High Alert's Lunar Landing: "for each Trade Federation card you have IN
+   * PLAY" -- standing bases included, not just what you played this turn.
+   */
+  | { counter: 'faction_in_play'; faction: Faction }
 
 /**
  * Where an acquired card is routed. Acquisition is not hard-wired to the discard
@@ -118,7 +125,7 @@ export type Effect =
    * Blob Carrier: "Acquire any ship for free and put it on top of your deck."
    * `min` is 0 where the text says "you may" (Crisis' Customs Frigate).
    */
-  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest; min: 0 | 1 }
+  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'base' | 'any'; maxCost: number | null; dest: AcquireDest; min: 0 | 1 }
   /**
    * Freighter / Central Office / Factory World. Arms a pending redirection
    * consumed by the next qualifying acquisition. Multiple copies STACK (official
@@ -163,7 +170,7 @@ export type Effect =
    * five or less"). One effect with two knobs rather than two near-identical
    * ones, because the only difference between them is the filter.
    */
-  | { k: 'TOPDECK_FROM_DISCARD'; filter: 'base' | 'any'; maxCost: number | null; min: 0 | 1 }
+  | { k: 'TOPDECK_FROM_DISCARD'; filter: 'base' | 'any'; maxCost: number | null; min: number; max: number }
   /** Warpgate Cruiser: discard any number of cards, gaining combat for each. */
   | { k: 'DISCARD_FOR_COMBAT'; per: number }
   /**
@@ -227,6 +234,25 @@ export type Effect =
   | { k: 'DRAW_THEN_TOPDECK'; draw: number; back: number }
   /** Trade Mission: the OTHER player draws, while the active one gets the trade. */
   | { k: 'OPPONENT_DRAW'; n: number }
+
+  // ── High Alert ────────────────────────────────────────────────────────────
+  /**
+   * Stellar Link: "Look at the top two cards of your deck. Put one into your
+   * discard pile and the other back on top of your deck."
+   *
+   * The cards are looked at, so they are shown only to their owner -- the same
+   * redaction rule as a hand, and the reason this is one effect rather than a
+   * draw followed by a discard.
+   */
+  | { k: 'SCRY'; n: number }
+  /**
+   * Stealth: "Choose a faction. You count as having an additional card of that
+   * faction in play this turn."
+   *
+   * A phantom card, not a real one: it satisfies ally conditions and nothing
+   * else -- it is not in play, cannot be attacked, and is gone at end of turn.
+   */
+  | { k: 'PHANTOM_FACTION'; n: number }
   /**
    * Re-fill the trade row, resolving any event that turns up. Pushed by the
    * refill itself when an event appears, so that the event can ask a question

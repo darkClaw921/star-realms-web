@@ -22,6 +22,11 @@ export type SetId =
   | 'united-assault'
   | 'united-command'
   | 'united-heroes'
+  | 'high-alert-first-strike'
+  | 'high-alert-tech'
+  | 'high-alert-requisition'
+  | 'high-alert-invasion'
+  | 'high-alert-heroes'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -57,6 +62,17 @@ export interface CardDef {
   readonly defense: number | null
   /** Copies in the 80-card trade deck. 0 for starters and Explorer. */
   readonly copies: number
+  /**
+   * High Alert: "Pay 1 Trade less to acquire this card for each <faction> card
+   * you have in play." A discount, never a surcharge, and it floors at zero.
+   */
+  readonly discount?: { readonly faction: Faction; readonly per: number }
+  /**
+   * High Alert's Tech: the trade you must pay to use the primary. A Tech is not
+   * spent by using it, so this is the whole of what limits it -- that and once
+   * per turn.
+   */
+  readonly primaryCost?: number
   readonly role: CardRole
   /** Ships: resolved immediately and mandatorily on play. Bases: activatable once per turn. */
   readonly primary: readonly Effect[]
