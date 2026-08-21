@@ -1,0 +1,33 @@
+{
+  "name": "star-realms",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @sr/web",
+    "build": "npm run build -w @sr/web",
+    "start": "npm run start -w @sr/web",
+    "test": "npm run test -w @sr/engine",
+    "lint": "eslint .",
+    "depcruise": "depcruise packages/engine/src --config .dependency-cruiser.cjs",
+    "fetch-cards": "npm run fetch-cards -w @sr/web",
+    "typecheck": "tsc -b --pretty",
+    "verify": "npm run verify -w @sr/web",
+    "report": "npm run report -w @sr/web"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "dependency-cruiser": "^16.10.0",
+    "eslint": "^9.18.0",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

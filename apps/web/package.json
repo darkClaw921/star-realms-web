@@ -1,0 +1,33 @@
+{
+  "name": "@sr/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false server.ts",
+    "dev:next": "next dev",
+    "build": "next build && node scripts/build-server.mjs",
+    "start": "NODE_ENV=production node dist/server.js",
+    "fetch-cards": "tsx scripts/fetch-cards.ts",
+    "verify": "node scripts/verify-ui.mjs",
+    "report": "node scripts/verify-ui.mjs && node scripts/build-report.mjs"
+  },
+  "dependencies": {
+    "@sr/engine": "*",
+    "@sr/protocol": "*",
+    "next": "^16.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.3",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.10.2"
+  }
+}

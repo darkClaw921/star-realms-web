@@ -1,0 +1,20 @@
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+.DS_Store
+.env*.local
+
+# Card artwork is (c) Wise Wizard Games. Downloaded locally for personal use only.
+# The fetch script lives in the repo; the images must never be committed.
+apps/web/public/cards/art/
+# NOTE: artManifest.gen.ts is deliberately NOT ignored. The app imports it, so a
+# fresh clone has to build before anyone runs fetch-cards. It is checked in empty;
+# regenerating it produces a local diff you are not expected to commit.
+
+# Persisted match logs
+data/
+
+# Verification output: the screenshots contain the same copyrighted card art.
+reports/

@@ -1,0 +1,749 @@
+/*
+ * Star Realms — table shell.
+ *
+ * Design premise: 49 pieces of dense painted sci-fi art are the only saturated
+ * things allowed on screen. Everything the interface adds is matte, near-black
+ * and low-chroma, so the cards read first and the chrome never competes.
+ *
+ * Colour never carries meaning on its own. Every resource and every faction also
+ * has a distinct SHAPE mark, so the board stays readable under deuteranopia --
+ * Machine Cult red and Blob green are otherwise the same grey.
+ */
+
+:root {
+  /* ground */
+  --void: #07090d;
+  --hull: #0d1016;
+  --panel: #141822;
+  --panel-hi: #1b2130;
+  --rule: #262d3d;
+  --rule-hi: #38425a;
+
+  /* ink */
+  --ink: #eef2f7;
+  --ink-dim: #98a3b6;
+  --ink-faint: #5d6779;
+
+  /* factions — text-safe on --panel, each paired with its own shape mark */
+  --tf: #6fb7f0;
+  --blob: #5fd08a;
+  --empire: #f2c24b;
+  --cult: #ff7a6b;
+  --unaligned: #9aa6b4;
+
+  /* resources — canonical to the printed game; shape does the real work */
+  --trade: #f0b429;
+  --combat: #f4593c;
+  --authority: #58cfe0;
+
+  --ok: #5fd08a;
+  --warn: #f0b429;
+
+  /* geometry */
+  /* --card-w-base отвечает за адаптивность (медиазапросы ниже), --card-scale —
+   * за пользовательскую настройку. Разделение нужно, чтобы выбор игрока не
+   * отменял разумные значения для узких экранов. */
+  --card-w-base: 172px;
+  --card-scale: 1;
+  --card-text-scale: 1;
+  --card-w: calc(var(--card-w-base) * var(--card-scale));
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --gap: 10px;
+
+  --font-display: 'Fira Sans Condensed', 'Helvetica Neue', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* Every sprite reference gets a size. Without this an <svg> with no intrinsic
+ * dimensions renders at the CSS replaced-element default of 300x150. */
+.icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  display: inline-block;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+body {
+  background:
+    radial-gradient(1200px 700px at 50% -10%, #121a2a 0%, transparent 65%),
+    radial-gradient(900px 500px at 10% 110%, #16121f 0%, transparent 60%),
+    var(--void);
+}
+
+button { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--authority);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── eyebrow labels ─────────────────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ── the card ───────────────────────────────────────────────────────────────
+ * container-type lives on the WRAPPER, never the card: an element cannot be
+ * styled by a container query on itself. Every interior dimension is in cqi, so
+ * one --card-w drives the whole composition at any size.
+ *
+ * The artwork sits in its own window rather than bleeding behind everything.
+ * The source scans are complete card faces, so we crop the illustration band out
+ * of them (see scripts/fetch-cards.ts) and give it a frame of our own -- which
+ * is what lets the card show live state and stay legible at 90px.
+ */
+.card-slot {
+  container-type: inline-size;
+  width: var(--card-w);
+  flex: 0 0 auto;
+}
+/* Bases are landscape, so at equal width they are far shorter. Widening them
+ * keeps their text box the same physical size as a ship's. */
+.card-slot--base { width: calc(var(--card-w) * 1.32); }
+
+.card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background:
+    linear-gradient(170deg,
+      color-mix(in srgb, var(--fc) 20%, var(--panel)) 0%,
+      var(--hull) 55%,
+      var(--void) 100%);
+  border: 1px solid var(--fc-line, var(--rule));
+  display: block;
+  padding: 0;
+  text-align: left;
+  cursor: default;
+  isolation: isolate;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+.card.is-base { aspect-ratio: 7 / 5; }
+
+.card.is-playable {
+  cursor: pointer;
+  border-color: color-mix(in srgb, var(--fc) 60%, var(--rule));
+}
+.card.is-playable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--fc) 45%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--fc) 75%, transparent);
+}
+.card.is-selected {
+  box-shadow: 0 0 0 2px var(--authority), 0 10px 28px -10px var(--authority);
+}
+.card.is-dimmed { opacity: 0.62; filter: saturate(0.72); }
+
+.card__body {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 4cqi;
+  gap: 2.6cqi;
+}
+
+/* ── header: cost · name · defense ──────────────────────────────────────── */
+.card__top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 2.4cqi;
+  min-height: 0;
+}
+
+.card__cost {
+  flex: 0 0 auto;
+  width: 14cqi;
+  height: 14cqi;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 8cqi;
+  color: #10141c;
+  background: var(--trade);
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
+
+/* Always dark ink on a faction plate. White on Star Empire yellow is 1.67:1 —
+ * a hard fail — while dark-on-ink is >= 6.8:1 across all five. One rule, whole
+ * bug class gone. */
+.card__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 6.6cqi;
+  line-height: 1.04;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+  color: #090c11;
+  background: var(--fc);
+  padding: 1cqi 2cqi;
+  border-radius: 1.4cqi;
+  overflow: hidden;
+}
+.card.is-base .card__name { font-size: 5.2cqi; }
+
+.card__defense {
+  flex: 0 0 auto;
+  width: 14cqi;
+  height: 14cqi;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 7.4cqi;
+  color: #0a0d13;
+  background: var(--ink-dim);
+}
+.card.is-base .card__defense { width: 10.4cqi; height: 10.4cqi; font-size: 5.6cqi; }
+/* Outposts get the hard hex, plain bases a soft shield: shape distinguishes
+ * them, not colour, and the difference decides who can be attacked. */
+.card__defense.is-outpost {
+  clip-path: polygon(50% 0%, 100% 28%, 100% 72%, 50% 100%, 0% 72%, 0% 28%);
+  background: var(--ink);
+}
+.card__defense.is-base {
+  border-radius: 34% 34% 50% 50% / 26% 26% 66% 66%;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.2px var(--ink-dim);
+}
+
+/* ── the art window ─────────────────────────────────────────────────────── */
+.card__window {
+  position: relative;
+  flex: 0 0 34%;
+  min-height: 0;
+  border-radius: 1.4cqi;
+  overflow: hidden;
+  /* Deterministic procedural ground, hashed per card, so a missing image reads
+   * as an intentional look rather than an error state. */
+  background:
+    radial-gradient(90% 120% at 30% 15%, color-mix(in srgb, var(--fc) 46%, transparent) 0%, transparent 68%),
+    linear-gradient(155deg, color-mix(in srgb, var(--fc) 22%, var(--hull)) 0%, var(--void) 90%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.card.is-base .card__window { flex: 0 0 42%; }
+
+.card__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.card__art.is-loaded { opacity: 1; }
+
+/* ── the text plate ─────────────────────────────────────────────────────── */
+.card__text {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 1.4cqi;
+  background: rgba(5, 8, 13, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  padding: 1.7cqi 2.6cqi;
+  font-size: calc(7.1cqi * var(--card-text-scale));
+  line-height: 1.26;
+  color: var(--ink);
+}
+.card.is-base .card__text { font-size: calc(5.3cqi * var(--card-text-scale)); }
+
+.card__rule {
+  display: block;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 0.9cqi 0;
+}
+.card__slot-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fc);
+}
+.card__slot-label.is-scrap { color: var(--combat); }
+
+/* Density tiers.
+ *
+ * Set by what is actually legible, not by round numbers: at 130px the prose is
+ * about 8px and still readable; below that it is decoration. The condensed tier
+ * substitutes an icon summary derived from the same effect data — only possible
+ * because effects are structured. Below 96px even that is noise, so the card
+ * becomes a thumbnail and the player reads it by tapping. */
+.card__chips { display: none; gap: 1.8cqi; flex-wrap: wrap; align-content: flex-start; }
+@container (max-width: 130px) {
+  .card__prose { display: none; }
+  .card__chips { display: flex; }
+  .card__name { font-size: 8.4cqi; }
+  .card__text { padding: 2.6cqi; flex: 0 0 auto; }
+  .card__window { flex: 1 1 auto; }
+}
+@container (max-width: 96px) {
+  .card__text { display: none; }
+  .card__window { flex: 1 1 auto; }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8cqi;
+  font-family: var(--font-mono);
+  font-size: 9cqi;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-sm);
+  padding: 0.8cqi 1.6cqi;
+}
+
+/* ── inline resource glyphs in card text ────────────────────────────────── */
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  /* inline-flex aligns on its bottom margin edge by default, which makes the
+   * number read as a superscript. Nudge it back onto the text baseline. */
+  vertical-align: -0.18em;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1.1em;
+  white-space: nowrap;
+}
+.glyph .icon { width: 1.05em; height: 1.05em; }
+.glyph--trade { color: var(--trade); }
+.glyph--combat { color: var(--combat); }
+.glyph--authority { color: var(--authority); }
+
+/* ── table layout ───────────────────────────────────────────────────────── */
+.table {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--gap);
+  height: 100dvh;
+  padding: var(--gap);
+  padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
+  max-width: 1340px;
+  margin: 0 auto;
+}
+
+.band {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.band--market {
+  background:
+    linear-gradient(180deg, rgba(30, 38, 56, 0.55) 0%, rgba(13, 16, 22, 0.9) 100%);
+  border-color: var(--rule-hi);
+  overflow: auto;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  min-width: 0;
+}
+.row--scroll {
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.row--scroll > * { scroll-snap-align: start; }
+
+.zone {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zone__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.empty-slot {
+  width: var(--card-w);
+  aspect-ratio: 5 / 7;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+  flex: 0 0 auto;
+}
+
+/* Board and log share the middle band on desktop; on a phone the log drops
+ * below rather than squeezing the play area into a sliver. */
+.band--board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 12px;
+  overflow: hidden;
+}
+@media (max-width: 860px) {
+  .band--board { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .band--board .log { max-height: 96px; }
+}
+
+/* ── HUD ────────────────────────────────────────────────────────────────── */
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.hud__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.hud__name.is-active { color: var(--ink); }
+.hud__name.is-active::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-right: 7px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+
+/* the ledger rail: one continuous readout, not three floating badges */
+.rail {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: rgba(6, 9, 14, 0.6);
+}
+.rail__cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-right: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-faint);
+}
+.rail__cell:last-child { border-right: none; }
+.rail__cell .icon { width: 14px; height: 14px; }
+.rail__cell.is-live { color: var(--cell); }
+.rail__cell.is-live svg { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--cell) 55%, transparent)); }
+
+/*
+ * SIGNATURE: the outpost shield.
+ *
+ * "Outposts must be destroyed first" is the rule players get wrong most often,
+ * so it is drawn into the chrome rather than left to be inferred: a shielded
+ * player's authority readout is physically barred.
+ */
+.shielded {
+  position: relative;
+  border-color: var(--rule-hi);
+}
+.shielded::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--unaligned) 26%, transparent) 0 2px,
+    transparent 2px 7px);
+}
+
+.shield-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--unaligned);
+}
+.shield-note .icon { width: 12px; height: 12px; }
+
+/* ally pips: which factions have gone live this turn */
+.pips { display: flex; gap: 4px; align-items: center; }
+.pip {
+  width: 13px; height: 13px;
+  opacity: 0.2;
+  color: var(--ink-faint);
+  transition: opacity 180ms ease, color 180ms ease;
+}
+.pip.is-live { opacity: 1; color: var(--pip); filter: drop-shadow(0 0 5px currentColor); }
+
+/* ── buttons ────────────────────────────────────────────────────────────── */
+.btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 9px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule-hi);
+  background: var(--panel-hi);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, transform 90ms ease;
+}
+.btn:hover:not(:disabled) { background: #232c40; border-color: var(--ink-faint); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn--primary {
+  background: color-mix(in srgb, var(--authority) 20%, var(--panel-hi));
+  border-color: color-mix(in srgb, var(--authority) 55%, transparent);
+  color: #eaf9fc;
+}
+.btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--authority) 32%, var(--panel-hi));
+  border-color: var(--authority);
+}
+.btn--danger {
+  background: color-mix(in srgb, var(--combat) 18%, var(--panel-hi));
+  border-color: color-mix(in srgb, var(--combat) 50%, transparent);
+}
+.btn--ghost { background: transparent; }
+.btn--sm { padding: 6px 11px; font-size: 11px; }
+
+/* ── action bar under a selected card ───────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── choice overlay ─────────────────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: end center;
+  /* Light touch: the player still has to read the board to choose well, so the
+   * backdrop separates without obscuring. */
+  background: rgba(3, 5, 8, 0.3);
+  padding: 16px;
+}
+.sheet {
+  width: min(1100px, 100%);
+  background: linear-gradient(180deg, var(--panel-hi) 0%, var(--panel) 100%);
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-lg);
+  padding: 14px 16px 16px;
+  box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, 0.9);
+  max-height: 84dvh;
+  overflow: auto;
+}
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.sheet__title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.sheet__hint { font-size: 12px; color: var(--ink-dim); }
+
+.branches { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.branch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule-hi);
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 14px;
+}
+.branch:hover { border-color: var(--authority); background: #1c2434; }
+.branch__index {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* ── настройки ──────────────────────────────────────────────────────────── */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 14px;
+}
+.setting__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.setting__name { font-size: 14px; font-weight: 500; }
+.setting__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--authority);
+}
+.setting__hint { font-size: 12.5px; color: var(--ink-dim); margin: 6px 0 0; line-height: 1.5; }
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--authority);
+  height: 22px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.settings__preview {
+  display: flex;
+  gap: var(--gap);
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--void);
+  border: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+/* ── log ────────────────────────────────────────────────────────────────── */
+.log {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+}
+.log__line { padding: 1px 0; }
+.log__line b { color: var(--ink); font-weight: 600; }
+
+/* ── menu ───────────────────────────────────────────────────────────────── */
+.menu {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+.menu__inner { width: min(760px, 100%); }
+.menu__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(38px, 8vw, 76px);
+  line-height: 0.92;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.menu__title span { display: block; }
+.menu__title .lo { color: var(--ink-faint); }
+.menu__sub { color: var(--ink-dim); font-size: 15px; margin: 0 0 30px; max-width: 52ch; }
+.menu__grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.mode {
+  text-align: left;
+  padding: 18px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--rule);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+.mode:hover { border-color: var(--fc, var(--authority)); transform: translateY(-2px); }
+.mode__name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.mode__desc { font-size: 13px; color: var(--ink-dim); line-height: 1.45; }
+.menu__foot { margin-top: 26px; font-size: 12px; color: var(--ink-faint); line-height: 1.6; }
+
+/* ── banner ─────────────────────────────────────────────────────────────── */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule-hi);
+  background: var(--panel-hi);
+  font-size: 13px;
+}
+.banner--turn { border-color: color-mix(in srgb, var(--authority) 45%, transparent); }
+.banner--win { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel-hi)); }
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  :root { --card-w-base: 122px; --gap: 8px; }
+  .table { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .hud { gap: 9px; }
+  .rail__cell { padding: 4px 8px; font-size: 13px; }
+}
+@media (max-width: 560px) {
+  :root { --card-w-base: 116px; }
+  .menu__grid { grid-template-columns: 1fr; }
+}

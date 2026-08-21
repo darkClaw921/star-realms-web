@@ -1,0 +1,149 @@
+import { io, type Socket } from 'socket.io-client'
+import { enumerateLegalActions, type Action, type GameEvent, type PlayerId, type PlayerView } from '@sr/engine'
+import { ENGINE_VERSION } from '@sr/protocol'
+import { UI } from '@/i18n/ui'
+import { toLines } from './log'
+import type { LogLine, MatchClient, MatchSnapshot } from './types'
+
+export interface RemoteInfo {
+  readonly matchId: string
+  readonly roomCode: string
+  readonly seat: PlayerId
+  readonly opponentConnected: boolean
+}
+
+export type RemoteIntent =
+  | { kind: 'create' }
+  | { kind: 'join'; roomCode: string }
+  | { kind: 'rejoin'; matchId: string; token: string }
+
+export interface RemoteOptions {
+  readonly intent: RemoteIntent
+  readonly onInfo?: (info: RemoteInfo) => void
+  readonly onError?: (message: string) => void
+  readonly onCredentials?: (c: { matchId: string; token: string; seat: PlayerId }) => void
+}
+
+interface Update {
+  v: number
+  state: PlayerView
+  events: GameEvent[]
+  opponentConnected: boolean
+}
+
+/**
+ * The online mode. Implements the SAME MatchClient interface as the local one,
+ * so no board component changes between hot-seat, AI and online.
+ */
+export class RemoteMatchClient implements MatchClient {
+  private socket: Socket
+  private view: PlayerView | null = null
+  private log: LogLine[] = []
+  private subs = new Set<(s: MatchSnapshot) => void>()
+  private seat: PlayerId | null = null
+  /** Held from the join ack: later updates do not carry it, and reporting an
+   *  empty string on every update would blank the code the player must share. */
+  private roomCode = ''
+  private opponentConnected = false
+  private disposed = false
+
+  constructor(private readonly opts: RemoteOptions) {
+    this.socket = io({ path: '/rt', transports: ['websocket', 'polling'] })
+
+    this.socket.on('connect', () => {
+      const i = opts.intent
+      const event = i.kind === 'create' ? 'create' : i.kind === 'join' ? 'join' : 'rejoin'
+      const payload = i.kind === 'join' ? { roomCode: i.roomCode }
+        : i.kind === 'rejoin' ? { matchId: i.matchId, token: i.token } : {}
+      this.socket.emit(event, payload, (res: unknown) => {
+        const r = res as {
+          error?: { message: string }
+          matchId?: string; roomCode?: string; seat?: PlayerId; token?: string; update?: Update
+        }
+        if (r?.error) { opts.onError?.(r.error.message); return }
+        if (!r?.seat || !r.matchId || !r.token) {
+          opts.onError?.('Сервер вернул некорректный ответ.')
+          return
+        }
+        this.seat = r.seat
+        this.roomCode = r.roomCode ?? ''
+        opts.onCredentials?.({ matchId: r.matchId, token: r.token, seat: r.seat })
+        opts.onInfo?.({
+          matchId: r.matchId, roomCode: this.roomCode, seat: r.seat,
+          opponentConnected: r.update?.opponentConnected ?? false,
+        })
+        if (r.update) this.ingest(r.update)
+      })
+    })
+
+    this.socket.on('update', (u: Update) => this.ingest(u))
+    this.socket.on('connect_error', (e: Error) => opts.onError?.(e.message))
+  }
+
+  private ingest(u: Update): void {
+    if (this.disposed) return
+    this.view = u.state
+    this.opponentConnected = u.opponentConnected
+    const lines = toLines(u.events ?? [], this.seatNames())
+    if (lines.length > 0) this.log = [...this.log, ...lines].slice(-400)
+    this.opts.onInfo?.({
+      matchId: u.state.matchId, roomCode: this.roomCode, seat: this.seat ?? 'p1',
+      opponentConnected: u.opponentConnected,
+    })
+    this.emit()
+  }
+
+  private seatNames(): Record<PlayerId, string> {
+    const me = this.seat ?? 'p1'
+    return me === 'p1'
+      ? { p1: UI.you, p2: UI.opponent }
+      : { p1: UI.opponent, p2: UI.you }
+  }
+
+  private snapshot(): MatchSnapshot | null {
+    if (!this.view || !this.seat) return null
+    return {
+      view: this.view,
+      legal: enumerateLegalActions(this.view, this.seat),
+      log: this.log,
+      botThinking: false,
+    }
+  }
+
+  private emit(): void {
+    const s = this.snapshot()
+    if (!s) return
+    for (const cb of this.subs) cb(s)
+  }
+
+  get connectedOpponent(): boolean { return this.opponentConnected }
+
+  subscribe(cb: (s: MatchSnapshot) => void): () => void {
+    this.subs.add(cb)
+    const s = this.snapshot()
+    if (s) cb(s)
+    return () => { this.subs.delete(cb) }
+  }
+
+  send(action: Action): void {
+    if (!this.view || !this.seat || this.disposed) return
+    this.socket.emit('cmd', {
+      matchId: this.view.matchId,
+      // Idempotency key: a Socket.IO reconnect replaying a queued command is
+      // likely, not theoretical.
+      cmdId: `${this.seat}-${this.view.version}-${Math.random().toString(36).slice(2, 10)}`,
+      baseVersion: this.view.version,
+      engineVersion: ENGINE_VERSION,
+      action,
+    }, (res: unknown) => {
+      const r = res as { error?: { message: string } }
+      if (r?.error) this.opts.onError?.(r.error.message)
+    })
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.subs.clear()
+    this.socket.close()
+  }
+}
