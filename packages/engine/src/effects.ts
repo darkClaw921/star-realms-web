@@ -101,6 +101,25 @@ export type Effect =
   | { k: 'PER'; ref: CounterRef; then: readonly Effect[] }
   | { k: 'SEQ'; effects: readonly Effect[] }
 
+  // ── Frontiers Challenges: the script bosses ───────────────────────────────
+  // A boss turn is pushed onto the resolution stack like any other effect, so a
+  // step that asks the player something (a forced discard) suspends the boss
+  // mid-turn and resumes when they answer -- exactly as a card ability does.
+  /** Expands into the current boss's Order of Play. */
+  | { k: 'BOSS_TURN' }
+  /** Closes the boss's turn once its Order of Play has fully resolved. */
+  | { k: 'BOSS_END_TURN' }
+  /** Spends all the boss's combat using the rulebook targeting algorithm. */
+  | { k: 'BOSS_ATTACK' }
+  /** Automatons: assimilate the trade row's far card, then grow the count. */
+  | { k: 'BOSS_ASSIMILATE' }
+  /** Nemesis Beast: scrap the far card face down; combat equals the pile. */
+  | { k: 'BOSS_NEMESIS_STEP' }
+  /** Dimensional Horror: feed the far card to a tentacle and grow. */
+  | { k: 'BOSS_HORROR_STEP' }
+  /** Pirates of the Dark Star: the revealed card decides what is done to you. */
+  | { k: 'BOSS_PIRATE_STEP' }
+
 export interface EffectBranch {
   readonly label: string
   readonly then: readonly Effect[]

@@ -2,13 +2,16 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { missionById, type Action, type PlayerId } from '@sr/engine'
+import {
+  challengeById, challengeSetup, missionById,
+  type Action, type ChallengeLevel, type PlayerId,
+} from '@sr/engine'
 import type { Difficulty } from '@/bot/bot'
 import { Board } from '@/components/Board'
 import { UI } from '@/i18n/ui'
 import { LocalMatchClient } from '@/match/LocalMatchClient'
 import { useMatch } from '@/match/useMatch'
-import { markBeaten } from '@/campaign/progress'
+import { markBeaten, markChallengeBeaten } from '@/campaign/progress'
 
 function Play(): React.JSX.Element {
   const params = useSearchParams()
@@ -20,6 +23,17 @@ function Play(): React.JSX.Element {
   const mode = urlMode === 'hotseat' ? 'hotseat' : 'bot'
   const difficulty = (params.get('difficulty') ?? 'normal') as Difficulty
 
+  // A Frontiers challenge: the boss seat is driven by the engine for script
+  // bosses and by the ordinary bot for deck bosses, so both are just bot games
+  // with a scenario and a boss attached.
+  const challenge = useMemo(() => {
+    if (urlMode !== 'challenge') return null
+    const spec = challengeById(params.get('boss') ?? '')
+    if (!spec) return null
+    const level = (params.get('level') ?? 'veteran') as ChallengeLevel
+    return { spec, ...challengeSetup(spec, level) }
+  }, [urlMode, params])
+
   // One seed per mount. Deliberately not derived from the URL so a refresh deals
   // a new game rather than replaying the same one.
   const seed = useMemo(
@@ -30,9 +44,10 @@ function Play(): React.JSX.Element {
   const factory = useCallback(
     () => new LocalMatchClient({
       seed, firstPlayer: 'p1', mode, humanSeat: 'p1', difficulty,
-      scenario: mission?.setup,
+      scenario: mission?.setup ?? challenge?.scenario,
+      boss: challenge?.boss,
     }),
-    [seed, mode, difficulty, mission],
+    [seed, mode, difficulty, mission, challenge],
   )
   const { snapshot, client } = useMatch(factory)
 
@@ -43,8 +58,8 @@ function Play(): React.JSX.Element {
 
   const onAction = useCallback((a: Action) => { client?.send(a) }, [client])
   const onExit = useCallback(
-    () => { router.push(mission ? '/campaign' : '/') },
-    [router, mission],
+    () => { router.push(mission ? '/campaign' : challenge ? '/challenges' : '/') },
+    [router, mission, challenge],
   )
 
   // Recording the win here rather than inside the engine keeps progress out of
@@ -52,7 +67,8 @@ function Play(): React.JSX.Element {
   const won = snapshot?.view.winner
   useEffect(() => {
     if (mission && won === 'p1') markBeaten(mission.id)
-  }, [mission, won])
+    if (challenge && won === 'p1') markChallengeBeaten(challenge.spec.id)
+  }, [mission, challenge, won])
 
   if (!snapshot) {
     return <main className="menu"><p className="eyebrow">{UI.dealing}</p></main>

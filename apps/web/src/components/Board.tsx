@@ -1,16 +1,20 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { cardDef, EXPLORER, type Action, type CardIid, type PlayerId } from '@sr/engine'
+import {
+  cardDef, EXPLORER, TENTACLE_FACTIONS,
+  type Action, type CardIid, type Faction, type PlayerId,
+} from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
 import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
+import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import type { MatchSnapshot } from '@/match/types'
 import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
 import { SettingsPanel } from './SettingsPanel'
 import { OpponentHud, SelfHud } from './Hud'
-import { Icon } from './Icons'
+import { FACTION_VAR, Icon } from './Icons'
 
 const SLOT_LABEL: Record<'primary' | 'ally' | 'scrap', string> = {
   primary: UI.slotPrimary, ally: UI.slotAlly, scrap: UI.slotScrap,
@@ -45,6 +49,8 @@ export function Board({
     let endTurn = false
     let maxFace = 0
     let playAll = false
+    let canMulligan = false
+    const tentacles = new Set<string>()
     for (const a of legal) {
       switch (a.t) {
         case 'PLAY_CARD': play.add(a.card); break
@@ -54,6 +60,8 @@ export function Board({
         case 'ATTACK_BASE': attack.add(a.base); break
         case 'ATTACK_PLAYER': maxFace = Math.max(maxFace, a.amount); break
         case 'END_TURN': endTurn = true; break
+        case 'MULLIGAN_ROW': canMulligan = true; break
+        case 'ATTACK_TENTACLE': tentacles.add(a.faction); break
         case 'ACTIVATE': {
           const set = activate.get(a.card) ?? new Set<string>()
           set.add(a.slot)
@@ -63,7 +71,10 @@ export function Board({
         default: break
       }
     }
-    return { play, buy, attack, activate, buyExplorer, endTurn, maxFace, playAll }
+    return {
+      play, buy, attack, activate, buyExplorer, endTurn, maxFace, playAll,
+      canMulligan, tentacles,
+    }
   }, [legal])
 
   const myTurn = v.actor === v.viewer && v.phase === 'main'
@@ -91,7 +102,9 @@ export function Board({
     <div className="table">
       {/* ── opponent ─────────────────────────────────────────────────────── */}
       <section className="band">
-        <OpponentHud them={v.opponent} name={themName} active={v.activePlayer !== v.viewer}>
+        <OpponentHud
+        endless={v.scenario?.objective.k === 'DESTROY_TENTACLES'}
+        them={v.opponent} name={themName} active={v.activePlayer !== v.viewer}>
           {idx.maxFace > 0 && (
             <button
               type="button"
@@ -140,6 +153,59 @@ export function Board({
             )
             return p ? <span className="objective__progress">{p}</span> : null
           })()}
+        </div>
+      )}
+
+      {v.boss && (
+        <div className="bossbar">
+          <span className="bossbar__name">{CHALLENGE_RU[v.boss.id].name}</span>
+
+          {v.boss.id === 'automatons' && (
+            <span className="bossbar__stat">
+              {UI.assimilation}: <b>{v.boss.assimilation}</b>
+            </span>
+          )}
+          {v.boss.id === 'nemesis-beast' && (
+            <span className="bossbar__stat">
+              {UI.facedown}: <b>{v.boss.facedown.length}</b>
+            </span>
+          )}
+          {v.boss.id === 'dimensional-horror' && (
+            <span className="tentacles">
+              {TENTACLE_FACTIONS.map((f: Faction) => {
+                const pile = v.boss!.tentacles[f]
+                const dead = v.boss!.tentaclesDestroyed.includes(f)
+                const defense = pile.reduce((n: number, c) => n + cardDef(c.def).cost, 0)
+                const can = idx.tentacles.has(f)
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`tentacle${dead ? ' is-dead' : ''}${can ? ' is-open' : ''}`}
+                    style={{ '--fc': FACTION_VAR[f] } as React.CSSProperties}
+                    disabled={!can}
+                    title={`${TENTACLE_RU[f]} — ${UI.attackTentacle}`}
+                    onClick={() => onAction({ t: 'ATTACK_TENTACLE', faction: f })}
+                  >
+                    <span className="tentacle__label">{TENTACLE_RU[f]}</span>
+                    <span className="tentacle__n">{dead ? '—' : defense}</span>
+                  </button>
+                )
+              })}
+            </span>
+          )}
+
+          {!v.boss.mulliganUsed && (
+            <button
+              type="button"
+              className="btn btn--sm bossbar__mull"
+              onClick={() => onAction({ t: 'MULLIGAN_ROW' })}
+              disabled={!idx.canMulligan}
+              title={UI.mulliganHint}
+            >
+              {UI.mulliganRow}
+            </button>
+          )}
         </div>
       )}
 
@@ -292,12 +358,14 @@ export function Board({
           <div className="sheet" style={{ textAlign: 'center' }}>
             <p className="eyebrow">{UI.gameOver}</p>
             <h2 className="sheet__title" style={{ fontSize: 28, margin: '6px 0 14px' }}>
-              {v.scenario
-                ? (v.winner === v.scenario.hero ? UI.missionComplete : UI.missionFailed)
-                : UI.wins(seatNames[v.winner as PlayerId])}
+              {v.boss
+                ? (v.winner === v.scenario?.hero ? UI.challengeWon : UI.challengeLost)
+                : v.scenario
+                  ? (v.winner === v.scenario.hero ? UI.missionComplete : UI.missionFailed)
+                  : UI.wins(seatNames[v.winner as PlayerId])}
             </h2>
             <button type="button" className="btn btn--primary" onClick={onExit}>
-              {v.scenario ? UI.toCampaign : UI.toMenu}
+              {v.boss ? UI.toChallenges : v.scenario ? UI.toCampaign : UI.toMenu}
             </button>
           </div>
         </div>

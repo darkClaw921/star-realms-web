@@ -34,6 +34,36 @@ export function markBeaten(id: string): Progress {
   return next
 }
 
+/**
+ * Challenges are tracked separately from campaign missions: they are a distinct
+ * mode with no ordering between them, so mixing the two keys would make
+ * "reset progress" on one screen wipe the other.
+ */
+const CHALLENGE_KEY = 'sr:challenges'
+
+export function beatenChallenges(): Progress {
+  try {
+    const raw = localStorage.getItem(CHALLENGE_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    const out: Record<string, true> = {}
+    for (const k of Object.keys(parsed as object)) out[k] = true
+    return out
+  } catch {
+    return {}
+  }
+}
+
+export function markChallengeBeaten(id: string): void {
+  const next = { ...beatenChallenges(), [id]: true as const }
+  try { localStorage.setItem(CHALLENGE_KEY, JSON.stringify(next)) } catch { /* не критично */ }
+}
+
+export function resetChallenges(): void {
+  try { localStorage.removeItem(CHALLENGE_KEY) } catch { /* не критично */ }
+}
+
 export function resetProgress(): void {
   try { localStorage.removeItem(KEY) } catch { /* не критично */ }
 }

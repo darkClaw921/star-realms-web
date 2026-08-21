@@ -48,3 +48,15 @@ export type Zone = 'deck' | 'hand' | 'discard' | 'inPlay' | 'tradeRow' | 'scrapH
 export function asDefId(s: string): CardDefId {
   return s as CardDefId
 }
+
+/**
+ * A physical card in a zone.
+ *
+ * Lives here, next to the ids, rather than in state.ts because the boss data
+ * needs it and state.ts needs the boss type -- putting it in either one makes
+ * the two import each other.
+ */
+export interface CardInstance {
+  readonly iid: CardIid
+  readonly def: CardDefId
+}

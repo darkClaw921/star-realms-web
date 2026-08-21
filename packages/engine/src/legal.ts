@@ -1,4 +1,5 @@
 import type { Action } from './actions'
+import { TENTACLE_FACTIONS } from './boss'
 import { cardDef } from './cards/registry'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
@@ -76,6 +77,19 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     // Every amount, not just "all of it": a partial hit is legal, and the fuzz
     // property asserts that anything omitted here is rejected by reduce().
     for (let n = 1; n <= me.combat; n++) out.push({ t: 'ATTACK_PLAYER', amount: n })
+  }
+
+  // ── Frontiers Challenge actions ─────────────────────────────────────────
+  if (v.boss) {
+    if (!v.boss.mulliganUsed) out.push({ t: 'MULLIGAN_ROW' })
+    if (v.boss.id === 'dimensional-horror') {
+      for (const f of TENTACLE_FACTIONS) {
+        const pile = v.boss.tentacles[f]
+        if (v.boss.tentaclesDestroyed.includes(f) || pile.length === 0) continue
+        const defense = pile.reduce((n, c) => n + cardDef(c.def).cost, 0)
+        if (me.combat >= defense) out.push({ t: 'ATTACK_TENTACLE', faction: f })
+      }
+    }
   }
 
   out.push({ t: 'END_TURN' })

@@ -71,6 +71,35 @@ export const UI = {
   objectiveLabel: 'Задача',
   toCampaign: 'К вылетам',
 
+  // приключения Frontiers
+  modeChallenges: 'Приключения',
+  modeChallengesDesc: 'Восемь боссов из набора Frontiers, у каждого своя механика. Соло, четыре уровня сложности.',
+  challengesEyebrow: 'Восемь боссов · соло',
+  challengesTitleTop: 'Приключения',
+  challengesTitleBottom: 'Frontiers',
+  challengesLede: 'Соло-приключения из набора Star Realms: Frontiers. Расстановка, ' +
+    'порядок хода босса, его алгоритм выбора целей и уровни сложности взяты из ' +
+    'официальной книги правил.',
+  challengesSource: 'Источник правил — книга правил Star Realms: Frontiers (стр. 21–40). ' +
+    'Таблицы фракционных способностей напечатаны на самих картах-приключениях и ' +
+    'нигде не опубликованы, поэтому восстановлены нами — это отмечено у каждого босса. ' +
+    'Четыре приключения требуют карт из набора Frontiers; здесь их колоды собраны ' +
+    'из базовых карт той же фракции.',
+  difficultyLabel: 'Сложность',
+  bossAuthority: 'Авторитет босса',
+  yourAuthority: 'Ваш авторитет',
+  tentaclesInstead: 'нет — щупальца',
+  ourReconstruction: 'Наша реконструкция:',
+  mulliganRow: 'Сменить торговый ряд',
+  mulliganHint: 'Один раз за приключение',
+  attackTentacle: 'Атаковать щупальце',
+  tentacles: 'Щупальца',
+  assimilation: 'Ассимиляция',
+  facedown: 'Поглощено карт',
+  challengeWon: 'Босс повержен',
+  challengeLost: 'Приключение провалено',
+  toChallenges: 'К приключениям',
+
   // просмотр карты
   previewHint: 'Двигайте мышью, чтобы наклонить карту',
   previewClose: 'Закрыть',

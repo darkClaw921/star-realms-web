@@ -1,7 +1,8 @@
-import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
+import type { CardDefId, CardInstance, CardIid, Faction, PlayerId } from './ids'
 import type { AbilitySlot, AcquireDest, Effect, EffectBranch } from './effects'
 import type { PendingChoice } from './choices'
 import type { RngState } from './rng'
+import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
 
 export const ENGINE_VERSION = 1
@@ -15,10 +16,8 @@ export const HAND_SIZE = 5
 export const FIRST_TURN_HAND_SIZE = 3
 export const EXPLORER_COST = 2
 
-export interface CardInstance {
-  readonly iid: CardIid
-  readonly def: CardDefId
-}
+// Re-exported so the many modules that already import it from here keep working.
+export type { CardInstance }
 
 export interface InPlayCard {
   readonly iid: CardIid
@@ -129,6 +128,8 @@ export interface GameState {
   /** Enemy bases each side has destroyed. Only a DESTROY_BASES objective reads
    *  it, but it is cheap and public, so it is always tracked. */
   basesDestroyed: Record<PlayerId, number>
+  /** A Frontiers Challenge boss, or null. Entirely public. */
+  boss: BossState | null
 }
 
 export function emptyFactionCounts(): Record<Faction, number> {

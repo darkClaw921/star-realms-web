@@ -1,5 +1,6 @@
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import type { GameEvent } from './events'
+import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId } from './ids'
 import { opponentOf } from './ids'
@@ -98,6 +99,12 @@ export interface PlayerView {
   /** Enemy bases each side has destroyed. Public; a DESTROY_BASES objective
    *  is scored from it and the UI shows the progress. */
   readonly basesDestroyed: Record<PlayerId, number>
+  /**
+   * The challenge boss. Every field of it is public by construction: the piles
+   * it builds are laid out face up on the table, and the counts it attacks with
+   * have to be readable or the player cannot plan.
+   */
+  readonly boss: BossState | null
 }
 
 function viewInPlay(c: InPlayCard): InPlayCardView {
@@ -175,6 +182,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     winner: s.winner,
     scenario: s.scenario,
     basesDestroyed: { p1: s.basesDestroyed.p1, p2: s.basesDestroyed.p2 },
+    boss: s.boss,
   }
 }
 

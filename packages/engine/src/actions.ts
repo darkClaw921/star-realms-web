@@ -1,4 +1,4 @@
-import type { CardIid, ChoiceId, PlayerId } from './ids'
+import type { CardIid, ChoiceId, Faction, PlayerId } from './ids'
 import type { ChoiceOption } from './choices'
 
 /**
@@ -18,6 +18,10 @@ export type Action =
   | { t: 'ATTACK_PLAYER'; amount: number }
   | { t: 'ATTACK_BASE'; base: CardIid }
   | { t: 'RESOLVE_CHOICE'; choiceId: ChoiceId; selected: readonly ChoiceOption[] }
+  /** Challenges only: scrap the whole trade row. Once per challenge. */
+  | { t: 'MULLIGAN_ROW' }
+  /** Dimensional Horror only: spend combat on one of its tentacles. */
+  | { t: 'ATTACK_TENTACLE'; faction: Faction }
   | { t: 'END_TURN' }
 
 /** An action plus who is attempting it. Built by the server, never by the client. */

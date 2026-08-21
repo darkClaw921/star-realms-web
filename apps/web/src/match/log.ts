@@ -1,4 +1,5 @@
 import { cardDef, type GameEvent, type PlayerId } from '@sr/engine'
+import { TENTACLE_RU } from '@/i18n/challenges.ru'
 import { cardName } from '@/i18n/cards.ru'
 import { UI } from '@/i18n/ui'
 import type { LogLine } from './types'
@@ -53,6 +54,8 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
   switch (e.e) {
     case 'TURN_START': return `— Ход ${e.turn}: ${who(e.player)} —`
     case 'TURN_END': return null
+    case 'TENTACLE_DESTROYED':
+      return `${TENTACLE_RU[e.faction] ?? e.faction} уничтожено (оборона ${e.defense})`
     case 'PLAY_CARD': return `${who(e.player)} разыгрывает ${card(e.def)}`
     case 'ABILITY_USED':
       return e.slot === 'trigger'

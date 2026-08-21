@@ -8,9 +8,11 @@ import { FACTION_VAR, FactionMark, Icon } from './Icons'
 const ALLY_FACTIONS: Faction[] = FACTIONS.filter((f) => f !== 'unaligned')
 
 function Rail({
-  authority, trade, combat, shielded,
+  authority, trade, combat, shielded, endless,
 }: {
   authority: number
+  /** The Dimensional Horror has no authority; its pool is a placeholder. */
+  endless?: boolean | undefined
   trade?: number
   combat?: number
   shielded: boolean
@@ -23,7 +25,7 @@ function Rail({
         title={UI.authority}
       >
         <Icon name="authority" />
-        {authority}
+        {endless ? '∞' : authority}
       </div>
       {trade !== undefined && (
         <div
@@ -86,18 +88,19 @@ export function SelfHud({
 }
 
 export function OpponentHud({
-  them, name, active, children,
+  them, name, active, endless, children,
 }: {
   them: OpponentView
   name: string
   active: boolean
+  endless?: boolean | undefined
   children?: React.ReactNode
 }): React.JSX.Element {
   const shielded = them.inPlay.some((c) => cardDef(c.def).type === 'outpost')
   return (
     <div className="hud">
       <span className={`hud__name${active ? ' is-active' : ''}`}>{name}</span>
-      <Rail authority={them.authority} shielded={shielded} />
+      <Rail authority={them.authority} shielded={shielded} endless={endless} />
       <AllyPips unlocked={them.allyUnlocked} />
       <span className="eyebrow">
         {UI.handDeckDiscard(them.handCount, them.deckCount, them.discard.length)}

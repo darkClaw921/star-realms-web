@@ -311,6 +311,80 @@ async function main() {
       shots.push(await shot(page, 'mission', 'Вылет «Держать линию». Полоса задачи ведёт счёт ходам, оборонный центр выдан на старте, торговая колода собрана только из двух фракций.'))
     }
 
+    // ── 2d. приключения Frontiers ─────────────────────────────────────────
+    await page.goto(`${BASE}/challenges`, { waitUntil: 'networkidle2' })
+    await page.waitForSelector('.boss', { timeout: 10000 })
+    await sleep(600)
+    {
+      const bosses = await page.$$eval('.boss', (e) => e.length)
+      record('восемь боссов перечислены', bosses === 8, `боссов: ${bosses}`)
+      // Реконструированные части обязаны быть помечены: это не косметика, а
+      // граница между правилами издателя и нашими.
+      const marked = await page.$$eval('.boss__ours', (e) => e.length)
+      record('наши реконструкции помечены', marked >= 6, `помечено: ${marked}`)
+      shots.push(await shot(page, 'challenges', 'Приключения Frontiers. У каждого босса своя механика; всё, что восстановлено нами, а не взято из книги правил, помечено отдельно.'))
+    }
+
+    // Каждый скриптовый босс должен реально ходить: у каждого свой счётчик.
+    for (const [boss, probe] of [
+      ['nemesis-beast', '.bossbar'],
+      ['dimensional-horror', '.tentacle'],
+      ['automatons', '.bossbar'],
+      ['pirates-of-the-dark-star', '.bossbar'],
+    ]) {
+      await page.goto(`${BASE}/play?mode=challenge&boss=${boss}&level=veteran`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.table', { timeout: 10000 })
+      await sleep(900)
+      // Свой HUD -- последний на странице. У Ужаса авторитет показан как «∞»,
+      // поэтому читать надо именно свой, а не «первый попавшийся».
+      const myAuthority = () => page.evaluate(() => {
+        const huds = [...document.querySelectorAll('.hud')]
+        const mine = huds[huds.length - 1]
+        // Именно ячейка авторитета: соседние ячейки торговли и боя иначе
+        // склеиваются с ней в одно число.
+        const cell = mine?.querySelector('.rail__cell')
+        return Number((cell?.textContent ?? '').match(/(\d+)/)?.[1] ?? -1)
+      })
+      const authorityBefore = await myAuthority()
+      for (let i = 0; i < 3; i++) {
+        await clickText(page, 'Разыграть все', 700)
+        for (let k = 0; k < 3; k++) {
+          const card = await page.$('.overlay .card')
+          if (!card) break
+          await card.click().catch(() => {})
+          await sleep(150)
+          if (!(await clickText(page, 'Подтвердить', 400))) await clickText(page, 'Пропустить', 300)
+          await sleep(200)
+        }
+        await clickText(page, 'Завершить ход', 900)
+        await sleep(800)
+      }
+      const hasProbe = (await page.$$(probe)).length > 0
+      const authorityAfter = await myAuthority()
+      // Три хода против любого из этих боссов обязаны оставить след: они все
+      // атакуют каждый ход. Ноль урона означает, что ход босса не состоялся.
+      record(`босс «${boss}» ведёт свой ход`,
+        hasProbe && authorityAfter < authorityBefore,
+        `панель: ${hasProbe}, авторитет ${authorityBefore} → ${authorityAfter}`)
+      if (boss === 'dimensional-horror') {
+        shots.push(await shot(page, 'boss-horror', 'Межпространственный ужас: авторитета у него нет, вместо этого четыре щупальца, каждое со своей обороной.'))
+      }
+      // Полосы не должны наезжать друг на друга: у стола теперь до шести полос.
+      const overlap = await page.evaluate(() => {
+        // Модалки и подсказки лежат поверх стола намеренно -- считаем только
+        // полосы, участвующие в потоке.
+        const bands = [...document.querySelectorAll('.table > *')]
+          .filter((el) => getComputedStyle(el).position !== 'fixed')
+        for (let i = 1; i < bands.length; i++) {
+          const a = bands[i - 1].getBoundingClientRect()
+          const b = bands[i].getBoundingClientRect()
+          if (b.top < a.bottom - 1) return `${i}`
+        }
+        return ''
+      })
+      record(`полосы стола не наезжают («${boss}»)`, overlap === '', overlap ? `полоса ${overlap}` : 'ок')
+    }
+
     // ── 3. hot-seat pass screen ───────────────────────────────────────────
     await page.goto(`${BASE}/play?mode=hotseat`, { waitUntil: 'networkidle2' })
     await page.waitForSelector('.table', { timeout: 10000 })

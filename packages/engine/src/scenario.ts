@@ -20,6 +20,8 @@ export type Objective =
   | { k: 'DESTROY_BASES'; n: number }
   /** Win the peace: climb to this much authority. */
   | { k: 'REACH_AUTHORITY'; n: number }
+  /** Dimensional Horror: it has no authority, only tentacles. */
+  | { k: 'DESTROY_TENTACLES' }
 
 export interface ScenarioRules {
   readonly id: string

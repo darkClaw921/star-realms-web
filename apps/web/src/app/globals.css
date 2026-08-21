@@ -522,9 +522,16 @@ button { font: inherit; color: inherit; }
 .glyph--authority { color: var(--authority); }
 
 /* ── table layout ───────────────────────────────────────────────────────── */
+/* A column, not a fixed grid of rows.
+ *
+ * It used to be `grid-template-rows: auto auto minmax(0,1fr) auto`, which
+ * silently assumed the table always has exactly four bands -- so the objective
+ * strip and the boss bar landed on top of the trade row instead of above it.
+ * A flex column has no such assumption: every band takes what it needs and the
+ * play area is the one that absorbs the slack. */
 .table {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
   height: 100dvh;
   padding: var(--gap);
@@ -582,9 +589,14 @@ button { font: inherit; color: inherit; }
   flex: 0 0 auto;
 }
 
+/* The play area is the band that grows; everything else is content-sized. */
+.band { flex: 0 0 auto; }
+
 /* Board and log share the middle band on desktop; on a phone the log drops
  * below rather than squeezing the play area into a sliver. */
 .band--board {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 250px;
   gap: 12px;
@@ -961,6 +973,122 @@ input[type='range'] {
 }
 
 .camp-foot { display: flex; gap: 10px; margin-top: 4px; }
+
+/* ── challenges: the boss bar ───────────────────────────────────────────── */
+.boss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.boss {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--fc);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  min-width: 0;
+}
+.boss.is-beaten { border-color: color-mix(in srgb, var(--ok) 40%, var(--rule)); }
+.boss__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.boss__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--fc);
+}
+.boss__done {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ok);
+}
+.boss__story { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); font-style: italic; }
+.boss__rules { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.boss__stats { display: flex; gap: 20px; margin: 2px 0; }
+.boss__stats div { display: flex; flex-direction: column; gap: 1px; }
+.boss__stats dt {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.boss__stats dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+/* What we reconstructed is called out, not buried: it is the one part of a
+ * challenge that is not the published rule. */
+.boss__ours {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  border-left: 2px solid var(--rule-hi);
+  padding-left: 10px;
+}
+.boss__ours span { color: var(--warn); font-weight: 600; }
+
+.levels { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.levels__hint { font-size: 12.5px; color: var(--ink-faint); }
+
+.bossbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--panel-hi) 0%, var(--hull) 100%);
+}
+.bossbar__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.bossbar__stat { font-size: 13px; color: var(--ink-dim); }
+.bossbar__stat b { font-family: var(--font-mono); color: var(--ink); }
+.bossbar__mull { margin-left: auto; }
+
+.tentacles { display: flex; gap: 8px; flex-wrap: wrap; }
+.tentacle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--fc) 40%, var(--rule));
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+}
+/* Attackable is a border and a cursor, not just a colour: the four tentacles
+ * are already distinguished by colour, so state has to read some other way. */
+.tentacle.is-open {
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--fc);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fc) 50%, transparent);
+}
+.tentacle.is-dead { opacity: 0.4; text-decoration: line-through; }
+.tentacle__n { font-family: var(--font-mono); font-weight: 600; color: var(--fc); }
 
 /* ── objective strip, shown only in a mission ───────────────────────────── */
 .objective {

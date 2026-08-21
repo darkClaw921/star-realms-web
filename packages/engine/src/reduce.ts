@@ -1,5 +1,6 @@
 import { produce, type Draft } from 'immer'
 import type { Action, Command } from './actions'
+import { TENTACLE_FACTIONS } from './boss'
 import { cardDef, EXPLORER } from './cards/registry'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
@@ -7,9 +8,9 @@ import type { Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
   allyCountFor, canAttackFace, effectiveDefId, factionsOf, findInPlay, isBase,
-  legalAttackTargets, legalDestroyTargets,
+  isOutpost, legalAttackTargets, legalDestroyTargets,
 } from './helpers'
-import type { CardDefId, CardIid, ChoiceId, PlayerId, Zone } from './ids'
+import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { FACTIONS, opponentOf, PLAYERS } from './ids'
 import { nextHex, shuffle } from './rng'
 import {
@@ -102,6 +103,11 @@ function checkWin(d: D, ev: GameEvent[]): void {
     case 'REACH_AUTHORITY':
       if (d.players[hero].authority >= sc.objective.n) win(d, hero, ev)
       return
+    case 'DESTROY_TENTACLES': {
+      const b = d.boss
+      if (b && TENTACLE_FACTIONS.every((f) => b.tentaclesDestroyed.includes(f))) win(d, hero, ev)
+      return
+    }
   }
 }
 
@@ -251,6 +257,19 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     case 'DRAW': { drawCards(d, me, effect.n, ev); return }
 
     case 'SEQ': return pushEffects(d, effect.effects, ctx)
+
+    // ── Frontiers Challenges ────────────────────────────────────────────────
+    case 'BOSS_TURN': return pushEffects(d, bossOrderOfPlay(d), ctx)
+    case 'BOSS_END_TURN': {
+      if (d.boss) d.boss.acting = false
+      endTurn(d, ev)
+      return
+    }
+    case 'BOSS_ATTACK': { bossAttacks(d, ev); return }
+    case 'BOSS_ASSIMILATE': { automatonsStep(d, ev); return }
+    case 'BOSS_NEMESIS_STEP': { nemesisStep(d, ev, ctx); return }
+    case 'BOSS_HORROR_STEP': { horrorStep(d, ev, ctx); return }
+    case 'BOSS_PIRATE_STEP': { pirateStep(d, ev, ctx); return }
 
     case 'IF': {
       if (evalCondition(d, me, effect.cond)) pushEffects(d, effect.then, ctx)
@@ -695,17 +714,26 @@ function endTurn(d: D, ev: GameEvent[]): void {
   const p = d.players[me]
   ev.push({ e: 'TURN_END', player: me })
 
+  // A script boss has, per its challenge, "no hand, deck or Discard Pile". So it
+  // skips the discard-and-draw phase entirely: what it has taken stays on the
+  // table as its armada. Running the normal phase would quietly hand it a deck
+  // -- the discarded ships get shuffled back on the next empty draw -- which is
+  // exactly the thing the challenge says it does not have.
+  const scriptBoss = d.boss?.kind === 'script' && me === bossSeat(d)
+
   // Discard phase. Unspent trade and combat are LOST.
   p.trade = 0
   p.combat = 0
-  const staying: Draft<InPlayCard>[] = []
-  for (const c of p.inPlay) {
-    if (isBase(c)) { staying.push(c); continue }
-    p.discard.push({ iid: c.iid, def: c.def })
+  if (!scriptBoss) {
+    const staying: Draft<InPlayCard>[] = []
+    for (const c of p.inPlay) {
+      if (isBase(c)) { staying.push(c); continue }
+      p.discard.push({ iid: c.iid, def: c.def })
+    }
+    p.inPlay = staying
+    for (const c of p.hand) p.discard.push(c)
+    p.hand = []
   }
-  p.inPlay = staying
-  for (const c of p.hand) p.discard.push(c)
-  p.hand = []
 
   // Per-turn bookkeeping that is easy to forget and silently wrong if missed.
   p.factionPlayedThisTurn = emptyFactionCounts()
@@ -713,7 +741,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.allyUnlocked = []
   p.pendingTopdeck = 0
 
-  drawCards(d, me, HAND_SIZE, ev)
+  if (!scriptBoss) drawCards(d, me, HAND_SIZE, ev)
 
   d.activePlayer = opponentOf(me)
   d.turn += 1
@@ -746,6 +774,281 @@ function endTurn(d: D, ev: GameEvent[]): void {
   // A SURVIVE objective is decided by the clock, so the clock has to be read
   // where it advances.
   checkWin(d, ev)
+  if (d.winner) return
+
+  // A script boss has no hand to play, so its whole turn is pushed onto the
+  // resolution stack here. Anything in it that asks the player something simply
+  // suspends until they answer -- the boss does not need a driver loop.
+  const b = d.boss
+  if (b && b.kind === 'script' && d.activePlayer === bossSeat(d)) {
+    if (b.graceTurns > 0) {
+      // Difficulty: the boss sits out its first turns entirely.
+      b.graceTurns -= 1
+      endTurn(d, ev)
+      return
+    }
+    const turns: Effect[] = b.headStart
+      ? [{ k: 'BOSS_TURN' }, { k: 'BOSS_TURN' }]
+      : [{ k: 'BOSS_TURN' }]
+    b.headStart = false
+    b.acting = true
+    pushEffects(d, [...turns, { k: 'BOSS_END_TURN' }], BOSS_CTX(d))
+  }
+}
+
+
+// ═══════════════════════════ Frontiers Challenges ═══════════════════════════
+//
+// Everything below implements the rulebook's Challenge rules for a solo game.
+// The boss's turn is a list of effects rather than a loop, so a step that asks
+// the player something suspends the boss and resumes when they answer.
+
+const BOSS_CTX = (d: D): EffectCtx =>
+  ({ controller: bossSeat(d), source: null, slot: 'primary' })
+
+function bossSeat(d: D): PlayerId {
+  // Solo: the player is p1 and the boss p2. The scenario's hero is the player.
+  return d.scenario ? opponentOf(d.scenario.hero) : 'p2'
+}
+
+/** The card furthest from the trade deck: rulebook language for the last slot. */
+function farthestRowIndex(d: D): number {
+  for (let i = d.tradeRow.length - 1; i >= 0; i--) if (d.tradeRow[i]) return i
+  return -1
+}
+
+/** Take the far card and slide the row down, as the challenges describe. */
+function takeFarthest(d: D): CardInstance | null {
+  const i = farthestRowIndex(d)
+  if (i < 0) return null
+  const card = d.tradeRow[i] as CardInstance
+  d.tradeRow[i] = null
+  return card
+}
+
+/**
+ * Boss Attacks, verbatim from the rulebook: for each attack, make the first
+ * possible attack from the list, spending the minimum combat needed, and repeat
+ * until no combat remains.
+ *
+ *   1. defeat the player outright if possible
+ *   2. the highest-defense outpost it can destroy (ties: highest cost)
+ *   3. the highest-defense non-outpost base it can destroy (ties: highest cost)
+ *   4. attack the player
+ *
+ * Ties are broken by cost and then by position rather than at random: a boss
+ * that consults the RNG would make the same replay diverge, and the engine's
+ * whole persistence story rests on it not doing that.
+ */
+function bossAttacks(d: D, ev: GameEvent[]): void {
+  const me = bossSeat(d)
+  const foe = opponentOf(me)
+  const boss = d.players[me]
+  let guard = 0
+
+  while (boss.combat > 0 && guard++ < 64) {
+    const state = d as unknown as GameState
+    const open = canAttackFace(state, me)
+
+    // 1. A killing blow beats everything else.
+    if (open && d.players[foe].authority > 0 && boss.combat >= d.players[foe].authority) {
+      const n = d.players[foe].authority
+      boss.combat -= n
+      d.players[foe].authority -= n
+      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: foe, n })
+      ev.push({ e: 'AUTHORITY_LOST', player: foe, n })
+      return
+    }
+
+    const targets = legalAttackTargets(state, me)
+      .map((c) => ({ c, def: cardDef(c.def).defense ?? 0, cost: cardDef(c.def).cost, out: isOutpost(c) }))
+      .filter((t) => t.def <= boss.combat)
+
+    const pick = (outposts: boolean): typeof targets[number] | undefined =>
+      targets.filter((t) => t.out === outposts)
+        .sort((a, b) => (b.def - a.def) || (b.cost - a.cost))[0]
+
+    // 2 and 3: outposts first, then plain bases.
+    const target = pick(true) ?? pick(false)
+    if (target) {
+      boss.combat -= target.def
+      destroyBase(d, foe, target.c, 'combat', ev, me)
+      continue
+    }
+
+    // 4. Whatever is left goes to the face, if the face is reachable.
+    if (open) {
+      const n = boss.combat
+      boss.combat = 0
+      d.players[foe].authority -= n
+      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: foe, n })
+      ev.push({ e: 'AUTHORITY_LOST', player: foe, n })
+      return
+    }
+
+    // Outposts stand and nothing is affordable: the combat is simply wasted.
+    return
+  }
+}
+
+/** Automatons: it assimilates captured technology and grows every turn. */
+function automatonsStep(d: D, ev: GameEvent[]): void {
+  const b = d.boss
+  if (!b) return
+  const me = bossSeat(d)
+  // Take the far card into play: the armada incorporates salvaged hardware.
+  const card = takeFarthest(d)
+  if (card) {
+    d.players[me].inPlay.push({
+      iid: card.iid, def: card.def, copiedDef: null,
+      used: { primary: false, ally: false, scrap: false }, playedThisTurn: false,
+    })
+    ev.push({ e: 'PLAY_CARD', player: me, iid: card.iid, def: card.def })
+  }
+  b.assimilation += 1
+  gain(d, me, 'combat', b.assimilation, ev)
+  refillTradeRow(d, ev)
+}
+
+/**
+ * Nemesis Beast: scrap the far card face down, gain combat equal to the pile,
+ * then gain an ability decided by the faction of the card that replaces it.
+ *
+ * The scrap-and-count half is the rulebook's. The faction table is ours: the
+ * printed one exists only on the Challenge Card. It follows the published
+ * description of what the beast does -- wreck your hand, blow up your bases,
+ * spoil your draws, or simply grow.
+ */
+function nemesisStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
+  const b = d.boss
+  if (!b) return
+  const me = bossSeat(d)
+  const card = takeFarthest(d)
+  if (card) {
+    b.facedown.push({ iid: card.iid, def: card.def })
+    ev.push({ e: 'SCRAP', owner: null, iid: card.iid, def: card.def, from: 'tradeRow' })
+  }
+  gain(d, me, 'combat', b.facedown.length, ev)
+
+  refillTradeRow(d, ev)
+  const revealed = d.tradeRow[farthestRowIndex(d)] ?? d.tradeRow.find((c) => c !== null)
+  const faction = revealed ? cardDef(revealed.def).faction : 'unaligned'
+  pushEffects(d, nemesisAbility(faction), ctx)
+}
+
+function nemesisAbility(faction: Faction): Effect[] {
+  switch (faction) {
+    // Star Empire wrecks your hand.
+    case 'star_empire': return [{ k: 'OPPONENT_DISCARD', n: 1 }]
+    // Machine Cult blows up your bases.
+    case 'machine_cult': return [{ k: 'DESTROY_BASE', min: 1, max: 1 }]
+    // Trade Federation heals it.
+    case 'trade_federation': return [{ k: 'GAIN_AUTHORITY', n: 4 }]
+    // Blob just grows.
+    case 'blob': return [{ k: 'GAIN_COMBAT', n: 4 }]
+    default: return []
+  }
+}
+
+/**
+ * Dimensional Horror: the far card joins a tentacle pile of its own faction,
+ * cards of that faction keep joining as they are revealed, the boss gains an
+ * ability for the colour it fed, and its combat equals the longest tentacle.
+ */
+function horrorStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
+  const b = d.boss
+  if (!b) return
+  const me = bossSeat(d)
+  const card = takeFarthest(d)
+  let fed: Faction | null = null
+  if (card) {
+    fed = tentacleFor(d, cardDef(card.def).faction)
+    b.tentacles[fed as Faction].push({ iid: card.iid, def: card.def })
+    ev.push({ e: 'SCRAP', owner: null, iid: card.iid, def: card.def, from: 'tradeRow' })
+  }
+
+  // Refill; a replacement of the same faction is swallowed too.
+  let guard = 0
+  while (d.tradeRow.some((c) => c === null) && d.tradeDeck.length > 0 && guard++ < 20) {
+    const next = d.tradeDeck.shift()
+    if (!next) break
+    if (fed && cardDef(next.def).faction === fed && !b.tentaclesDestroyed.includes(fed)) {
+      b.tentacles[fed as Faction].push({ iid: next.iid, def: next.def })
+      ev.push({ e: 'SCRAP', owner: null, iid: next.iid, def: next.def, from: 'tradeRow' })
+      continue
+    }
+    const slot = d.tradeRow.findIndex((c) => c === null)
+    if (slot < 0) break
+    d.tradeRow[slot] = next
+    ev.push({ e: 'TRADE_ROW_REFILL', slot, def: next.def })
+  }
+
+  gain(d, me, 'combat', longestTentacle(d), ev)
+  if (fed) pushEffects(d, nemesisAbility(fed), ctx)
+}
+
+/** Unaligned cards have no tentacle of their own; they feed the longest one. */
+function tentacleFor(d: D, faction: Faction): Faction {
+  const b = d.boss
+  if (!b) return faction
+  const alive = TENTACLE_FACTIONS.filter((f) => !b.tentaclesDestroyed.includes(f))
+  if (faction !== 'unaligned' && !b.tentaclesDestroyed.includes(faction)) return faction
+  return [...alive].sort((x, y) => b.tentacles[y].length - b.tentacles[x].length)[0] ?? 'unaligned'
+}
+
+function longestTentacle(d: D): number {
+  const b = d.boss
+  if (!b) return 0
+  return Math.max(0, ...TENTACLE_FACTIONS
+    .filter((f) => !b.tentaclesDestroyed.includes(f))
+    .map((f) => b.tentacles[f].length))
+}
+
+/**
+ * Pirates of the Dark Star: the revealed card's faction and cost decide what is
+ * done to you. Rulebook gives the procedure; the table itself is on the card,
+ * so this one is ours, built around cost as severity.
+ */
+function pirateStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
+  const card = takeFarthest(d)
+  if (card) {
+    d.scrapHeap.push({ iid: card.iid, def: card.def })
+    ev.push({ e: 'SCRAP', owner: null, iid: card.iid, def: card.def, from: 'tradeRow' })
+  }
+  refillTradeRow(d, ev)
+
+  const revealed = d.tradeRow[farthestRowIndex(d)] ?? d.tradeRow.find((c) => c !== null)
+  if (!revealed) return
+  const def = cardDef(revealed.def)
+  const severity = Math.max(1, def.cost)
+  const raid: Effect[] = def.faction === 'star_empire'
+    ? [{ k: 'OPPONENT_DISCARD', n: 1 }, { k: 'GAIN_COMBAT', n: severity }]
+    : def.faction === 'machine_cult'
+      ? [{ k: 'DESTROY_BASE', min: 1, max: 1 }, { k: 'GAIN_COMBAT', n: severity }]
+      : def.faction === 'trade_federation'
+        ? [{ k: 'GAIN_AUTHORITY', n: severity }, { k: 'GAIN_COMBAT', n: severity }]
+        : [{ k: 'GAIN_COMBAT', n: severity + 2 }]
+  pushEffects(d, raid, ctx)
+}
+
+/** The Order of Play for whichever boss is in the game. */
+function bossOrderOfPlay(d: D): Effect[] {
+  const b = d.boss
+  if (!b) return []
+  switch (b.id) {
+    case 'automatons':
+      return [{ k: 'BOSS_ASSIMILATE' }, { k: 'BOSS_ATTACK' }]
+    case 'nemesis-beast':
+      return [{ k: 'BOSS_NEMESIS_STEP' }, { k: 'BOSS_ATTACK' }]
+    case 'dimensional-horror':
+      return [{ k: 'BOSS_HORROR_STEP' }, { k: 'BOSS_ATTACK' }]
+    case 'pirates-of-the-dark-star':
+      // The pirates' raid IS their attack: steps 1-5 with no separate attack.
+      return [{ k: 'BOSS_PIRATE_STEP' }, { k: 'BOSS_ATTACK' }]
+    default:
+      // Deck bosses take an ordinary turn; nothing to script.
+      return []
+  }
 }
 
 function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
@@ -824,8 +1127,45 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       return
     }
 
+    case 'MULLIGAN_ROW': {
+      // Rulebook: once per challenge, a player may scrap the entire trade row.
+      const b = d.boss
+      if (!b) throw new IllegalActionError('the mulligan is a challenge rule')
+      if (b.mulliganUsed) throw new IllegalActionError('the trade row has already been mulliganed')
+      b.mulliganUsed = true
+      for (let i = 0; i < d.tradeRow.length; i++) {
+        const c = d.tradeRow[i]
+        if (!c) continue
+        d.tradeRow[i] = null
+        d.scrapHeap.push({ iid: c.iid, def: c.def })
+        ev.push({ e: 'SCRAP', owner: null, iid: c.iid, def: c.def, from: 'tradeRow' })
+      }
+      refillTradeRow(d, ev)
+      return
+    }
+
+    case 'ATTACK_TENTACLE': {
+      const b = d.boss
+      if (!b || b.id !== 'dimensional-horror') throw new IllegalActionError('no tentacles to attack')
+      if (b.tentaclesDestroyed.includes(action.faction)) throw new IllegalActionError('already destroyed')
+      const pile = b.tentacles[action.faction]
+      // A tentacle's defense is the printed cost of what it has swallowed --
+      // the piles are laid out cost-visible precisely so this can be read off.
+      const defense = pile.reduce((n, c) => n + cardDef(c.def).cost, 0)
+      if (pile.length === 0) throw new IllegalActionError('that tentacle is not in play')
+      const attacker = d.players[me]
+      if (attacker.combat < defense) throw new IllegalActionError('not enough combat')
+      attacker.combat -= defense
+      b.tentaclesDestroyed.push(action.faction)
+      for (const c of pile) d.scrapHeap.push({ iid: c.iid, def: c.def })
+      b.tentacles[action.faction] = []
+      ev.push({ e: 'TENTACLE_DESTROYED', faction: action.faction, defense })
+      return
+    }
+
     case 'END_TURN': {
       if (d.resolution.length > 0) throw new IllegalActionError('resolve the pending choice first')
+      if (d.boss?.acting) throw new IllegalActionError('the boss is still acting')
       return endTurn(d, ev)
     }
   }

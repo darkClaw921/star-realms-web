@@ -1,5 +1,6 @@
 import { EXPLORER, SCOUT, VIPER, tradeDeckComposition } from './cards/registry'
 import type { CardDefId, CardIid, PlayerId } from './ids'
+import type { BossState } from './boss'
 import type { ScenarioSetup } from './scenario'
 import { PLAYERS } from './ids'
 import { nextHex, seedRng, shuffle, type RngState } from './rng'
@@ -16,6 +17,8 @@ export interface MatchSetup {
   readonly firstPlayer: PlayerId
   /** A campaign mission, or absent for the standard game. */
   readonly scenario?: ScenarioSetup | undefined
+  /** A Frontiers Challenge boss, or absent. */
+  readonly boss?: BossState | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -129,6 +132,7 @@ export function createGame(setup: MatchSetup): GameState {
     winner: null,
     scenario: sc?.rules ?? null,
     basesDestroyed: { p1: 0, p2: 0 },
+    boss: setup.boss ?? null,
   }
 }
 

@@ -1,6 +1,6 @@
 import {
   actorOf, createGame, enumerateLegalActions, redact, redactEvent, reduce,
-  type Action, type GameState, type PlayerId, type ScenarioSetup,
+  type Action, type BossState, type GameState, type PlayerId, type ScenarioSetup,
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
@@ -18,6 +18,8 @@ export interface LocalOptions {
   readonly botDelayMs?: number
   /** A campaign mission. Absent means the standard game. */
   readonly scenario?: ScenarioSetup | undefined
+  /** A Frontiers Challenge boss. */
+  readonly boss?: BossState | undefined
 }
 
 /**
@@ -42,6 +44,7 @@ export class LocalMatchClient implements MatchClient {
       seed: opts.seed,
       firstPlayer: opts.firstPlayer,
       scenario: opts.scenario,
+      boss: opts.boss,
     })
     this.log = toLines([{ e: 'TURN_START', player: opts.firstPlayer, turn: 1 }], this.names())
     this.maybeScheduleBot()

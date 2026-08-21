@@ -24,6 +24,12 @@ const MODES = [
     fc: FACTION_VAR.machine_cult,
   },
   {
+    href: '/challenges',
+    name: UI.modeChallenges,
+    desc: UI.modeChallengesDesc,
+    fc: FACTION_VAR.blob,
+  },
+  {
     href: '/online',
     name: UI.modeOnline,
     desc: UI.modeOnlineDesc,

@@ -18,6 +18,7 @@ export type GameEvent =
   | { e: 'SCRAP'; from: Zone; owner: PlayerId | null; iid: CardIid | null; def: CardDefId | null }
   | { e: 'ACQUIRE'; player: PlayerId; def: CardDefId; dest: 'discard' | 'deck_top'; cost: number }
   | { e: 'TRADE_ROW_REFILL'; def: CardDefId | null; slot: number }
+  | { e: 'TENTACLE_DESTROYED'; faction: Faction; defense: number }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }

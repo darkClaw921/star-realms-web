@@ -115,6 +115,7 @@ export function objectiveRu(o: Objective): string {
     case 'SURVIVE': return `Пережить ${o.turns} ходов`
     case 'DESTROY_BASES': return `Уничтожить баз: ${o.n}`
     case 'REACH_AUTHORITY': return `Довести свой авторитет до ${o.n}`
+    case 'DESTROY_TENTACLES': return 'Уничтожить все щупальца'
   }
 }
 
@@ -127,6 +128,8 @@ export function objectiveProgressRu(
     case 'SURVIVE': return `ход ${Math.min(turn, o.turns)} из ${o.turns}`
     case 'DESTROY_BASES': return `${Math.min(destroyed, o.n)} из ${o.n}`
     case 'REACH_AUTHORITY': return `${authority} из ${o.n}`
+    // Щупальца показывает отдельная панель босса: там видно, какие именно.
+    case 'DESTROY_TENTACLES': return null
   }
 }
 
