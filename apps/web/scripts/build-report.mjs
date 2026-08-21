@@ -16,6 +16,50 @@ const OUT = join(ROOT, 'reports')
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 
+/**
+ * Every set in the registry, with what it actually contributes.
+ *
+ * Read out of the engine rather than typed here, so the table cannot drift from
+ * the cards that are really loaded -- which is the whole point of a report.
+ */
+function setTable() {
+  try {
+    const out = execSync(
+      "npx tsx -e \"import {CARDS,ALL_SETS,tradeDeckComposition} from '@sr/engine';" +
+      "const rows=ALL_SETS.map(s=>{const c=[...CARDS.values()].filter(x=>x.set===s);" +
+      "return {set:s,distinct:c.length,copies:tradeDeckComposition(undefined,[s]).length};});" +
+      "console.log(JSON.stringify({rows,total:CARDS.size}))\"",
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    return JSON.parse(out.trim().split('\n').pop())
+  } catch { return null }
+}
+
+const SET_RU = {
+  core: 'Базовый набор',
+  frontiers: 'Frontiers',
+  'colony-wars': 'Colony Wars',
+  'crisis-bases': 'Crisis: Базы и линкоры',
+  'crisis-fleets': 'Crisis: Флоты и крепости',
+  'crisis-heroes': 'Crisis: Герои',
+  'crisis-events': 'Crisis: События',
+  'united-assault': 'United: Штурм',
+  'united-command': 'United: Командование',
+  'united-heroes': 'United: Герои',
+  'high-alert-first-strike': 'High Alert: Первый удар',
+  'high-alert-tech': 'High Alert: Технологии',
+  'high-alert-requisition': 'High Alert: Реквизиция',
+  'high-alert-invasion': 'High Alert: Вторжение',
+  'high-alert-heroes': 'High Alert: Герои',
+  'stellar-allies': 'Stellar Allies',
+  'promo-1': 'Промо-набор 1',
+  'promo-year-2': 'Промо-набор второго года',
+  'frontiers-promos': 'Frontiers: промо с Kickstarter',
+  gambits: 'Гамбиты',
+  'cosmic-gambits': 'Cosmic Gambit',
+  missions: 'United: Миссии',
+}
+
 function engineTestCount() {
   try {
     const out = execSync('npx vitest run --root packages/engine', {
@@ -60,6 +104,7 @@ async function main() {
   const passed = results.filter((r) => r.ok).length
   const allGreen = passed === results.length
   const tests = engineTestCount()
+  const sets = setTable()
 
   const html = `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -132,11 +177,25 @@ async function main() {
 </div>
 
 <div class="grid">
-  <div class="stat"><div class="n">46</div><div class="l">уникальных карт торговой колоды</div></div>
-  <div class="stat"><div class="n">80</div><div class="l">карт в торговой колоде, по 20 на фракцию</div></div>
+  <div class="stat"><div class="n">${sets?.total ?? '—'}</div><div class="l">уникальных карт в реестре</div></div>
+  <div class="stat"><div class="n">${sets?.rows.length ?? '—'}</div><div class="l">наборов, включаются по отдельности</div></div>
   <div class="stat"><div class="n">${tests ?? '—'}</div><div class="l">тестов движка проходит</div></div>
-  <div class="stat"><div class="n">49</div><div class="l">иллюстраций, вырезанных из сканов карт</div></div>
+  <div class="stat"><div class="n">${sets?.total ?? '—'}</div><div class="l">иллюстраций, вырезанных из сканов карт</div></div>
 </div>
+
+<h2>Наборы карт</h2>
+<p class="lede" style="font-size:15px">Каждый набор включается отдельно в настройках. Состав
+читается из реестра движка в момент сборки отчёта, поэтому таблица не может разойтись с тем,
+что действительно загружено. Гамбиты и миссии раздаются из собственных стопок и в торговую
+колоду не попадают &mdash; поэтому у них ноль.</p>
+<table><thead><tr><th>Набор</th><th style="width:150px">Уникальных карт</th>
+<th style="width:190px">Экземпляров в торговой колоде</th></tr></thead><tbody>
+${(sets?.rows ?? []).map((r) => `<tr>
+  <td><strong>${esc(SET_RU[r.set] ?? r.set)}</strong></td>
+  <td class="mono">${r.distinct}</td>
+  <td class="mono">${r.copies}</td>
+</tr>`).join('\n')}
+</tbody></table>
 
 <h2>Что подтвердили проверки в браузере</h2>
 <table><thead><tr><th style="width:100px">Итог</th><th>Проверка</th><th>Подробности</th></tr></thead><tbody>

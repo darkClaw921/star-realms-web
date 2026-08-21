@@ -286,12 +286,18 @@ button { font: inherit; color: inherit; }
 }
 .card.is-base .card__faction--2 { right: 19cqi; }
 
-/* A thin strip for gambits and missions: they are few, and they must not steal
- * height from the board. Scrolls sideways like every other row. */
+/* A strip for gambits and missions.
+ *
+ * They must not steal height from the board, and they are read rather than
+ * played from, so they render at two thirds width -- small enough to leave the
+ * table alone, large enough that the objective text stays legible. Sizing the
+ * cards rather than clipping the band is the point: a clipped card hides the
+ * very text that says when a mission can be claimed. */
 .band--sides {
   flex: 0 0 auto;
   border-top: 1px solid var(--rule);
   padding: 6px 0;
+  --card-w: calc(var(--card-w-base) * var(--card-scale) * 0.85);
 }
 
 .card__body {
