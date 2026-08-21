@@ -14,10 +14,13 @@ export function effectiveDefId(c: Pick<InPlayCard, 'def' | 'copiedDef'>): CardDe
  * purposes.
  */
 export function factionsOf(c: Pick<InPlayCard, 'def' | 'copiedDef'>): Faction[] {
-  const own = cardDef(c.def).faction
-  if (!c.copiedDef) return [own]
+  const printed = cardDef(c.def)
+  // United's dual-faction cards are printed with two, and count as both for
+  // every ally condition -- including the other card's.
+  const own = printed.faction2 ? [printed.faction, printed.faction2] : [printed.faction]
+  if (!c.copiedDef) return own
   const copied = cardDef(c.copiedDef).faction
-  return copied === own ? [own] : [own, copied]
+  return own.includes(copied) ? own : [...own, copied]
 }
 
 export function isWildcard(c: Pick<InPlayCard, 'def' | 'copiedDef'>): boolean {

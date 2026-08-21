@@ -384,7 +384,7 @@ describe('printed faction tables', () => {
   it('Dimensional Horror: blue destroys ALL of your bases', () => {
     const base = {
       iid: 'mybase' as never, def: asDefId('the-hive'), copiedDef: null,
-      used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+      used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
       playedThisTurn: false,
     }
     const s0 = withRow('dimensional-horror', ['cutter', 'cutter', 'cutter', 'cutter', 'cutter'])

@@ -196,6 +196,16 @@ function toScrapHeap(d: D, inst: CardInstance, from: Zone, owner: PlayerId | nul
 }
 
 function removeFromZone(d: D, pid: PlayerId, zone: Zone, iid: CardIid): CardInstance | null {
+  // The trade row belongs to nobody, so it is pulled by slot and the slot is
+  // left empty for the refill rather than closed up. United's Exchange Point is
+  // the only card that scraps across owned and shared zones in one choice.
+  if (zone === 'tradeRow') {
+    const idx = d.tradeRow.findIndex((c) => c?.iid === iid)
+    if (idx < 0) return null
+    const inst = d.tradeRow[idx] as CardInstance
+    d.tradeRow[idx] = null
+    return inst
+  }
   const p = d.players[pid]
   const list = zone === 'hand' ? p.hand : zone === 'discard' ? p.discard : null
   if (!list) return null
@@ -308,7 +318,7 @@ function enterPlay(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): vo
     iid: inst.iid,
     def: inst.def,
     copiedDef: null,
-    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
     playedThisTurn: false,
   } as Draft<InPlayCard>)
   ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })
@@ -389,11 +399,18 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
-    case 'TOPDECK_BASE_FROM_DISCARD': {
-      const bases = p.discard.filter((c) => cardDef(c.def).type !== 'ship')
-      if (bases.length === 0) { ev.push({ e: 'FIZZLE', label: 'no base in the discard pile' }); return }
-      pushChoice(d, makeChoice(d, me, 'TOPDECK_BASE', 'Put a base on top of your deck',
-        effect.min, 1, cardOpts(bases, 'discard', me), ctx.source))
+    case 'TOPDECK_FROM_DISCARD': {
+      const eligible = (p.discard as CardInstance[]).filter((c) => {
+        const def = cardDef(c.def)
+        if (effect.filter === 'base' && def.type !== 'base' && def.type !== 'outpost') return false
+        return effect.maxCost === null || def.cost <= effect.maxCost
+      })
+      if (eligible.length === 0) {
+        ev.push({ e: 'FIZZLE', label: 'nothing eligible in the discard pile' })
+        return
+      }
+      pushChoice(d, makeChoice(d, me, 'TOPDECK_BASE', 'Put a card on top of your deck',
+        effect.min, 1, cardOpts(eligible, 'discard', me), ctx.source))
       return
     }
 
@@ -548,6 +565,11 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       const opts: ChoiceOption[] = []
       if (effect.zones.includes('hand')) opts.push(...cardOpts(p.hand as CardInstance[], 'hand', me))
       if (effect.zones.includes('discard')) opts.push(...cardOpts(p.discard as CardInstance[], 'discard', me))
+      if (effect.zones.includes('tradeRow')) {
+        for (const c of d.tradeRow) {
+          if (c) opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'tradeRow', owner: null })
+        }
+      }
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to scrap' }); return }
       const max = Math.min(effect.max, opts.length)
       const min = Math.min(effect.min, opts.length)
@@ -828,13 +850,18 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
     }
 
     case 'SCRAP_ZONES': {
+      let fromRow = false
       for (const o of selected) {
         if (o.o !== 'CARD') continue
         const inst = removeFromZone(d, me, o.zone, o.iid)
+        if (!inst) continue
+        if (o.zone === 'tradeRow') fromRow = true
         // Scrapping a card FROM hand or discard never triggers that card's own
         // scrap ability -- only a card using its own scrap ability from play does.
-        if (inst) toScrapHeap(d, inst, o.zone, me, ev)
+        // The trade row has no owner, so its scraps do not feed your own counter.
+        toScrapHeap(d, inst, o.zone, o.zone === 'tradeRow' ? null : me, ev)
       }
+      if (fromRow) refillTradeRow(d, ev)
       return
     }
 
@@ -1163,7 +1190,7 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     iid: inst.iid,
     def: inst.def,
     copiedDef: null,
-    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
     playedThisTurn: true,
   }
   p.inPlay.push(card as Draft<InPlayCard>)
@@ -1203,7 +1230,7 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
 
 function activate(
   d: D, me: PlayerId, iid: CardIid,
-  slot: 'primary' | 'ally' | 'doubleAlly' | 'scrap', ev: GameEvent[],
+  slot: 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap', ev: GameEvent[],
 ): void {
   const p = d.players[me]
   const card = p.inPlay.find((c) => c.iid === iid)
@@ -1214,9 +1241,14 @@ function activate(
   const effects = def[slot]
   if (effects.length === 0) throw new IllegalActionError(`card has no ${slot} ability`)
 
-  if (slot === 'ally') {
-    const factions = factionsOf(card)
-    if (!factions.some((f) => p.allyUnlocked.includes(f))) {
+  if (slot === 'ally' || slot === 'ally2') {
+    // A pinned faction (United's per-faction slots) needs that faction; an
+    // unpinned one needs ANY of the card's own factions, which covers both the
+    // ordinary case and United's "Coalition Ally (Machine Cult or Trade
+    // Federation)", where either half will do.
+    const pinned = slot === 'ally' ? def.allyFaction : def.ally2Faction
+    const need = pinned ? [pinned] : factionsOf(card)
+    if (!need.some((f) => p.allyUnlocked.includes(f))) {
       throw new IllegalActionError('ally condition not met')
     }
   }
@@ -1335,7 +1367,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.pendingRedirects = []
   next.scrappedThisTurn = 0
   for (const c of next.inPlay) {
-    c.used = { primary: false, ally: false, doubleAlly: false, scrap: false }
+    c.used = { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false }
     c.playedThisTurn = false
     // Copy state is cleared when its own turn ends, not here -- see above.
   }
@@ -1509,7 +1541,7 @@ function playCardFor(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[], c
   const def = cardDef(inst.def)
   p.inPlay.push({
     iid: inst.iid, def: inst.def, copiedDef: null,
-    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
     playedThisTurn: true,
   })
   ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })

@@ -1,6 +1,7 @@
 import type { CardDefId, Faction } from '@sr/engine'
 import { COLONY_WARS_RU } from './colonyWars.ru'
 import { CRISIS_RU } from './crisis.ru'
+import { UNITED_RU } from './united.ru'
 import { CRISIS_EVENTS_RU, CRISIS_HEROES_RU } from './crisisExtra.ru'
 import { FRONTIERS_RU } from './frontiers.ru'
 
@@ -30,6 +31,8 @@ export interface CardRu {
   readonly primary: string
   readonly ally: string
   readonly scrap: string
+  /** United: союзное свойство второй фракции двухфракционной карты. */
+  readonly ally2?: string
   /** Frontiers: двойное союзное свойство. */
   readonly doubleAlly?: string
 }
@@ -125,7 +128,7 @@ const CORE_RU: Record<string, CardRu> = {
 /** Обе таблицы в одной: карта ищется по идентификатору независимо от набора. */
 const CARDS_RU: Record<string, CardRu> = {
   ...CORE_RU, ...FRONTIERS_RU, ...COLONY_WARS_RU,
-  ...CRISIS_RU, ...CRISIS_HEROES_RU, ...CRISIS_EVENTS_RU,
+  ...CRISIS_RU, ...CRISIS_HEROES_RU, ...CRISIS_EVENTS_RU, ...UNITED_RU,
 }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */

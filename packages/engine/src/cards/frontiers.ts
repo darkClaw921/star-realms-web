@@ -234,7 +234,10 @@ export const FRONTIERS: Record<string, Spec> = {
     defense: null, copies: 2, role: 'trade_deck',
     primary: [chooseOne(
       { label: '{trade:3}', then: [trade(3)] },
-      { label: 'Top-deck a base', then: [{ k: 'TOPDECK_BASE_FROM_DISCARD', min: 1 }] },
+      {
+        label: 'Top-deck a base',
+        then: [{ k: 'TOPDECK_FROM_DISCARD', filter: 'base', maxCost: null, min: 1 }],
+      },
     )],
     ally: [scrapHandDiscard(0, 1)],
     text: {

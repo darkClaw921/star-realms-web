@@ -115,7 +115,7 @@ export function createGame(setup: MatchSetup): GameState {
       ;[c, rng] = mint(rng, def)
       players[pid].inPlay.push({
         iid: c.iid, def: c.def, copiedDef: null,
-        used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+        used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
         playedThisTurn: false,
       })
     }

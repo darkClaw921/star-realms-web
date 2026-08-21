@@ -83,6 +83,8 @@ export const UI = {
     'crisis-fleets': 'Crisis: Флоты и крепости',
     'crisis-heroes': 'Crisis: Герои',
     'crisis-events': 'Crisis: События',
+    'united-assault': 'United: Штурм',
+    'united-command': 'United: Командование',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -133,6 +135,7 @@ export const UI = {
   slotPrimary: 'Применить',
   slotDoubleAlly: 'Двойной союз',
   slotAlly: 'Союзное',
+  slotAlly2: 'Союзное 2',
   slotScrap: 'Утиль',
 
   // передача устройства

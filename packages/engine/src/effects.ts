@@ -158,7 +158,12 @@ export type Effect =
   /** Neural Nexus: scrap from hand or discard, gain combat equal to its cost. */
   | { k: 'SCRAP_FOR_COMBAT'; zones: readonly Zone[]; min: 0 | 1; max: 1 }
   /** Repair Mech: put a base from your discard pile on top of your deck. */
-  | { k: 'TOPDECK_BASE_FROM_DISCARD'; min: 0 | 1 }
+  /**
+   * Repair Mech ("a base") and United's Coalition Messenger ("a card of cost
+   * five or less"). One effect with two knobs rather than two near-identical
+   * ones, because the only difference between them is the filter.
+   */
+  | { k: 'TOPDECK_FROM_DISCARD'; filter: 'base' | 'any'; maxCost: number | null; min: 0 | 1 }
   /** Warpgate Cruiser: discard any number of cards, gaining combat for each. */
   | { k: 'DISCARD_FOR_COMBAT'; per: number }
   /**
@@ -303,7 +308,7 @@ export interface Trigger {
 }
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
-export type AbilitySlot = 'primary' | 'ally' | 'doubleAlly' | 'scrap' | 'trigger'
+export type AbilitySlot = 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'trigger'
 
 /** Copy-source for Stealth Needle and Stealth Tower; null on every other card. */
 export interface CopyState {

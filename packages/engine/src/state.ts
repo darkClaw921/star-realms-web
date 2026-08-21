@@ -28,7 +28,7 @@ export interface InPlayCard {
    */
   copiedDef: CardDefId | null
   /** Once-per-turn bookkeeping, cleared at the start of the controller's turn. */
-  used: { primary: boolean; ally: boolean; doubleAlly: boolean; scrap: boolean }
+  used: { primary: boolean; ally: boolean; ally2: boolean; doubleAlly: boolean; scrap: boolean }
   /** False for bases held over from a previous turn. */
   playedThisTurn: boolean
 }

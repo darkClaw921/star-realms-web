@@ -25,7 +25,7 @@ export interface InPlayCardView {
   readonly copiedDef: CardDefId | null
   readonly used: {
     readonly primary: boolean; readonly ally: boolean
-    readonly doubleAlly: boolean; readonly scrap: boolean
+    readonly ally2: boolean; readonly doubleAlly: boolean; readonly scrap: boolean
   }
   readonly playedThisTurn: boolean
 }
@@ -123,7 +123,7 @@ function viewInPlay(c: InPlayCard): InPlayCardView {
     copiedDef: c.copiedDef,
     used: {
       primary: c.used.primary, ally: c.used.ally,
-      doubleAlly: c.used.doubleAlly, scrap: c.used.scrap,
+      ally2: c.used.ally2, doubleAlly: c.used.doubleAlly, scrap: c.used.scrap,
     },
     playedThisTurn: c.playedThisTurn,
   }

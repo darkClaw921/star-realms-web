@@ -447,7 +447,9 @@ describe('18. end-of-turn bookkeeping', () => {
     expect(p.allyUnlocked).toEqual([])
     expect(p.hand).toHaveLength(5)                // old hand discarded, next hand drawn
     expect(p.inPlay.map((c) => c.def)).toEqual([D('blob-wheel')]) // bases stay
-    expect(p.inPlay[0]!.used).toEqual({ primary: false, ally: false, scrap: false })
+    expect(p.inPlay[0]!.used).toEqual({
+      primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false,
+    })
   })
 
   it('refuses to end the turn while a choice is pending', () => {

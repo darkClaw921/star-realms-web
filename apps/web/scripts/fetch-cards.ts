@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import sharp from 'sharp'
+import { CARDS } from '@sr/engine'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ART_DIR = join(HERE, '..', 'public', 'cards', 'art')
@@ -79,6 +80,17 @@ const SOURCES = [
         .toLowerCase(),
   },
   {
+    set: 'united',
+    url: `${BASE_API}&per_page=100&after=2016-09-29T00:00:00&before=2016-10-01T00:00:00`,
+    pages: 1,
+    expect: 16,
+    // The whole United release landed on one day, named in squashed lowercase.
+    // Heroes and Missions are in the same batch and are dropped here simply by
+    // not matching a card we have -- see SQUASHED_IDS.
+    keep: (title: string): boolean => SQUASHED_IDS.has(title.toLowerCase()),
+    id: (title: string): string => SQUASHED_IDS.get(title.toLowerCase()) ?? title,
+  },
+  {
     set: 'colony-wars',
     url: `${BASE_API}&per_page=100&after=2016-08-18T00:00:00&before=2016-08-20T00:00:00`,
     pages: 1,
@@ -104,6 +116,19 @@ const SOURCES = [
 const TITLE_FIXES: Record<string, string> = {
   'Trading Port': 'trading-post', // the card is Trading POST
 }
+
+/**
+ * Every registry id with its hyphens removed, back to the id.
+ *
+ * The United batch is named in squashed lowercase -- "coalitionfreighter" --
+ * with no separators to split on, so word boundaries cannot be recovered from
+ * the filename. Matching against the ids we already have recovers them exactly,
+ * and has the useful property that a card we have not implemented yet simply
+ * fails to match instead of inventing an id nothing will ever look up.
+ */
+const SQUASHED_IDS = new Map<string, string>(
+  [...CARDS.keys()].map((id) => [String(id).replace(/-/g, ''), String(id)]),
+)
 
 /**
  * Scans whose filename spells the card differently from the printed card.
