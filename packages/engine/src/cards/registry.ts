@@ -2,6 +2,7 @@ import { asDefId, type CardDefId } from '../ids'
 import type { Effect } from '../effects'
 import { buildDefs, type CardDef, type CardRegistry, type SetId, type Spec } from './types'
 import { COLONY_WARS } from './colonyWars'
+import { CRISIS_BASES, CRISIS_FLEETS } from './crisis'
 import { FRONTIERS } from './frontiers'
 
 /**
@@ -175,7 +176,7 @@ const defs: Record<string, Spec> = {
     name: 'Blob Carrier', faction: 'blob', cost: 6, type: 'ship',
     defense: null, copies: 1, role: 'trade_deck',
     primary: [combat(7)],
-    ally: [{ k: 'ACQUIRE_FREE', filter: 'ship', maxCost: null, dest: 'deck_top' }],
+    ally: [{ k: 'ACQUIRE_FREE', filter: 'ship', maxCost: null, dest: 'deck_top', min: 1 }],
     text: { primary: '{combat:7}', ally: 'Acquire any ship for free and put it on top of your deck.', scrap: '' },
   },
   mothership: {
@@ -372,6 +373,8 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(defs, 'core'),
   ...buildDefs(FRONTIERS, 'frontiers'),
   ...buildDefs(COLONY_WARS, 'colony-wars'),
+  ...buildDefs(CRISIS_BASES, 'crisis-bases'),
+  ...buildDefs(CRISIS_FLEETS, 'crisis-fleets'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {
@@ -410,4 +413,6 @@ export function tradeDeckComposition(
 }
 
 /** Every set the registry knows about, in the order they should be offered. */
-export const ALL_SETS: readonly SetId[] = ['core', 'frontiers', 'colony-wars']
+export const ALL_SETS: readonly SetId[] = [
+  'core', 'frontiers', 'colony-wars', 'crisis-bases', 'crisis-fleets',
+]

@@ -21,8 +21,12 @@ export const EFFECT_VOCABULARY_VERSION = 2
 export type Condition =
   /** Embassy Yacht: "If you have two or more bases in play". Outposts are bases. */
   | { c: 'BASES_IN_PLAY_AT_LEAST'; n: number }
-  /** Colony Wars' Lancer: "If an opponent controls a base". Outposts are bases. */
-  | { c: 'OPPONENT_HAS_BASE' }
+  /**
+   * Colony Wars' Lancer ("if an opponent controls a base", n = 1) and Crisis'
+   * Obliterator ("if your opponent has two or more bases in play", n = 2).
+   * Outposts are bases.
+   */
+  | { c: 'OPPONENT_BASES_AT_LEAST'; n: number }
   /**
    * Colony Wars' acquire-to-hand cards: "if you've played a Blob card this turn".
    * Reads the same counter Blob World does, so a Stealth Needle copy does not
@@ -44,7 +48,7 @@ export type CounterRef =
  * pile: Blob Carrier tops the deck, and Colony Wars routes cards straight into
  * hand, which is a real tempo difference and not a reskin of topdecking.
  */
-export type AcquireDest = 'discard' | 'deck_top' | 'hand'
+export type AcquireDest = 'discard' | 'deck_top' | 'hand' | 'in_play'
 
 /**
  * An armed "put the next card you acquire this turn somewhere other than the
@@ -57,7 +61,13 @@ export type AcquireDest = 'discard' | 'deck_top' | 'hand'
  */
 export interface AcquireRedirect {
   readonly filter: 'ship' | 'base' | 'any'
-  readonly dest: 'deck_top' | 'hand'
+  /**
+   * `in_play` is Crisis' Construction Hauler: the base you buy skips the discard
+   * pile AND the deck and starts defending immediately. Only ever paired with
+   * filter 'base' -- a ship put "into play" would be a ship whose primary never
+   * resolved, which the printed cards never ask for.
+   */
+  readonly dest: 'deck_top' | 'hand' | 'in_play'
   /** The printed text says "you may". Freighter does; Factory World does not. */
   readonly optional: boolean
 }
@@ -95,7 +105,7 @@ export type Effect =
    * Draw a card for each card scrapped this way." The draw count is coupled to
    * the actual number scrapped, which is why this is not SEQ[SCRAP, DRAW].
    */
-  | { k: 'SCRAP_THEN_DRAW'; zones: readonly Zone[]; max: number }
+  | { k: 'SCRAP_THEN_DRAW'; zones: readonly Zone[]; max: number; factions?: readonly Faction[] }
   /**
    * Recycling Station: "discard up to two cards, then draw that many cards."
    * All discards happen BEFORE any draw -- if the deck empties during the draws,
@@ -104,8 +114,11 @@ export type Effect =
   | { k: 'DISCARD_THEN_DRAW'; max: number }
 
   // ---- acquisition ----------------------------------------------------------
-  /** Blob Carrier: "Acquire any ship for free and put it on top of your deck." */
-  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest }
+  /**
+   * Blob Carrier: "Acquire any ship for free and put it on top of your deck."
+   * `min` is 0 where the text says "you may" (Crisis' Customs Frigate).
+   */
+  | { k: 'ACQUIRE_FREE'; filter: 'ship' | 'any'; maxCost: number | null; dest: AcquireDest; min: 0 | 1 }
   /**
    * Freighter / Central Office / Factory World. Arms a pending redirection
    * consumed by the next qualifying acquisition. Multiple copies STACK (official
@@ -157,6 +170,16 @@ export type Effect =
   | { k: 'COMBAT_PER_SCRAPPED'; per: number }
   /** Mobile Market: at end of turn it comes back from the scrap heap. */
   | { k: 'RETURN_SELF_AT_END_OF_TURN' }
+
+  // ── Crisis ────────────────────────────────────────────────────────────────
+  /**
+   * Mega Mech: "You may return target base from play to its owner's hand."
+   *
+   * Not destruction: the base goes to HAND, so its owner replays it for free
+   * next turn. It also ignores the outpost shield, because returning is not an
+   * attack -- the shield is worded against attacks and targeting by destruction.
+   */
+  | { k: 'RETURN_BASE_TO_HAND'; min: 0 | 1 }
 
   // ── Colony Wars ───────────────────────────────────────────────────────────
   /**

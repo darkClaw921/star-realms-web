@@ -47,7 +47,7 @@ const scrapDiscard = (min: number, max: number): Effect =>
 const chooseOne = (...branches: { label: string; then: Effect[] }[]): Effect =>
   ({ k: 'CHOOSE_ONE', branches })
 const acquireFree = (maxCost: number | null, dest: 'discard' | 'hand'): Effect =>
-  ({ k: 'ACQUIRE_FREE', filter: 'any', maxCost, dest })
+  ({ k: 'ACQUIRE_FREE', filter: 'any', maxCost, dest, min: 1 })
 const redirect = (dest: 'deck_top' | 'hand'): Effect =>
   ({ k: 'REDIRECT_NEXT_ACQUIRED', redirect: { filter: 'any', dest, optional: false } })
 
@@ -341,7 +341,7 @@ export const COLONY_WARS: Record<string, Spec> = {
   lancer: {
     name: 'Lancer', faction: 'star_empire', cost: 2, type: 'ship',
     defense: null, copies: 3, role: 'trade_deck',
-    primary: [combat(4), { k: 'IF', cond: { c: 'OPPONENT_HAS_BASE' }, then: [combat(2)] }],
+    primary: [combat(4), { k: 'IF', cond: { c: 'OPPONENT_BASES_AT_LEAST', n: 1 }, then: [combat(2)] }],
     ally: [oppDiscard(1)],
     text: {
       primary: '{combat:4} If an opponent controls a base, gain an additional {combat:2}',

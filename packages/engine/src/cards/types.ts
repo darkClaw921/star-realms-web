@@ -11,7 +11,12 @@ export type CardRole = 'trade_deck' | 'starter' | 'explorer'
  * turning a set on or off is then a filter over the registry, and a card can
  * never end up in a deck whose set is disabled.
  */
-export type SetId = 'core' | 'frontiers' | 'colony-wars'
+export type SetId =
+  | 'core'
+  | 'frontiers'
+  | 'colony-wars'
+  | 'crisis-bases'
+  | 'crisis-fleets'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are

@@ -60,7 +60,7 @@ export const FRONTIERS: Record<string, Spec> = {
     name: 'Burrower', faction: 'blob', cost: 3, type: 'ship',
     defense: null, copies: 2, role: 'trade_deck',
     primary: [combat(5)], ally: [draw(1)],
-    scrap: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 4, dest: 'discard' }],
+    scrap: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 4, dest: 'discard', min: 1 }],
     text: {
       primary: '{combat:5}', ally: 'Draw a card.',
       scrap: 'Acquire a card of cost 4 or less for free.',
@@ -360,7 +360,7 @@ export const FRONTIERS: Record<string, Spec> = {
   gateship: {
     name: 'Gateship', faction: 'trade_federation', cost: 6, type: 'ship',
     defense: null, copies: 1, role: 'trade_deck',
-    primary: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 6, dest: 'deck_top' }],
+    primary: [{ k: 'ACQUIRE_FREE', filter: 'any', maxCost: 6, dest: 'deck_top', min: 1 }],
     ally: [authority(5)],
     text: {
       primary: 'Acquire a ship or base of cost 6 or less for free and put it on top of your deck.',

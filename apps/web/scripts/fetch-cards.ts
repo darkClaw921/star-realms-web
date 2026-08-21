@@ -62,6 +62,23 @@ const SOURCES = [
         .toLowerCase(),
   },
   {
+    set: 'crisis',
+    url: `${BASE_API}&per_page=100&after=2015-05-01T00:00:00&before=2015-06-01T00:00:00`,
+    pages: 2,
+    expect: 31,
+    // The May 2015 batch mixes all four Crisis packs in with re-uploads of the
+    // base set. Crisis cards carry a TWO-digit card number in the middle of the
+    // name; the base-set re-uploads carry three. That one digit is the whole
+    // filter, and it is the publisher's own numbering rather than a guess.
+    keep: (title: string): boolean => /^CardsWBorders_\d{4}_\d{2}_/.test(title),
+    id: (title: string): string =>
+      title.replace(/^CardsWBorders_\d+_\d+_/, '')
+        // WordPress duplicate-upload suffixes: " copy" and an en-dash " – Copy".
+        .replace(/(\s+copy)?(\s+(&#8211;|–)\s+Copy)?$/i, '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .toLowerCase(),
+  },
+  {
     set: 'colony-wars',
     url: `${BASE_API}&per_page=100&after=2016-08-18T00:00:00&before=2016-08-20T00:00:00`,
     pages: 1,
@@ -86,6 +103,14 @@ const SOURCES = [
  */
 const TITLE_FIXES: Record<string, string> = {
   'Trading Port': 'trading-post', // the card is Trading POST
+}
+
+/**
+ * Scans whose filename spells the card differently from the printed card.
+ * Applied to the derived id, after each source's own naming rule.
+ */
+const ID_FIXES: Record<string, string> = {
+  'admiral-rasmussen': 'admiral-rasmusson', // the card is Rasmusson
 }
 
 interface MediaItem {
@@ -129,7 +154,8 @@ async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; 
     for (const item of items) {
       const title = item.title.rendered
       if (!src.keep(title)) continue
-      out.push({ item, id: src.id(title) })
+      const derived = src.id(title)
+      out.push({ item, id: ID_FIXES[derived] ?? derived })
     }
   }
   console.log(`  ${src.set}: ${out.length} card faces (expected ${src.expect})`)

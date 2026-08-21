@@ -26,6 +26,8 @@ export type GameEvent =
   | { e: 'TOPDECK'; player: PlayerId; iid: CardIid; def: CardDefId }
   /** Frontiers (Mobile Market): back from the scrap heap at end of turn. */
   | { e: 'RETURN_FROM_SCRAP'; player: PlayerId; iid: CardIid; def: CardDefId }
+  /** Crisis' Mega Mech: a base leaves play for its owner's HAND, not the scrap heap. */
+  | { e: 'RETURN_TO_HAND'; owner: PlayerId; iid: CardIid; def: CardDefId }
   | { e: 'BASE_DESTROYED'; owner: PlayerId; iid: CardIid; def: CardDefId; by: 'combat' | 'effect' }
   | { e: 'ATTACK_PLAYER'; attacker: PlayerId; target: PlayerId; n: number }
   | { e: 'COPY_SHIP'; player: PlayerId; iid: CardIid; copied: CardDefId }

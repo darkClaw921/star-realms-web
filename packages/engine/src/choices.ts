@@ -19,6 +19,8 @@ export type PromptKind =
   | 'DISCARD_FOR_COMBAT'
   // ── Colony Wars ───────────────────────────────────────────────────────────
   | 'COPY_BASE'
+  // ── Crisis ────────────────────────────────────────────────────────────────
+  | 'RETURN_BASE_TO_HAND'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

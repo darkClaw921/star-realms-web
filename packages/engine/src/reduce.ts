@@ -210,6 +210,7 @@ function acquire(
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
+  if (dest === 'in_play') { enterPlay(d, pid, inst, ev); fireAcquireSelf(d, pid, inst, ev); return }
   p.discard.push(inst)
   fireAcquireSelf(d, pid, inst, ev)
   offerRedirect(d, pid, inst)
@@ -269,6 +270,24 @@ function offerRedirect(d: D, pid: PlayerId, inst: CardInstance): void {
       label: dst === 'hand' ? 'Into your hand' : 'On top of your deck',
     })),
   }, { c: 'REDIRECT', iid: inst.iid, dests, redirects: idxs })
+}
+
+/**
+ * Put a card into play without playing it from hand.
+ *
+ * Crisis' Construction Hauler buys a base straight into play. It is NOT a card
+ * played: nothing counts it for the faction-played counters, and no PLAY_BASE
+ * trigger watches it, because it was never played -- it was acquired.
+ */
+function enterPlay(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): void {
+  d.players[pid].inPlay.push({
+    iid: inst.iid,
+    def: inst.def,
+    copiedDef: null,
+    used: { primary: false, ally: false, doubleAlly: false, scrap: false },
+    playedThisTurn: false,
+  } as Draft<InPlayCard>)
+  ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })
 }
 
 function destroyBase(
@@ -514,9 +533,16 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'SCRAP_THEN_DRAW': {
-      const opts: ChoiceOption[] = []
+      let opts: ChoiceOption[] = []
       if (effect.zones.includes('hand')) opts.push(...cardOpts(p.hand as CardInstance[], 'hand', me))
       if (effect.zones.includes('discard')) opts.push(...cardOpts(p.discard as CardInstance[], 'discard', me))
+      // Crisis' Death World only eats the OTHER three factions, so the filter
+      // lives on the option list rather than on the answer: an illegal card is
+      // never offered, and the server never has to reject one.
+      const allowed = effect.factions
+      if (allowed) {
+        opts = opts.filter((o) => o.o === 'CARD' && allowed.includes(cardDef(o.def).faction))
+      }
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to scrap' }); return }
       pushChoice(d, makeChoice(d, me, 'SCRAP_THEN_DRAW',
         `Scrap up to ${effect.max} cards, then draw one for each`, 0,
@@ -547,7 +573,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to acquire' }); return }
       pushChoice(
         d,
-        makeChoice(d, me, 'ACQUIRE_FREE', 'Acquire a ship for free', 1, 1, opts, ctx.source),
+        makeChoice(d, me, 'ACQUIRE_FREE', 'Acquire a card for free', effect.min, 1, opts, ctx.source),
         { c: 'ACQUIRE', dest: effect.dest },
       )
       return
@@ -583,6 +609,22 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
         `Discard up to ${effect.max} cards`, 0,
         Math.min(effect.max, opts.length), opts, ctx.source),
         { c: 'DISCARD_RESOURCE', per: effect.per })
+      return
+    }
+
+    case 'RETURN_BASE_TO_HAND': {
+      // Returning is not an attack, so unlike DESTROY_BASE it is NOT filtered
+      // through the outpost shield: the shield is worded against attacks and
+      // against destruction targeting, and Mega Mech does neither.
+      const opts: ChoiceOption[] = []
+      for (const pid of PLAYERS) {
+        for (const c of d.players[pid].inPlay) {
+          if (isBase(c)) opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'inPlay', owner: pid })
+        }
+      }
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'no base to return' }); return }
+      pushChoice(d, makeChoice(d, me, 'RETURN_BASE_TO_HAND',
+        "Return target base to its owner's hand", effect.min, 1, opts, ctx.source))
       return
     }
 
@@ -629,8 +671,8 @@ function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
   switch (cond.c) {
     case 'BASES_IN_PLAY_AT_LEAST':
       return d.players[me].inPlay.filter(isBase).length >= cond.n
-    case 'OPPONENT_HAS_BASE':
-      return d.players[opponentOf(me)].inPlay.some(isBase)
+    case 'OPPONENT_BASES_AT_LEAST':
+      return d.players[opponentOf(me)].inPlay.filter(isBase).length >= cond.n
     case 'FACTION_PLAYED_THIS_TURN':
       return d.players[me].factionPlayedThisTurn[cond.faction] >= cond.n
   }
@@ -820,6 +862,7 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       if (idx < 0) return
       const inst = p.discard.splice(idx, 1)[0] as CardInstance
       if (dest === 'hand') p.hand.push(inst)
+      else if (dest === 'in_play') enterPlay(d, me, inst, ev)
       else p.deck.unshift(inst)
       // Consume exactly the redirect that was chosen, not merely one of the
       // matching ones: they can differ in destination, and spending the wrong
@@ -847,6 +890,21 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
           ],
         }], ctx)
       }
+      return
+    }
+
+    case 'RETURN_BASE_TO_HAND': {
+      const o = selected[0]
+      if (!o || o.o !== 'CARD') return
+      const found = findInPlay(d as unknown as GameState, o.iid)
+      if (!found) return
+      const owner = d.players[found.owner]
+      const idx = owner.inPlay.findIndex((x) => x.iid === o.iid)
+      if (idx < 0) return
+      owner.inPlay.splice(idx, 1)
+      // To HAND, not to the discard pile: its owner replays it for free.
+      owner.hand.push({ iid: found.card.iid, def: found.card.def })
+      ev.push({ e: 'RETURN_TO_HAND', owner: found.owner, iid: found.card.iid, def: found.card.def })
       return
     }
 

@@ -79,6 +79,8 @@ export const UI = {
     core: 'Базовый набор',
     frontiers: 'Frontiers',
     'colony-wars': 'Colony Wars',
+    'crisis-bases': 'Crisis: Базы и линкоры',
+    'crisis-fleets': 'Crisis: Флоты и крепости',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -237,6 +239,11 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
     // ── Colony Wars ────────────────────────────────────────────────────────
     case 'COPY_BASE':
       return 'Скопируйте любую базу в игре'
+    // ── Crisis ─────────────────────────────────────────────────────────────
+    case 'RETURN_BASE_TO_HAND':
+      return c.min === 0
+        ? 'Можете вернуть выбранную базу в руку её владельца'
+        : 'Верните выбранную базу в руку её владельца'
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }
