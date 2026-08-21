@@ -27,6 +27,8 @@ export type PromptKind =
   // ── High Alert ────────────────────────────────────────────────────────────
   | 'CHOOSE_FACTION'
   | 'SCRY'
+  // ── Stellar Allies ────────────────────────────────────────────────────────
+  | 'COPY_USED_ALLY'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
 
 export type ChoiceOption =

@@ -91,6 +91,9 @@ export const UI = {
     'high-alert-requisition': 'High Alert: Реквизиция',
     'high-alert-invasion': 'High Alert: Вторжение',
     'high-alert-heroes': 'High Alert: Герои',
+    'stellar-allies': 'Stellar Allies',
+    'promo-1': 'Промо-набор 1',
+    'promo-year-2': 'Промо-набор второго года',
   } as Record<string, string>,
   cardsInDeck: (n: number): string => `${n} карт в колоде`,
 
@@ -142,6 +145,8 @@ export const UI = {
   slotDoubleAlly: 'Двойной союз',
   slotAlly: 'Союзное',
   slotAlly2: 'Союзное 2',
+  slotAlly3: 'Союзное 3',
+  slotAlly4: 'Союзное 4',
   slotScrap: 'Утиль',
 
   // передача устройства
@@ -266,6 +271,9 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return 'Выберите фракцию'
     case 'SCRY':
       return 'Одну карту — в сброс, другая останется на верху колоды'
+    // ── Stellar Allies ─────────────────────────────────────────────────────
+    case 'COPY_USED_ALLY':
+      return 'Скопируйте союзное свойство, уже применённое в этот ход'
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
   }

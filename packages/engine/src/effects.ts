@@ -253,6 +253,16 @@ export type Effect =
    * else -- it is not in play, cannot be attacked, and is gone at end of turn.
    */
   | { k: 'PHANTOM_FACTION'; n: number }
+
+  // ── Stellar Allies ────────────────────────────────────────────────────────
+  /**
+   * Needle Lancer: "Copy an ally ability that you've already used this turn."
+   *
+   * Reads a per-turn list of definition + slot rather than of card instances,
+   * so it still works when the card that used the ability has since been
+   * scrapped -- which is exactly the line the card rewards.
+   */
+  | { k: 'COPY_USED_ALLY' }
   /**
    * Re-fill the trade row, resolving any event that turns up. Pushed by the
    * refill itself when an event appears, so that the event can ask a question
@@ -334,7 +344,8 @@ export interface Trigger {
 }
 
 /** Which ability slot an effect came from. Drives once-per-turn bookkeeping. */
-export type AbilitySlot = 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'trigger'
+export type AbilitySlot =
+  | 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap' | 'trigger'
 
 /** Copy-source for Stealth Needle and Stealth Tower; null on every other card. */
 export interface CopyState {

@@ -28,7 +28,21 @@ export interface InPlayCard {
    */
   copiedDef: CardDefId | null
   /** Once-per-turn bookkeeping, cleared at the start of the controller's turn. */
-  used: { primary: boolean; ally: boolean; ally2: boolean; doubleAlly: boolean; scrap: boolean }
+  used: {
+    primary: boolean
+    /**
+     * Up to four ally slots. Four is the printed ceiling: Promo Pack 1's
+     * Mercenary Garrison carries one ability per faction, and no card in any set
+     * carries more. Named slots rather than a list because the ACTIVATE action
+     * is part of the wire protocol and of every stored replay.
+     */
+    ally: boolean
+    ally2: boolean
+    ally3: boolean
+    ally4: boolean
+    doubleAlly: boolean
+    scrap: boolean
+  }
   /** False for bases held over from a previous turn. */
   playedThisTurn: boolean
 }
@@ -78,6 +92,16 @@ export interface PlayerState {
   /** Cards this player has scrapped this turn. Reclamation Station reads it. */
   scrappedThisTurn: number
   /**
+   * Ally abilities already used this turn, in order. Stellar Allies' Needle
+   * Lancer copies one of them, so the list has to survive the card that used it
+   * leaving play -- which is why it stores definitions and slots, not instances.
+   */
+  alliesUsedThisTurn: {
+    iid: CardIid
+    def: CardDefId
+    slot: 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly'
+  }[]
+  /**
    * High Alert's Stealth: factions you count as having an extra card of this
    * turn. Phantom cards -- they satisfy ally conditions and nothing else, and
    * they are cleared with the rest of the per-turn bookkeeping.
@@ -119,6 +143,8 @@ export type ChoiceCont =
   | { c: 'DESTROY_OR_LOSE'; n: number }
   /** Stealth: how many phantom cards of the chosen faction to add. */
   | { c: 'PHANTOM'; n: number }
+  /** Needle Lancer: the ally abilities on offer, parallel to the branch options. */
+  | { c: 'COPY_ALLY'; used: readonly { def: CardDefId; slot: string }[] }
 
 /** One item on the resolution stack. Both variants are plain JSON. */
 export type ResolutionFrame =

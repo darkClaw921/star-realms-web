@@ -2,6 +2,7 @@ import { produce, type Draft } from 'immer'
 import type { Action, Command } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef, EXPLORER, SCOUT, VIPER } from './cards/registry'
+import type { CardDef } from './cards/types'
 import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
@@ -338,7 +339,10 @@ function enterPlay(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[]): vo
     iid: inst.iid,
     def: inst.def,
     copiedDef: null,
-    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
+    used: {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false,
+    },
     playedThisTurn: false,
   } as Draft<InPlayCard>)
   ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })
@@ -756,6 +760,24 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
+    case 'COPY_USED_ALLY': {
+      // Only abilities used BEFORE this one, and the Lancer's own ally is not on
+      // the list yet because the list is appended after the ability resolves.
+      // "Already used": not the one being used right now, which is on the list
+      // by the time its effects resolve.
+      const used = p.alliesUsedThisTurn
+        .filter((u) => u.iid !== ctx.source)
+        .map((u) => ({ def: u.def, slot: u.slot }))
+      if (used.length === 0) { ev.push({ e: 'FIZZLE', label: 'no ally ability used yet' }); return }
+      const opts: ChoiceOption[] = used.map((u, i) => ({
+        o: 'BRANCH' as const, index: i, label: cardDef(u.def).name,
+      }))
+      pushChoice(d, makeChoice(d, me, 'COPY_USED_ALLY',
+        'Copy an ally ability used this turn', 1, 1, opts, ctx.source),
+        { c: 'COPY_ALLY', used })
+      return
+    }
+
     case 'PHANTOM_FACTION': {
       const opts: ChoiceOption[] = FACTIONS
         .filter((f) => f !== 'unaligned')
@@ -1115,6 +1137,19 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       return
     }
 
+    case 'COPY_USED_ALLY': {
+      const o = selected[0]
+      if (!o || o.o !== 'BRANCH' || cont?.c !== 'COPY_ALLY') return
+      const pick = cont.used[o.index]
+      if (!pick) return
+      const def = cardDef(pick.def)
+      const effects = def[pick.slot as 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly']
+      // Copied, not re-activated: the original card's once-per-turn flag is
+      // untouched, and the copy does not itself join the list.
+      if (effects.length > 0) pushEffects(d, effects, ctx)
+      return
+    }
+
     case 'CHOOSE_FACTION': {
       const o = selected[0]
       if (!o || o.o !== 'BRANCH' || cont?.c !== 'PHANTOM') return
@@ -1284,7 +1319,10 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     iid: inst.iid,
     def: inst.def,
     copiedDef: null,
-    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
+    used: {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false,
+    },
     playedThisTurn: true,
   }
   p.inPlay.push(card as Draft<InPlayCard>)
@@ -1322,9 +1360,22 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   if (queued.length > 0) pushEffects(d, queued, ctx)
 }
 
+/** Which faction a given ally slot is pinned to, if any. */
+export function allySlotFaction(
+  def: CardDef, slot: 'ally' | 'ally2' | 'ally3' | 'ally4',
+): Faction | undefined {
+  switch (slot) {
+    case 'ally': return def.allyFaction
+    case 'ally2': return def.ally2Faction
+    case 'ally3': return def.ally3Faction
+    case 'ally4': return def.ally4Faction
+  }
+}
+
 function activate(
   d: D, me: PlayerId, iid: CardIid,
-  slot: 'primary' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap', ev: GameEvent[],
+  slot: 'primary' | 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly' | 'scrap',
+  ev: GameEvent[],
 ): void {
   const p = d.players[me]
   const card = p.inPlay.find((c) => c.iid === iid)
@@ -1335,12 +1386,12 @@ function activate(
   const effects = def[slot]
   if (effects.length === 0) throw new IllegalActionError(`card has no ${slot} ability`)
 
-  if (slot === 'ally' || slot === 'ally2') {
+  if (slot === 'ally' || slot === 'ally2' || slot === 'ally3' || slot === 'ally4') {
     // A pinned faction (United's per-faction slots) needs that faction; an
     // unpinned one needs ANY of the card's own factions, which covers both the
     // ordinary case and United's "Coalition Ally (Machine Cult or Trade
     // Federation)", where either half will do.
-    const pinned = slot === 'ally' ? def.allyFaction : def.ally2Faction
+    const pinned = allySlotFaction(def, slot)
     const need = pinned ? [pinned] : factionsOf(card)
     if (!need.some((f) => p.allyUnlocked.includes(f))) {
       throw new IllegalActionError('ally condition not met')
@@ -1369,6 +1420,15 @@ function activate(
 
   card.used[slot] = true
   ev.push({ e: 'ABILITY_USED', player: me, iid: card.iid, def: card.def, slot })
+  // Remembered for Needle Lancer, which copies an ally ability used earlier this
+  // turn. Stored as definition + slot so it survives the card leaving play.
+  if (slot !== 'primary' && slot !== 'scrap') {
+    // A copy ability is not itself copyable: there would be nothing behind it,
+    // and two Needle Lancers pointing at each other would never terminate.
+    if (!effects.some((e) => e.k === 'COPY_USED_ALLY')) {
+      p.alliesUsedThisTurn.push({ iid: card.iid, def: effectiveDefId(card), slot })
+    }
+  }
 
   if (slot === 'scrap') {
     // Using a card's own scrap ability removes it from play permanently. Its
@@ -1453,6 +1513,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   p.pendingRedirects = []
   p.scrappedThisTurn = 0
   p.phantomFactions = []
+  p.alliesUsedThisTurn = []
   // Stealth Tower copies a base "until your turn ends", so the copy is dropped
   // HERE rather than at the start of your next turn. The difference is not
   // cosmetic: a copied outpost left standing would shield you through the
@@ -1475,8 +1536,12 @@ function endTurn(d: D, ev: GameEvent[]): void {
   next.pendingRedirects = []
   next.scrappedThisTurn = 0
   next.phantomFactions = []
+  next.alliesUsedThisTurn = []
   for (const c of next.inPlay) {
-    c.used = { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false }
+    c.used = {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false,
+    }
     c.playedThisTurn = false
     // Copy state is cleared when its own turn ends, not here -- see above.
   }
@@ -1650,7 +1715,10 @@ function playCardFor(d: D, pid: PlayerId, inst: CardInstance, ev: GameEvent[], c
   const def = cardDef(inst.def)
   p.inPlay.push({
     iid: inst.iid, def: inst.def, copiedDef: null,
-    used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
+    used: {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false,
+    },
     playedThisTurn: true,
   })
   ev.push({ e: 'PLAY_CARD', player: pid, iid: inst.iid, def: inst.def })

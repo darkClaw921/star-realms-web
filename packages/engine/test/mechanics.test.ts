@@ -448,7 +448,8 @@ describe('18. end-of-turn bookkeeping', () => {
     expect(p.hand).toHaveLength(5)                // old hand discarded, next hand drawn
     expect(p.inPlay.map((c) => c.def)).toEqual([D('blob-wheel')]) // bases stay
     expect(p.inPlay[0]!.used).toEqual({
-      primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false,
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+        doubleAlly: false, scrap: false,
     })
   })
 

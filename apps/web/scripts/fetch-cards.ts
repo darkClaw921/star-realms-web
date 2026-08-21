@@ -66,18 +66,59 @@ const SOURCES = [
     set: 'crisis',
     url: `${BASE_API}&per_page=100&after=2015-05-01T00:00:00&before=2015-06-01T00:00:00`,
     pages: 2,
-    expect: 31,
+    expect: 40,
     // The May 2015 batch mixes all four Crisis packs in with re-uploads of the
     // base set. Crisis cards carry a TWO-digit card number in the middle of the
     // name; the base-set re-uploads carry three. That one digit is the whole
     // filter, and it is the publisher's own numbering rather than a guess.
-    keep: (title: string): boolean => /^CardsWBorders_\d{4}_\d{2}_/.test(title),
-    id: (title: string): string =>
-      title.replace(/^CardsWBorders_\d+_\d+_/, '')
+    // The same batch also holds the first promo pack, named WITHOUT a card
+    // number -- CardsWBorders_0043_TheArk. Those are matched by name instead,
+    // which is also what keeps the base-set re-uploads out: theirs always carry
+    // the three-digit number.
+    keep: (title: string): boolean =>
+      /^CardsWBorders_\d{4}_\d{2}_/.test(title) || /^CardsWBorders_\d{4}_[A-Za-z]/.test(title),
+    id: (title: string): string => {
+      const bare = title
+        .replace(/^CardsWBorders_\d+_(\d+_)?/, '')
         // WordPress duplicate-upload suffixes: " copy" and an en-dash " – Copy".
         .replace(/(\s+copy)?(\s+(&#8211;|–)\s+Copy)?$/i, '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-        .toLowerCase(),
+      return /^CardsWBorders_\d{4}_\d{2}_/.test(title)
+        ? bare.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+        : squashed(bare)
+    },
+  },
+  {
+    // Stellar Allies and the two promo-year packs, each under its own prefix and
+    // spread over years of uploads, so these are matched by name rather than by
+    // a window. Foil and plain scans are the same face; whichever comes second
+    // wins, and both are correct.
+    set: 'stellar-allies',
+    url: `${BASE_API}&per_page=100&search=SRSTA`,
+    pages: 2,
+    // Eight cards, most of them uploaded both plain and foil.
+    expect: 17,
+    keep: (title: string): boolean =>
+      title.startsWith('SRSTA') && SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
+    set: 'promo-years',
+    url: `${BASE_API}&per_page=100&search=SRY`,
+    pages: 2,
+    expect: 13,
+    keep: (title: string): boolean =>
+      /^SRY\dP/.test(title) && SQUASHED_IDS.has(squashKey(title)),
+    id: (title: string): string => squashed(title),
+  },
+  {
+    // Mercenary Garrison appears under none of the pack prefixes; the only card
+    // face for it is the 2017 alternate-art upload.
+    set: 'promo-singles',
+    url: `${BASE_API}&per_page=100&search=mercenarygarrison`,
+    pages: 1,
+    expect: 1,
+    keep: (title: string): boolean => title === 'mercenarygarrison-alternate',
+    id: (): string => 'mercenary-garrison',
   },
   {
     // Stragglers: cards the batch above them does not contain. Crisis' Supernova
@@ -157,6 +198,25 @@ const SQUASHED_IDS = new Map<string, string>(
 )
 
 /**
+ * Reduce a scan filename to the key SQUASHED_IDS is built on.
+ *
+ * Strips the pack prefix (SRSTA_, SRY1P_, ...) and the Card / FoilCard marker,
+ * then everything that is not a letter or digit. What is left is the card name
+ * with its word boundaries gone, which is exactly what the map is keyed by.
+ */
+function squashKey(title: string): string {
+  return title
+    .replace(/^SR[A-Z0-9]*_/, '')
+    .replace(/^(Foil)?Card_?/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function squashed(title: string): string {
+  return SQUASHED_IDS.get(squashKey(title)) ?? squashKey(title)
+}
+
+/**
  * Scans whose filename spells the card differently from the printed card.
  * Applied to the derived id, after each source's own naming rule.
  */
@@ -166,6 +226,8 @@ const ID_FIXES: Record<string, string> = {
   // filenames, so the CamelCase split lands one word short.
   'biocaptain-kalle': 'bio-captain-kalle',
   'biowarrior-storm': 'bio-warrior-storm',
+  // The 2015 scan is filed as plain "Starbase"; the card is Starbase Omega.
+  starbase: 'starbase-omega',
 }
 
 interface MediaItem {

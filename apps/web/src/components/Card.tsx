@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useRef, useState } from 'react'
 import { cardDef, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 import { cardRu, FACTION_RU } from '@/i18n/cards.ru'
@@ -141,13 +141,16 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
                   <CardText src={text.ally} />
                 </>
               )}
-              {text.ally2 && (
-                <>
+              {/* Up to four ally abilities, one per faction on Mercenary
+                * Garrison. They are numbered rather than named because the
+                * faction is already carried by the card's own marks. */}
+              {([text.ally2, text.ally3, text.ally4] as const).map((t, i) => t && (
+                <Fragment key={i}>
                   <span className="card__rule" />
-                  <span className="card__slot-label">Союз 2</span>{' '}
-                  <CardText src={text.ally2} />
-                </>
-              )}
+                  <span className="card__slot-label">{`Союз ${i + 2}`}</span>{' '}
+                  <CardText src={t} />
+                </Fragment>
+              ))}
               {text.doubleAlly && (
                 <>
                   <span className="card__rule" />
@@ -212,6 +215,8 @@ export function cardLabel(def: CardDefId): string {
     speak(text.primary),
     text.ally ? `Союзное свойство: ${speak(text.ally)}` : '',
     text.ally2 ? `Второе союзное свойство: ${speak(text.ally2)}` : '',
+    text.ally3 ? `Третье союзное свойство: ${speak(text.ally3)}` : '',
+    text.ally4 ? `Четвёртое союзное свойство: ${speak(text.ally4)}` : '',
     text.doubleAlly ? `Двойное союзное свойство: ${speak(text.doubleAlly)}` : '',
     text.scrap ? `Утилизационное свойство: ${speak(text.scrap)}` : '',
   ].filter(Boolean).join('. ')

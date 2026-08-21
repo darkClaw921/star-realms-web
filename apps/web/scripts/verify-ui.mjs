@@ -295,6 +295,9 @@ async function main() {
         ['High Alert: Реквизиция', 12],
         ['High Alert: Вторжение', 12],
         ['High Alert: Герои', 12],
+        ['Stellar Allies', 12],
+        ['Промо-набор 1', 15],
+        ['Промо-набор второго года', 9],
       ]
 
       const labels = await page.$$eval('.sets .switch', (els) =>

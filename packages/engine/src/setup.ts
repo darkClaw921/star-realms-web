@@ -63,6 +63,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     doubleAllyUnlocked: [],
     pendingRedirects: [],
     phantomFactions: [],
+    alliesUsedThisTurn: [],
     scrappedThisTurn: 0,
     returnAtEndOfTurn: [],
   }
@@ -116,7 +117,10 @@ export function createGame(setup: MatchSetup): GameState {
       ;[c, rng] = mint(rng, def)
       players[pid].inPlay.push({
         iid: c.iid, def: c.def, copiedDef: null,
-        used: { primary: false, ally: false, ally2: false, doubleAlly: false, scrap: false },
+        used: {
+      primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+      doubleAlly: false, scrap: false,
+    },
         playedThisTurn: false,
       })
     }

@@ -27,6 +27,9 @@ export type SetId =
   | 'high-alert-requisition'
   | 'high-alert-invasion'
   | 'high-alert-heroes'
+  | 'stellar-allies'
+  | 'promo-1'
+  | 'promo-year-2'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
@@ -41,6 +44,8 @@ export interface CardText {
   readonly ally: string
   /** United: the second faction's ally ability on a dual-faction card. */
   readonly ally2?: string
+  readonly ally3?: string
+  readonly ally4?: string
   /** Frontiers: needs TWO other cards of the faction, not one. */
   readonly doubleAlly?: string
   readonly scrap: string
@@ -84,9 +89,17 @@ export interface CardDef {
    * "Coalition Ally (Machine Cult or Trade Federation)", where either will do.
    */
   readonly allyFaction?: Faction
-  /** United: the second faction's ally ability. Independent of `ally`. */
+  /**
+   * Further per-faction ally abilities, independent of `ally` and of each other.
+   * Four is the printed ceiling -- Promo Pack 1's Mercenary Garrison carries one
+   * per faction, and no card in any set carries more.
+   */
   readonly ally2: readonly Effect[]
   readonly ally2Faction?: Faction
+  readonly ally3: readonly Effect[]
+  readonly ally3Faction?: Faction
+  readonly ally4: readonly Effect[]
+  readonly ally4Faction?: Faction
   /**
    * Frontiers' Double Ally: needs TWO other cards of the faction, so three of
    * that faction in play counting this one. A separate slot rather than a flag
@@ -112,9 +125,11 @@ export type CardRegistry = ReadonlyMap<CardDefId, CardDef>
  */
 export type Spec =
   Omit<CardDef,
-    'id' | 'set' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'> &
+    'id' | 'set' | 'ally' | 'ally2' | 'ally3' | 'ally4'
+    | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'> &
   Partial<Pick<CardDef,
-    'set' | 'ally' | 'ally2' | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'>>
+    'set' | 'ally' | 'ally2' | 'ally3' | 'ally4'
+    | 'doubleAlly' | 'scrap' | 'triggers' | 'factionWildcard'>>
 
 /** Fills in everything a spec leaves out. Shared by every set's card table. */
 export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, CardDef][] {
@@ -126,6 +141,8 @@ export function buildDefs(defs: Record<string, Spec>, set: SetId): [CardDefId, C
       ...s,
       ally: s.ally ?? [],
       ally2: s.ally2 ?? [],
+      ally3: s.ally3 ?? [],
+      ally4: s.ally4 ?? [],
       doubleAlly: s.doubleAlly ?? [],
       scrap: s.scrap ?? [],
       triggers: s.triggers ?? [],
