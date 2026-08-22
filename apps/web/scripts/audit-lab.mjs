@@ -412,6 +412,47 @@ const shot = (name) => p.screenshot({ path: join(SHOTS, `audit-${name}.png`) })
     `фаза ${s.phase}, частиц ${f.live}, звуков ${f.snd}`)
 }
 
+// ── 7. союзы пакетом ────────────────────────────────────────────────────────
+// Точный случай из жизни: три одинаковые карты, один союз нажат руками,
+// остальные должны добиться кнопкой.
+{
+  await p.reload({ waitUntil: 'networkidle2' })
+  await p.waitForSelector('.lab')
+  await sleep(900)
+  for (let i = 0; i < 3; i++) await place2('Мне в игру', 'Ракетный бот')
+  await p.evaluate(() => {
+    const b = [...document.querySelectorAll('.lab__head .btn')]
+      .find((x) => (x.textContent ?? '').includes('Свернуть'))
+    ;(b instanceof HTMLElement ? b : null)?.click()
+  })
+  await sleep(400)
+  const allyUsed = () => p.evaluate(() =>
+    window.__lab.info.state.players.p1.inPlay.filter((c) => c.used.ally).length)
+  const manual = await p.evaluate(() => {
+    for (const slot of document.querySelectorAll('.band--board .row--fan > *')) {
+      const btn = [...slot.querySelectorAll('.actions .btn')]
+        .find((x) => (x.textContent ?? '').includes('Союз'))
+      if (btn instanceof HTMLElement) { btn.click(); return true }
+    }
+    return false
+  })
+  await sleep(600)
+  const afterManual = await allyUsed()
+  const pressedAlly = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('.band--board .zone__head .btn')]
+      .find((x) => (x.textContent ?? '').includes('Все союзы'))
+    if (!(b instanceof HTMLElement)) return false
+    b.click()
+    return true
+  })
+  await sleep(1800)
+  const afterBatch = await allyUsed()
+  rec('«Все союзы» добивает то, что не нажато руками',
+    manual && pressedAlly && afterManual === 1 && afterBatch === 3,
+    `союзов применено: вручную ${afterManual}, после кнопки ${afterBatch} из 3`)
+  await shot('09-allies')
+}
+
 const shotsList = [
   ['01-play', 'Розыгрыш карты кликом по руке: карта поднимается в зону игры, вверх идут искры её фракции.'],
   ['02-ally', 'Вторая карта Слизней с руки открыла союз: контуры обеих светятся цветом фракции.'],
@@ -421,6 +462,7 @@ const shotsList = [
   ['06-damage', 'Атака по игроку: HUD соперника трясёт, над ним всплывает потерянный авторитет.'],
   ['07-bot', 'Ход бота: его карты звучат и вспыхивают так же, как свои.'],
   ['08-victory', 'Победа: залпы по экрану и конец партии.'],
+  ['09-allies', 'Три одинаковые карты: один союз нажат руками, два добиты кнопкой «Все союзы».'],
 ]
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
 const passed = rows.filter((r) => r.ok).length
