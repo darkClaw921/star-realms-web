@@ -13,7 +13,8 @@
     "report": "tsx scripts/check-i18n.ts && node scripts/verify-ui.mjs && node scripts/build-report.mjs",
     "art-manifest": "node scripts/art-manifest.mjs",
     "predev": "npm run art-manifest",
-    "prebuild": "npm run art-manifest"
+    "prebuild": "npm run art-manifest",
+    "audit-lab": "node scripts/audit-lab.mjs"
   },
   "dependencies": {
     "@sr/engine": "*",

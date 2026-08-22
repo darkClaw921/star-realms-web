@@ -42,6 +42,10 @@ export class LabMatchClient extends LocalMatchClient {
 
   /** Строка в журнал: пульт проговаривает, что сделал. */
   say(text: string): void {
+    // Поток событий обнуляется вместе со строкой: иначе следующий tick
+    // повторил бы прошлую вспышку, и «эффект сработал дважды» выглядело бы
+    // как баг слоя эффектов, а не пульта.
+    this.events = []
     this.log = [...this.log, { id: this.tick * 1000 + this.log.length, player: null, text, emphasis: true }]
       .slice(-400) as LogLine[]
     this.tick += 1

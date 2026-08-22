@@ -184,16 +184,32 @@ export function ring(
   start()
 }
 
-/** Перезапуск CSS-анимации: без рефлоу второе срабатывание подряд молчит. */
+/** Каждому запуску — свой номер, чтобы уборка не трогала чужую анимацию. */
+let runs = 0
+
+/**
+ * Перезапуск CSS-анимации.
+ *
+ * Две тонкости, и обе стоили по багу. Первая: без рефлоу второе срабатывание
+ * подряд молчит — браузер не видит смены значения. Вторая: инлайновый стиль
+ * надо снять, иначе элемент навсегда останется в конечном кадре (карта —
+ * прозрачной), но снимать его может ТОЛЬКО тот запуск, который его поставил.
+ * Уборка за предыдущей анимацией гасила следующую, и эффект пропадал ровно
+ * тогда, когда два события приходили по одной карте подряд.
+ */
 export function anim(el: Element | null | undefined, keyframes: string, dur: number,
   ease = 'cubic-bezier(.2,.7,.3,1)'): void {
   if (calm() || !(el instanceof HTMLElement)) return
+  const token = String(++runs)
+  el.dataset.fxRun = token
   el.style.animation = 'none'
   void el.offsetWidth
   el.style.animation = `${keyframes} ${dur}s ${ease} both`
-  // Инлайновый стиль снимается сам: иначе элемент навсегда останется в
-  // конечном кадре анимации, а карта, скажем, — прозрачной.
-  window.setTimeout(() => { el.style.animation = '' }, dur * 1000 + 60)
+  window.setTimeout(() => {
+    if (el.dataset.fxRun !== token) return
+    el.style.animation = ''
+    delete el.dataset.fxRun
+  }, dur * 1000 + 60)
 }
 
 /** Всплывающее число: «−8» над HUD, «+12» над счётчиком боя. */
@@ -204,8 +220,11 @@ export function popText(x: number, y: number, text: string, color: string,
   el.className = 'fx-pop'
   el.textContent = text
   el.style.color = color
-  el.style.left = `${x}px`
-  el.style.top = `${y}px`
+  // HUD соперника стоит у самой кромки экрана, а число ещё и всплывает вверх:
+  // без зажима «−21» показывается наполовину срезанным как раз в тот момент,
+  // ради которого эффект и сделан.
+  el.style.left = `${Math.min(window.innerWidth - 40, Math.max(40, x))}px`
+  el.style.top = `${Math.min(window.innerHeight - 30, Math.max(58, y))}px`
   el.setAttribute('aria-hidden', 'true')
   document.body.appendChild(el)
   anim(el, kind, 0.9, 'ease-out')

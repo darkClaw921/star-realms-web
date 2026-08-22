@@ -120,9 +120,11 @@ export function LabConsole({
         case 'deckTop': me.deck.unshift(instance(def)); break
         case 'scrapHeap': d.scrapHeap.push(instance(def)); break
         case 'tradeRow': {
+          // Ряд фиксированного размера: если свободного места нет, карта
+          // ЗАМЕНЯЕТ первый слот. Молча ничего не делать хуже — нажатие
+          // выглядело бы сломанным.
           const free = d.tradeRow.findIndex((c) => c === null)
-          const at = free >= 0 ? free : 0
-          d.tradeRow[at] = instance(def)
+          d.tradeRow[free >= 0 ? free : 0] = instance(def)
           break
         }
       }

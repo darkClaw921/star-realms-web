@@ -224,7 +224,8 @@ export const UI = {
 
   // конец партии
   gameOver: 'Партия окончена',
-  wins: (name: string): string => `${name} побеждает`,
+  /** Своё место называется «Вы», и «Вы побеждает» — не по-русски. */
+  wins: (name: string): string => (name === 'Вы' ? 'Вы побеждаете' : `${name} побеждает`),
   toMenu: 'В меню',
 
   // HUD

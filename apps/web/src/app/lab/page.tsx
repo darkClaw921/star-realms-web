@@ -23,12 +23,18 @@ import { readSettings } from '@/settings/useSettings'
  * просто не передавать — пульт правит состояние, не заканчивая хода.
  */
 export default function LabPage(): React.JSX.Element {
-  const router = useRouter()
   const [nonce, setNonce] = useState(0)
+  // key, а не смена seed: useMatch создаёт клиент один раз за монтирование —
+  // без пересоздания компонента «новая раздача» меняла бы только строку seed.
+  return <LabTable key={nonce} onDeal={() => setNonce((n) => n + 1)} />
+}
+
+function LabTable({ onDeal }: { onDeal: () => void }): React.JSX.Element {
+  const router = useRouter()
   const dealt = useMemo(() => readSettings(), [])
   const seed = useMemo(
-    () => `${nonce}-${Math.floor(Math.random() * 2 ** 52).toString(16)}`,
-    [nonce],
+    () => Math.floor(Math.random() * 2 ** 52).toString(16),
+    [],
   )
 
   const factory = useCallback(
@@ -48,6 +54,10 @@ export default function LabPage(): React.JSX.Element {
   }
 
   const lab = client as LabMatchClient
+  // Полигон — инструмент, и его состояние должно быть доступно из консоли
+  // браузера: иначе проверять зоны, которых нет на экране (колода, утиль),
+  // приходится глазами по счётчикам.
+  ;(window as unknown as { __lab?: LabMatchClient }).__lab = lab
 
   return (
     <>
@@ -66,7 +76,7 @@ export default function LabPage(): React.JSX.Element {
       <button
         type="button"
         className="lab__deal"
-        onClick={() => setNonce((n) => n + 1)}
+        onClick={onDeal}
         title={LAB.subtitle}
       >
         {LAB.deal}
