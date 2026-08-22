@@ -1144,9 +1144,15 @@ button { font: inherit; color: inherit; }
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Карта и её варианты -- одна группа, и стоит она посреди экрана. Раньше
+   * ряды сетки прижимали её к нижнему краю: на широком мониторе вопрос
+   * оказывался в самом низу, под пустой половиной экрана, и взгляд уходил
+   * туда, где ничего нет. safe center -- чтобы при нехватке высоты группа
+   * упиралась в верх и прокручивалась, а не обрезалась сверху. */
+  justify-content: safe center;
   gap: 16px;
   padding: 20px;
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
@@ -1156,13 +1162,12 @@ button { font: inherit; color: inherit; }
   overflow: auto;
 }
 
-/* No card to show: the options are the whole dialogue, so they go in the
- * middle rather than sitting under an empty space. */
-.choice--bare { grid-template-rows: auto; align-content: center; }
+.choice > * { flex: 0 0 auto; }
 
-/* Bottom-aligned, so the card sits just above its own options rather than
- * floating in the middle of the free space with a gap under it. */
-.choice__stage { display: grid; place-items: end center; min-height: 0; }
+/* Карты нет -- варианты и есть весь разговор; центрирование то же самое. */
+.choice--bare { justify-content: safe center; }
+
+.choice__stage { display: grid; place-items: center; min-height: 0; }
 
 /* cqi again: the same composition at a larger size, never a second layout.
  * Smaller than a held card -- the options need the lower half of the screen. */

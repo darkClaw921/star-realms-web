@@ -863,6 +863,22 @@ async function main() {
         asked !== null && asked.branches.length === 2 && english.length === 0,
         (asked?.branches ?? []).join(' | ') || 'веток нет')
 
+      // Карта и её варианты -- одна группа, и стоит она посреди экрана. Пока
+      // ряды сетки прижимали её к низу, на широком мониторе вопрос оказывался
+      // под пустой половиной экрана.
+      const centred = await page.evaluate(() => {
+        const el = document.querySelector('.choice')
+        const stage = el?.querySelector('.choice__stage')
+        const panel = el?.querySelector('.choice__panel')
+        if (!el || !stage || !panel) return null
+        const top = stage.getBoundingClientRect().top
+        const bottom = panel.getBoundingClientRect().bottom
+        return { top: Math.round(top), below: Math.round(window.innerHeight - bottom) }
+      })
+      record('окно выбора стоит по центру, а не у нижнего края',
+        centred !== null && Math.abs(centred.top - centred.below) <= 40,
+        centred ? `сверху ${centred.top}px, снизу ${centred.below}px` : 'окно не открылось')
+
       shots.push(await shot(page, 'choice',
         'Окно выбора. Над вариантами стоит сама карта, которая задала вопрос: ' +
         '«Выберите одно» ничего не говорит о том, какая из баз на столе сработала.'))
