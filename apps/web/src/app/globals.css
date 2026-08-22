@@ -80,11 +80,114 @@ html, body {
   overscroll-behavior: none;
 }
 
+/* ── the sky ────────────────────────────────────────────────────────────────
+ *
+ * A drawn starfield rather than a flat black ground: the table is a window on
+ * a battle in space, and a dead #07090d behind it read as an unfinished page.
+ *
+ * It is drawn, not photographed, for two reasons. The obvious one is that no
+ * image ships with this repository. The one that actually decides it is
+ * contrast: 49 pieces of dense painted art are the only saturated things
+ * allowed on screen, and a photographic nebula behind them would compete for
+ * exactly the attention the cards need. So the sky stays near-black and
+ * low-chroma, and everything bright in it is a point of light a pixel or two
+ * across.
+ *
+ * Three star fields at different tile sizes, drifting at different speeds:
+ * that is what parallax is here, and it is also what keeps the tiling from
+ * reading as a pattern -- the periods (260/420/700px) share no small common
+ * multiple, so the repeat never lines up on screen. */
 body {
   background:
     radial-gradient(1200px 700px at 50% -10%, #121a2a 0%, transparent 65%),
     radial-gradient(900px 500px at 10% 110%, #16121f 0%, transparent 60%),
     var(--void);
+  /* Makes <body> a stacking context, which is what puts the sky ABOVE this
+   * background instead of under it: without one, a z-index:-1 child paints
+   * into the root context, behind its own parent's opaque ground -- and the
+   * starfield is simply invisible. */
+  isolation: isolate;
+}
+
+/* Behind everything the page draws, and above the body's own ground: a
+ * negative z-index child paints after its parent's background and before its
+ * parent's content. Fixed, so the sky does not scroll with a long sheet. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* `circle Npx` with a hard stop, not `1px 1px`: a one-pixel ellipse fades
+   * across its whole radius and antialiases itself down to nothing. */
+  background:
+    radial-gradient(circle 1.1px at 24px 38px, rgba(226, 238, 255, 0.85) 0 60%, transparent 100%),
+    radial-gradient(circle 0.9px at 148px 96px, rgba(226, 238, 255, 0.60) 0 60%, transparent 100%),
+    radial-gradient(circle 1.2px at 202px 22px, rgba(226, 238, 255, 0.75) 0 60%, transparent 100%),
+    radial-gradient(circle 0.9px at 62px 176px, rgba(226, 238, 255, 0.55) 0 60%, transparent 100%),
+    radial-gradient(circle 1.1px at 236px 210px, rgba(226, 238, 255, 0.70) 0 60%, transparent 100%),
+    radial-gradient(circle 0.8px at 118px 244px, rgba(226, 238, 255, 0.50) 0 60%, transparent 100%),
+    radial-gradient(circle 1px at 176px 138px, rgba(226, 238, 255, 0.65) 0 60%, transparent 100%),
+    radial-gradient(circle 0.9px at 44px 112px, rgba(226, 238, 255, 0.45) 0 60%, transparent 100%),
+    radial-gradient(circle 1px at 214px 128px, rgba(226, 238, 255, 0.55) 0 60%, transparent 100%);
+  background-size: 260px 260px;
+  animation: sky-drift-far 420s linear infinite;
+}
+
+/* Two nearer fields and their glow. A second pseudo-element rather than more
+ * layers on the first: they drift at their own speed, and one animated
+ * `background-position` can only move all of its layers together. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    /* mid field */
+    radial-gradient(circle 1.4px at 96px 210px, rgba(255, 255, 255, 0.80) 0 60%, transparent 100%),
+    radial-gradient(circle 1.3px at 330px 64px, rgba(214, 232, 255, 0.70) 0 60%, transparent 100%),
+    radial-gradient(circle 1.5px at 250px 372px, rgba(255, 255, 255, 0.75) 0 60%, transparent 100%),
+    radial-gradient(circle 1.3px at 402px 288px, rgba(255, 244, 224, 0.65) 0 60%, transparent 100%),
+    /* near field: a handful of real stars, tinted the way real ones are */
+    radial-gradient(circle 2px at 168px 120px, rgba(255, 255, 255, 0.95) 0 55%, transparent 100%),
+    radial-gradient(circle 2px at 60px 330px, rgba(174, 208, 255, 0.90) 0 55%, transparent 100%),
+    radial-gradient(circle 1.8px at 372px 148px, rgba(255, 236, 205, 0.85) 0 55%, transparent 100%),
+    /* their glow, wide and faint, so the bright points are not flat dots */
+    radial-gradient(circle 20px at 168px 120px, rgba(160, 200, 255, 0.13), transparent),
+    radial-gradient(circle 20px at 60px 330px, rgba(160, 200, 255, 0.12), transparent),
+    radial-gradient(circle 20px at 372px 148px, rgba(255, 220, 180, 0.10), transparent);
+  background-size: 440px 440px;
+  animation: sky-drift-near 260s linear infinite;
+}
+
+/* The galactic arm and the vignette. Not part of either star layer: it must
+ * not drift -- a moving band would read as fog rolling past the window. */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(112deg,
+      transparent 32%,
+      rgba(122, 158, 255, 0.075) 46%,
+      rgba(168, 140, 255, 0.06) 54%,
+      transparent 68%),
+    radial-gradient(760px 520px at 86% 18%, rgba(88, 207, 224, 0.07), transparent 70%),
+    radial-gradient(680px 480px at 12% 78%, rgba(255, 122, 107, 0.055), transparent 70%),
+    /* vignette: the corners go quiet so the table sits in the middle of it.
+     * Light -- past about half this weight it stops framing the sky and starts
+     * erasing it. */
+    radial-gradient(150% 105% at 50% 50%, transparent 55%, rgba(3, 5, 8, 0.5) 100%);
+}
+
+/* Whole tiles, so the loop is seamless: 260 and 440 are the tile sizes above. */
+@keyframes sky-drift-far {
+  to { background-position: 260px -260px; }
+}
+@keyframes sky-drift-near {
+  to { background-position: -440px 440px; }
 }
 
 button { font: inherit; color: inherit; }
@@ -734,8 +837,13 @@ button { font: inherit; color: inherit; }
   margin: 0 auto;
 }
 
+/* Slightly translucent, or the sky behind the table would only ever show in
+ * the gaps between the bands. The floor stays dark enough that card art and
+ * ability text keep the same contrast they had over an opaque panel. */
 .band {
-  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 88%, transparent) 0%,
+    color-mix(in srgb, var(--hull) 88%, transparent) 100%);
   border: 1px solid var(--rule);
   border-radius: var(--r-lg);
   padding: 10px 12px;

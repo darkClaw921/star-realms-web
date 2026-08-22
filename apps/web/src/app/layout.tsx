@@ -58,6 +58,10 @@ if(s.textScale)r.style.setProperty('--card-text-scale',String(Math.min(1.4,Math.
 }catch(e){}})()`,
           }}
         />
+        {/* Небо. Отдельным элементом, а не третьим слоем на body: рукав
+          * галактики и виньетка стоят на месте, пока два звёздных поля за
+          * ними медленно плывут. */}
+        <div className="sky" aria-hidden="true" />
         <IconSprite />
         {children}
       </body>

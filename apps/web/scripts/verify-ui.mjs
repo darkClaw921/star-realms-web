@@ -103,6 +103,22 @@ async function main() {
     shots.push(await shot(page, 'menu', 'Экран входа. Три режима; оговорка о лицензии на иллюстрации стоит на виду, а не спрятана.'))
     record('главный экран отрисован', (await textOf(page, '.menu__title')).length > 0)
 
+    // Небо. Проверяется не «красиво ли», а единственное место, где оно молча
+    // исчезает: без stacking context у <body> слой с z-index:-1 уезжает под
+    // непрозрачный фон самого body, и звёзд просто нет.
+    const sky = await page.evaluate(() => {
+      const layer = (el, pseudo) => getComputedStyle(el, pseudo ?? null).backgroundImage
+      return {
+        isolated: getComputedStyle(document.body).isolation,
+        far: (layer(document.body, '::before').match(/radial-gradient/g) ?? []).length,
+        near: (layer(document.body, '::after').match(/radial-gradient/g) ?? []).length,
+        arm: (layer(document.querySelector('.sky')).match(/gradient/g) ?? []).length,
+      }
+    })
+    record('за столом нарисован космос',
+      sky.isolated === 'isolate' && sky.far >= 8 && sky.near >= 8 && sky.arm >= 4,
+      `isolation: ${sky.isolated}, звёзд: ${sky.far}+${sky.near}, рукав и виньетка: ${sky.arm}`)
+
     // ── 2. vs the bot ─────────────────────────────────────────────────────
     await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
     await page.waitForSelector('.table', { timeout: 10000 })
