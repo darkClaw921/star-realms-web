@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cardDef, costFor, EXPLORER, TENTACLE_FACTIONS,
   type Action, type CardIid, type Faction, type PlayerId,
@@ -119,6 +119,45 @@ export function Board({
     ),
     [v.opponent.inPlay, idx.attack],
   )
+  // Базы и аванпосты уходят в свою колонку слева и ложатся стопкой, как на
+  // столе: у базы напечатанная кромка — верхняя, поэтому наезд идёт сверху
+  // вниз, а не вбок. Корабли остаются рядом справа. Тип берётся по видимой
+  // карте: скопированный Иглой корабль — корабль, чем бы она ни была.
+  const isBase = useCallback(
+    (c: (typeof v.me.inPlay)[number]): boolean =>
+      cardDef(c.copiedDef ?? c.def).type !== 'ship',
+    [],
+  )
+  const myBases = useMemo(() => inPlayOrdered.filter(isBase), [inPlayOrdered, isBase])
+  const myShips = useMemo(() => inPlayOrdered.filter((c) => !isBase(c)), [inPlayOrdered, isBase])
+  const foeBases = useMemo(() => foeOrdered.filter(isBase), [foeOrdered, isBase])
+  const foeShips = useMemo(() => foeOrdered.filter((c) => !isBase(c)), [foeOrdered, isBase])
+  // Карта в своей зоне рисуется одинаково, где бы она ни лежала: базы стоят
+  // стопкой слева, корабли рядом справа, но кнопки свойств у них те же самые.
+  const myInPlayCard = (c: (typeof v.me.inPlay)[number]): React.JSX.Element => {
+    const slots = idx.activate.get(c.iid)
+    return (
+      <div key={c.iid} className="zone">
+        <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
+        {slots && slots.size > 0 && (
+          <div className="actions">
+            {(['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly', 'scrap', 'splinter'] as const)
+              .filter((s) => slots.has(s)).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`btn btn--sm${s === 'scrap' ? ' btn--danger' : ''}`}
+                onClick={() => onAction({ t: 'ACTIVATE', card: c.iid as CardIid, slot: s })}
+              >
+                {SLOT_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const meName = seatNames[v.viewer] ?? v.viewer
@@ -222,11 +261,36 @@ export function Board({
         </OpponentHud>
         {/* Зона игры складывается веером, когда карты перестают помещаться:
           * стол растёт до шести-семи карт, а полоса шире не становится. */}
-        <FanRow className="row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
+        <div className="play">
+        {foeBases.length > 0 && (
+          <FanRow axis="y" className="play__bases">
+            {foeBases.map((c) => (
+              <div key={c.iid} className="zone">
+                <Card
+                  def={c.copiedDef ?? c.def}
+                  iid={c.iid}
+                  playable={idx.attack.has(c.iid)}
+                  onClick={idx.attack.has(c.iid)
+                    ? () => onAction({ t: 'ATTACK_BASE', base: c.iid as CardIid })
+                    : undefined}
+                  title={idx.attack.has(c.iid)
+                    ? UI.destroyTitle(nameOf(c.def), cardDef(c.def).defense ?? 0)
+                    : nameOf(c.def)}
+                />
+                {idx.attack.has(c.iid) && (
+                  <span className="eyebrow" style={{ color: 'var(--combat)' }}>
+                    {UI.destroyFor(cardDef(c.def).defense ?? 0)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </FanRow>
+        )}
+        <FanRow className="row--scroll play__ships" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
           {v.opponent.inPlay.length === 0 && (
             <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
           )}
-          {foeOrdered.map((c) => (
+          {foeShips.map((c) => (
             <div key={c.iid} className="zone">
               <Card
                 def={c.copiedDef ?? c.def}
@@ -247,6 +311,7 @@ export function Board({
             </div>
           ))}
         </FanRow>
+        </div>
       </section>
 
       {/* ── the market ───────────────────────────────────────────────────── */}
@@ -491,34 +556,19 @@ export function Board({
               </button>
             )}
           </div>
-          <FanRow className="row--scroll">
-            {v.me.inPlay.length === 0 && (
-              <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
+          <div className="play">
+            {myBases.length > 0 && (
+              <FanRow axis="y" className="play__bases">
+                {myBases.map(myInPlayCard)}
+              </FanRow>
             )}
-            {inPlayOrdered.map((c) => {
-              const slots = idx.activate.get(c.iid)
-              return (
-                <div key={c.iid} className="zone">
-                  <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
-                  {slots && slots.size > 0 && (
-                    <div className="actions">
-                      {(['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly', 'scrap', 'splinter'] as const)
-                        .filter((s) => slots.has(s)).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`btn btn--sm${s === 'scrap' ? ' btn--danger' : ''}`}
-                          onClick={() => onAction({ t: 'ACTIVATE', card: c.iid as CardIid, slot: s })}
-                        >
-                          {SLOT_LABEL[s]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </FanRow>
+            <FanRow className="row--scroll play__ships">
+              {v.me.inPlay.length === 0 && (
+                <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
+              )}
+              {myShips.map(myInPlayCard)}
+            </FanRow>
+          </div>
         </div>
       </section>
 

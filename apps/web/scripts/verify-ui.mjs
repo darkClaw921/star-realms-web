@@ -1231,7 +1231,7 @@ async function main() {
         await sleep(220)
       }
       const rowState = () => fan.evaluate(() => {
-        const row = document.querySelector('.band--board .row--fan')
+        const row = document.querySelector('.band--board .play__ships')
         const cards = [...row.children]
           .map((s) => s.querySelector('.card-slot')?.getBoundingClientRect())
           .filter(Boolean)
@@ -1261,7 +1261,7 @@ async function main() {
         await sleep(350)
       }
 
-      for (const c of ['Колесо слизней', 'Патрульный мех', 'Боевая станция', 'Оборонный центр']) {
+      for (const c of ['Патрульный мех', 'Корвет', 'Челнок федерации', 'Боевая капсула']) {
         await put(c)
       }
       await collapse()
@@ -1274,7 +1274,7 @@ async function main() {
       // Кладём с запасом: сколько карт влезает в ряд, зависит от их ширины —
       // база в полтора раза шире корабля, а на низкой полосе карты ещё и
       // ужимаются по высоте. Проверяем не «шесть штук», а само правило.
-      for (const c of ['Станция переработки', 'Космическая станция', 'Торговый пост', 'Военный мир']) {
+      for (const c of ['Челнок федерации', 'Корвет', 'Челнок федерации', 'Корвет']) {
         await put(c)
       }
       await collapse()
@@ -1286,7 +1286,7 @@ async function main() {
       // Сложенная карта обязана открываться и отдавать свои кнопки: иначе
       // веер экономит место ценой недоступного свойства.
       const pt = await fan.evaluate(() => {
-        const row = document.querySelector('.band--board .row--fan')
+        const row = document.querySelector('.band--board .play__ships')
         const r = row.children[2].querySelector('.card-slot').getBoundingClientRect()
         const rr = row.getBoundingClientRect()
         return { x: Math.round(r.left + 24), y: Math.round((Math.max(r.top, rr.top) + Math.min(r.bottom, rr.bottom)) / 2) }
@@ -1294,7 +1294,7 @@ async function main() {
       await fan.mouse.move(pt.x, pt.y)
       await sleep(300)
       const open = await fan.evaluate(() => {
-        const row = document.querySelector('.band--board .row--fan')
+        const row = document.querySelector('.band--board .play__ships')
         const slot = row.children[2]
         const acts = slot.querySelector('.actions')
         const card = slot.querySelector('.card-slot').getBoundingClientRect()
@@ -1319,7 +1319,7 @@ async function main() {
       // ловила: подойти к ней можно было только сверху, с самой карты, и она
       // «нажималась только по верхней кромке».
       const fromBelow = await fan.evaluate(() => {
-        const slot = document.querySelector('.band--board .row--fan').children[1]
+        const slot = document.querySelector('.band--board .play__ships').children[1]
         const btn = slot.querySelector('.actions .btn')?.getBoundingClientRect()
         if (!btn) return null
         return {
@@ -1354,8 +1354,7 @@ async function main() {
         await collapse()
         const before = await fan.evaluate(() => {
           const s = window.__lab.info.state.players.p1
-          const row = document.querySelector('.band--board .row--fan')
-          const acts = [...row.querySelectorAll('.actions .btn')]
+          const acts = [...document.querySelectorAll('.band--board .actions .btn')]
             .filter((b) => !(b.textContent ?? '').includes('Утиль')).length
           return { trade: s.trade, combat: s.combat, auth: s.authority, acts }
         })
@@ -1403,8 +1402,7 @@ async function main() {
         const stuck = await fan.$('.choice')
         const after = await fan.evaluate(() => {
           const s = window.__lab.info.state.players.p1
-          const row = document.querySelector('.band--board .row--fan')
-          const acts = [...row.querySelectorAll('.actions .btn')]
+          const acts = [...document.querySelectorAll('.band--board .actions .btn')]
             .filter((b) => !(b.textContent ?? '').includes('Утиль')).length
           return { trade: s.trade, combat: s.combat, auth: s.authority, acts }
         })
@@ -1435,10 +1433,152 @@ async function main() {
           `кнопок утиля ${scrapBefore}→${scrapLeft}`)
 
         // Отработавшие карты уходят вправо: слева стоит то, что ещё ждёт хода.
-        const ordered = await fan.evaluate(() => [...document.querySelectorAll('.band--board .row--fan > *')]
+        const ordered = await fan.evaluate(() => [...document.querySelectorAll('.band--board .play__ships > *')]
           .map((slot) => slot.querySelectorAll('.actions .btn').length))
         const sorted = ordered.every((n, i) => i === 0 || (ordered[i - 1] > 0 || n === 0))
         record('карты с доступными свойствами стоят слева', sorted, ordered.join(' · '))
+      }
+
+      // ── стопка баз ────────────────────────────────────────────────────
+      //
+      // Базы и аванпосты стоят слева отдельной колонкой и складываются сверху
+      // вниз: наружу торчит верхняя кромка, где напечатаны имя, стоимость и
+      // защита. Кнопки свойств обязаны остаться внутри полосы — под ней идёт
+      // рука, и всё, что вылезло, накрывается ею.
+      {
+        // Стол расчищается: к этому месту на нём уже лежит всё, что клали
+        // проверки выше, и стопка мерилась бы не по трём базам, а по девяти.
+        await fan.evaluate(() => {
+          window.__saved = window.__lab.info.state.players.p1.inPlay
+          window.__lab.patch((d) => { d.players.p1.inPlay = [] })
+        })
+        await sleep(300)
+        await expand()
+        for (const c of ['Оборонный центр', 'Торговый пост', 'Мир торговли']) await put(c)
+        await collapse()
+        await sleep(400)
+        const stack = await fan.evaluate(() => {
+          const col = document.querySelector('.band--board .play__bases')
+          const ships = document.querySelector('.band--board .play__ships')
+          if (!col) return null
+          const kids = [...col.children]
+          const rects = kids.map((k) => k.getBoundingClientRect())
+          const band = document.querySelector('.band--board').getBoundingClientRect()
+          const btns = kids
+            .map((k) => k.querySelector('.actions .btn')?.getBoundingClientRect())
+            .filter(Boolean)
+          return {
+            n: kids.length,
+            // Слева — колонка, справа — корабли: иначе базы стоят не там, где
+            // их просили поставить.
+            leftmost: ships ? Math.round(col.getBoundingClientRect().left
+              - ships.getBoundingClientRect().left) : 0,
+            // Вертикальная стопка, а не ряд: каждая следующая ниже предыдущей
+            // и ни одна не правее.
+            down: rects.slice(1).every((r, i) => r.top > rects[i].top
+              && Math.abs(r.left - rects[i].left) < 2),
+            // Кромка должна показывать имя и цифры — они кончаются на 38-м
+            // пикселе карты.
+            edge: Math.round(Math.min(...rects.slice(1)
+              .map((r, i) => r.top - rects[i].top))),
+            below: btns.length > 0 ? Math.round(Math.min(...btns.map((r) => band.bottom - r.bottom))) : -1,
+          }
+        })
+        record('базы стоят стопкой слева, кораблями не вперемешку',
+          stack !== null && stack.n === 3 && stack.down && stack.leftmost < 0,
+          stack ? `баз ${stack.n}, вниз ${stack.down}, левее кораблей на ${-stack.leftmost}px`
+            : 'колонки баз нет')
+        record('кромка сложенной базы показывает имя и цифры',
+          stack !== null && stack.edge >= 33,
+          stack ? `видно ${stack.edge}px верхней кромки` : 'колонки баз нет')
+        record('кнопки баз остаются внутри полосы, а не под рукой',
+          stack !== null && stack.below >= 0,
+          stack ? `запас до нижнего края полосы ${stack.below}px` : 'кнопок нет')
+
+        // И до кнопки нижней базы можно дотянуться курсором: стопка поднимает
+        // карту целиком, вместе с её кнопками.
+        const stackHit = await fan.evaluate(() => {
+          const col = document.querySelector('.band--board .play__bases')
+          const slot = col?.children[col.children.length - 1]
+          const btn = slot?.querySelector('.actions .btn')
+          if (!btn) return null
+          const c = slot.querySelector('.card-slot').getBoundingClientRect()
+          return { hover: { x: Math.round(c.left + c.width / 2), y: Math.round(c.top + 10) } }
+        })
+        if (stackHit) {
+          await fan.mouse.move(stackHit.hover.x, stackHit.hover.y)
+          await sleep(300)
+          const reach = await fan.evaluate(() => {
+            const col = document.querySelector('.band--board .play__bases')
+            const slot = col.children[col.children.length - 1]
+            const btn = slot.querySelector('.actions .btn')
+            const r = btn.getBoundingClientRect()
+            const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+            return {
+              hits: el instanceof HTMLElement && (el === btn || btn.contains(el)),
+              what: el instanceof HTMLElement ? el.className : '?',
+            }
+          })
+          record('кнопка нижней базы в стопке ловит курсор',
+            reach.hits, reach.hits ? 'кнопка ловит курсор' : `под курсором ${reach.what}`)
+        }
+
+        // Барабан: баз больше, чем влезает даже вплотную. Дальше стопка не
+        // сжимается, а прокручивается — карта в середине стоит прямо, дальние
+        // отклоняются от зрителя.
+        {
+          await expand()
+          for (const c of ['Колесо слизней', 'Станция переработки', 'Военный мир', 'Боевая станция']) {
+            await put(c)
+          }
+          await collapse()
+          await sleep(500)
+          const drum = await fan.evaluate(() => {
+            const col = document.querySelector('.band--board .play__bases')
+            const kids = [...col.children]
+            const tilt = (k) => {
+              const t = getComputedStyle(k).transform
+              return t !== 'none'
+            }
+            return {
+              n: kids.length,
+              scroll: col.classList.contains('is-scroll'),
+              scrollable: col.scrollHeight - col.clientHeight,
+              // Наклонены крайние, а не та, что стоит в середине окна.
+              edgesTilted: tilt(kids[0]) && tilt(kids[kids.length - 1]),
+              snap: getComputedStyle(col).scrollSnapType.startsWith('y'),
+            }
+          })
+          record('лишние базы прокручиваются барабаном',
+            drum.n >= 6 && drum.scroll && drum.scrollable > 0 && drum.edgesTilted && drum.snap,
+            `баз ${drum.n}, прокрутка ${drum.scrollable}px, края наклонены ${drum.edgesTilted}, `
+            + `липкая ${drum.snap}`)
+
+          // И до нижней базы можно доехать: барабан не декорация, а способ
+          // добраться до карты, которой не хватило места.
+          const rolled = await fan.evaluate(async () => {
+            const col = document.querySelector('.band--board .play__bases')
+            col.scrollTop = col.scrollHeight
+            await new Promise((r) => setTimeout(r, 400))
+            const last = col.children[col.children.length - 1]
+            const c = last.querySelector('.card-slot').getBoundingClientRect()
+            const box = col.getBoundingClientRect()
+            return {
+              visible: Math.round(Math.min(c.bottom, box.bottom) - Math.max(c.top, box.top)),
+              height: Math.round(c.height),
+            }
+          })
+          record('прокрученная база видна целиком',
+            rolled.visible >= rolled.height - 8,
+            `видно ${rolled.visible} из ${rolled.height}px`)
+        }
+
+        // Стол вернуть как было: ниже проверки меряют высоту полос и ждут в
+        // ряду те самые корабли, что клали до стопки.
+        await fan.evaluate(() => {
+          window.__lab.patch((d) => { d.players.p1.inPlay = window.__saved })
+        })
+        await sleep(400)
       }
 
       // Журнал: закрыт по умолчанию, открывается корешком, не растягивает
@@ -1514,17 +1654,23 @@ async function main() {
       // чем места дал стол. Кнопка под картой оказывалась за нижним краем ряда,
       // наружу торчала верхняя кромка, и нажималась только она.
       {
+        // Свежий корабль: у всего, что лежит на столе к этому месту, свойства
+        // уже израсходованы, а проверка меряет именно кнопку. Сортировка
+        // ставит карту с непримененным свойством первой.
+        await expand()
+        await put('Челнок федерации')
+        await collapse()
         await fan.setViewport({ width: 1280, height: 800 })
         await sleep(600)
         const tight = await fan.evaluate(() => {
-          const row = document.querySelector('.band--board .row--fan')
+          const row = document.querySelector('.band--board .play__ships')
           const slot = row.children[0]
           slot.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
           return { tight: row.classList.contains('is-tight') }
         })
         await sleep(250)
         const reach = await fan.evaluate(() => {
-          const row = document.querySelector('.band--board .row--fan')
+          const row = document.querySelector('.band--board .play__ships')
           const slot = row.children[0]
           const btn = slot.querySelector('.actions .btn')
           if (!btn) return null

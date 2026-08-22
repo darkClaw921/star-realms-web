@@ -19,13 +19,26 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 /** Сколько карты видно в самом плотном веере. Меньше — и название не прочесть. */
 const MIN_VISIBLE = 0.36
+/**
+ * Сколько базы видно в самой плотной стопке — в пикселях, а не в долях карты.
+ * Наружу торчит верхняя кромка, где напечатаны имя, стоимость и защита: её
+ * высота от размера карты почти не зависит: имя, стоимость и защита кончаются
+ * на 38-м пикселе при любой ширине карты, потому что кромка набрана в cqi от
+ * ШИРИНЫ базы, а базы — единственные карты в альбомной ориентации.
+ */
+const MIN_VISIBLE_Y_PX = 34
 
 export function FanRow({
-  className = '', children, style,
+  className = '', children, style, axis = 'x',
 }: {
   className?: string
   children: React.ReactNode
   style?: React.CSSProperties | undefined
+  /**
+   * Куда складывать. 'x' — ряд кораблей: карты уходят друг под друга влево.
+   * 'y' — стопка баз: базы ложатся одна на другую сверху вниз, как на столе.
+   */
+  axis?: 'x' | 'y'
 }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState<number | null>(null)
@@ -46,23 +59,67 @@ export function FanRow({
     // всегда. Нехватку высоты разбирает третий шаг.
     const cs = getComputedStyle(el)
 
-    // ── 2. веер по ширине ──────────────────────────────────────────────────
-    const widths = kids.map((k) => Math.max(
-      k.getBoundingClientRect().width,
-      k.querySelector('.card-slot')?.getBoundingClientRect().width ?? 0,
-    ))
-    const gap = parseFloat(cs.columnGap || '0') || 0
-    const total = widths.reduce((a, b) => a + b, 0) + gap * (kids.length - 1)
-    const over = kids.length < 2 ? -1 : total - el.clientWidth
+    // ── 2. веер по ширине (или стопка по высоте) ───────────────────────────
+    //
+    // Мерится всегда фактический размер карты, а не число карт: база в полтора
+    // раза шире корабля, и правило «с шестой карты складываем» врало бы на
+    // каждой второй раздаче.
+    const side = (k: HTMLElement): number => {
+      const slot = k.querySelector('.card-slot')?.getBoundingClientRect()
+      const own = k.getBoundingClientRect()
+      return axis === 'y'
+        ? Math.max(own.height, slot?.height ?? 0)
+        : Math.max(own.width, slot?.width ?? 0)
+    }
+    const sizes = kids.map(side)
+    const gap = parseFloat((axis === 'y' ? cs.rowGap : cs.columnGap) || '0') || 0
+    const total = sizes.reduce((a, b) => a + b, 0) + gap * (kids.length - 1)
+    // clientHeight включает отступы, а карты стоят внутри них: без вычета ряд
+    // считает, что места на 30 пикселей запаса больше, чем есть, и нижняя
+    // карта выходит за полосу.
+    const pad = axis === 'y'
+      ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+      : (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+    // Кнопки нижней базы висят ПОД ней и в высоту стопки не входят — значит
+    // место под них надо занять заранее, иначе карты укладываются впритык, а
+    // кнопки последней оказываются за полосой.
+    const acts = axis === 'y' ? el.querySelector('.actions') : null
+    const reserve = acts ? acts.getBoundingClientRect().height + 10 : 0
+    const room = (axis === 'y' ? el.clientHeight : el.clientWidth) - pad - reserve
+    const over = kids.length < 2 ? -1 : total - room
     if (over <= 0) {
       el.style.setProperty('--fan', '0px')
       el.classList.remove('is-fanned')
     } else {
-      const narrowest = Math.min(...kids.map(
-        (k) => k.querySelector('.card-slot')?.getBoundingClientRect().width ?? Infinity))
-      const fan = Math.min(narrowest * (1 - MIN_VISIBLE), over / (kids.length - 1))
+      const smallest = Math.min(...kids.map((k) => {
+        const slot = k.querySelector('.card-slot')?.getBoundingClientRect()
+        if (!slot) return Infinity
+        return axis === 'y' ? slot.height : slot.width
+      }))
+      // Видно карты столько, сколько её торчит из-под следующей: размер минус
+      // наезд плюс промежуток ряда. Промежуток в этом счёте забывать нельзя —
+      // из-за него стопка не сходилась к пределу и переполняла полосу.
+      const limit = axis === 'y'
+        ? Math.max(0, smallest + gap - MIN_VISIBLE_Y_PX)
+        : smallest * (1 - MIN_VISIBLE)
+      const fan = Math.min(limit, over / (kids.length - 1))
       el.style.setProperty('--fan', `${Math.ceil(fan)}px`)
       el.classList.add('is-fanned')
+      // Баз столько, что даже вплотную они не влезают: остаток честнее отдать
+      // прокрутке, чем срезать кромки до нечитаемых полосок.
+      // Порог, а не ноль: прокрутка отбирает у колонки ширину под ползунок, а
+      // ползунок меняет замер — на нуле состояние начинало мигать между
+      // «влезло» и «не влезло». Включается, только когда не хватает заметно.
+      if (axis === 'y') el.classList.toggle('is-scroll', over - fan * (kids.length - 1) > 24)
+    }
+    if (axis === 'y' && !el.classList.contains('is-fanned')) el.classList.remove('is-scroll')
+
+    // Стопка мерится по высоте — та самая теснота, которую разбирает шаг 3,
+    // здесь уже учтена, и прижимать кнопки к иллюстрации незачем.
+    if (axis === 'y') {
+      el.classList.remove('is-tight')
+      el.style.removeProperty('--acts-top')
+      return
     }
 
     // ── 3. последняя мера ──────────────────────────────────────────────────
@@ -81,7 +138,7 @@ export function FanRow({
       el.classList.remove('is-tight')
       el.style.removeProperty('--acts-top')
     }
-  }, [])
+  }, [axis])
 
   useLayoutEffect(measure)
 
@@ -154,7 +211,7 @@ export function FanRow({
   return (
     <div
       ref={ref}
-      className={`row row--fan ${className}`.trim()}
+      className={`row row--fan${axis === 'y' ? ' row--stack' : ''} ${className}`.trim()}
       {...(style ? { style } : {})}
       onClick={onClick}
       onMouseOver={onOver}
