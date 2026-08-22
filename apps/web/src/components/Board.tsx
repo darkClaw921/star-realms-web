@@ -12,6 +12,7 @@ import { UI } from '@/i18n/ui'
 import type { SeatNames } from '@/match/log'
 import type { MatchSnapshot } from '@/match/types'
 import { FxLayer } from '@/fx/FxLayer'
+import { FanRow } from './FanRow'
 import { useSettings } from '@/settings/useSettings'
 import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
@@ -133,7 +134,9 @@ export function Board({
             </button>
           )}
         </OpponentHud>
-        <div className="row row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
+        {/* Зона игры складывается веером, когда карты перестают помещаться:
+          * стол растёт до шести-семи карт, а полоса шире не становится. */}
+        <FanRow className="row--scroll" style={{ '--row-gap-top': '8px' } as React.CSSProperties}>
           {v.opponent.inPlay.length === 0 && (
             <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
           )}
@@ -157,7 +160,7 @@ export function Board({
               )}
             </div>
           ))}
-        </div>
+        </FanRow>
       </section>
 
       {/* ── the market ───────────────────────────────────────────────────── */}
@@ -374,7 +377,7 @@ export function Board({
       <section className="band band--board">
         <div className="zone" style={{ minHeight: 0, overflow: 'auto' }}>
           <span className="eyebrow">{UI.inPlay}</span>
-          <div className="row row--scroll">
+          <FanRow className="row--scroll">
             {v.me.inPlay.length === 0 && (
               <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
             )}
@@ -401,7 +404,7 @@ export function Board({
                 </div>
               )
             })}
-          </div>
+          </FanRow>
         </div>
         <div className="zone" style={{ minHeight: 0 }}>
           <span className="eyebrow">{UI.log}</span>

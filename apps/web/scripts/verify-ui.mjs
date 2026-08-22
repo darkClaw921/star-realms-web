@@ -1176,6 +1176,107 @@ async function main() {
       record('командный режим отработал', false, String(e).slice(0, 200))
     }
 
+    // ── 4c-bis. веер в зоне игры ──────────────────────────────────────────
+    // Складывать карты имеет смысл ровно тогда, когда они не помещаются, и не
+    // раньше: до этого веер отнимал бы у карты текст просто так.
+    {
+      const fan = await browser.newPage()
+      watchConsole(fan, 'fan')
+      await fan.setViewport({ width: 1280, height: 1100 })
+      await fan.goto(`${BASE}/lab`, { waitUntil: 'networkidle2' })
+      await fan.waitForSelector('.lab', { timeout: 10000 })
+      await sleep(1000)
+
+      const put = async (name) => {
+        await fan.evaluate(() => {
+          const b = [...document.querySelectorAll('.lab__row .btn')]
+            .find((x) => (x.textContent ?? '').includes('Мне в игру'))
+          b?.click()
+        })
+        await fan.click('.lab__search', { clickCount: 3 })
+        await fan.type('.lab__search', name)
+        await sleep(220)
+        await fan.evaluate(() => document.querySelector('.lab__card')?.click())
+        await sleep(220)
+      }
+      const rowState = () => fan.evaluate(() => {
+        const row = document.querySelector('.band--board .row--fan')
+        const cards = [...row.children]
+          .map((s) => s.querySelector('.card-slot')?.getBoundingClientRect())
+          .filter(Boolean)
+        let stacked = 0
+        for (let i = 0; i < cards.length - 1; i++) {
+          if (cards[i + 1].left < cards[i].right - 1) stacked += 1
+        }
+        return {
+          n: cards.length,
+          fanned: row.classList.contains('is-fanned'),
+          stacked,
+          overflow: row.scrollWidth - row.clientWidth,
+        }
+      })
+
+      // Пульт занимает треть экрана, поэтому мерить полосу надо со
+      // свёрнутым пультом: иначе проверка измеряет ширину пульта, а не стола.
+      const collapse = async () => {
+        await fan.evaluate(() => {
+          [...document.querySelectorAll('.lab__head .btn')]
+            .find((x) => (x.textContent ?? '').includes('Свернуть'))?.click()
+        })
+        await sleep(350)
+      }
+      const expand = async () => {
+        await fan.evaluate(() => document.querySelector('.lab__tab')?.click())
+        await sleep(350)
+      }
+
+      for (const c of ['Колесо слизней', 'Патрульный мех', 'Боевая станция', 'Оборонный центр']) {
+        await put(c)
+      }
+      await collapse()
+      const four = await rowState()
+      record('четыре карты лежат в ряд, без веера',
+        four.n === 4 && !four.fanned && four.stacked === 0,
+        `карт ${four.n}, веер ${four.fanned}, наложений ${four.stacked}`)
+
+      await expand()
+      await put('Станция переработки')
+      await put('Космическая станция')
+      await collapse()
+      const six = await rowState()
+      record('лишние карты складываются веером, а не в прокрутку',
+        six.n === 6 && six.fanned && six.stacked === 5 && six.overflow <= 1,
+        `карт ${six.n}, веер ${six.fanned}, сложено ${six.stacked}, прокрутка ${six.overflow}px`)
+
+      // Сложенная карта обязана открываться и отдавать свои кнопки: иначе
+      // веер экономит место ценой недоступного свойства.
+      const pt = await fan.evaluate(() => {
+        const row = document.querySelector('.band--board .row--fan')
+        const r = row.children[2].querySelector('.card-slot').getBoundingClientRect()
+        const rr = row.getBoundingClientRect()
+        return { x: Math.round(r.left + 24), y: Math.round((Math.max(r.top, rr.top) + Math.min(r.bottom, rr.bottom)) / 2) }
+      })
+      await fan.mouse.move(pt.x, pt.y)
+      await sleep(300)
+      const open = await fan.evaluate(() => {
+        const slot = document.querySelector('.band--board .row--fan').children[2]
+        const acts = slot.querySelector('.actions')
+        return {
+          z: getComputedStyle(slot).zIndex,
+          opacity: acts ? getComputedStyle(acts).opacity : '0',
+          buttons: slot.querySelectorAll('.actions .btn').length,
+        }
+      })
+      record('сложенная карта поднимается и отдаёт кнопки',
+        open.z === '20' && open.opacity === '1' && open.buttons > 0,
+        `z-index ${open.z}, кнопки ${open.opacity}, штук ${open.buttons}`)
+      shots.push(await shot(fan, 'fan',
+        'Зона игры при шести картах. Пока карты помещаются, ряд обычный; дальше они уходят друг под друга '
+        + 'ровно настолько, чтобы влезть, — наружу торчит левый край со стоимостью и названием, а карта под '
+        + 'курсором поднимается над соседями вместе со своими кнопками.'))
+      await fan.close()
+    }
+
     // ── 4d. полигон ───────────────────────────────────────────────────────
     // Смысл полигона в том, что стол под пультом остаётся НАСТОЯЩИМ: движок,
     // бот и правила те же. Проверяется именно это, а не пульт сам по себе.
