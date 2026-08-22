@@ -891,11 +891,233 @@ button { font: inherit; color: inherit; }
 }
 
 /* ── настройки ──────────────────────────────────────────────────────────── */
+/* ── settings panel ─────────────────────────────────────────────────────────
+ *
+ * Three tabs, because the panel answers three separate questions: how the
+ * table looks, what the trade deck is built from, and how the game is dealt.
+ * The first takes effect at once, the other two only from the next game -- and
+ * with twenty-three sets, twenty scenarios and seven command decks in one
+ * column, nothing read as a choice at all.
+ *
+ * The choices themselves are tiles rather than native checkboxes: an option
+ * here is a name plus a sentence of rules text, which a checkbox-and-label pair
+ * lays out as running prose. The real input stays in the markup and stays
+ * focusable -- it is only invisible -- so keyboard, screen readers and radio
+ * grouping keep working, and the tile draws its own mark. */
+.sheet--settings { width: min(1180px, 100%); }
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--void);
+  border: 1px solid var(--rule);
+}
+
+.tab {
+  flex: 1 1 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: calc(var(--r-md) - 3px);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.tab:hover { color: var(--ink); }
+
+.tab.is-on {
+  background: var(--panel-hi);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--rule-hi);
+}
+
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 14px;
+  gap: 22px;
+  margin-top: 16px;
+}
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+
+.group__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* Rule beside the heading: it separates the groups without a hard divider
+ * between every one of them. */
+.group__title::after {
+  content: '';
+  display: inline-block;
+  vertical-align: middle;
+  width: 100%;
+  height: 1px;
+  margin-left: 12px;
+  background: linear-gradient(90deg, var(--rule-hi), transparent 72%);
+}
+
+.group__note {
+  margin: -2px 0 0;
+  max-width: 78ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.group__meter {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* Sliders are capped: stretched across the full sheet the label and its value
+ * end up a hand's width apart and stop reading as one control. */
+.fields { display: flex; flex-direction: column; gap: 18px; }
+.field { display: flex; flex-direction: column; max-width: 640px; }
+
+/* Auto-fill rather than a fixed column count: the same grid has to hold
+ * twenty-three short set names and twenty scenarios with a sentence each. */
+.opt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+
+.opt-grid--wide { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+
+.opt {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.opt:hover { border-color: var(--rule-hi); background: var(--panel-hi); }
+
+.opt.is-on {
+  border-color: color-mix(in oklab, var(--authority) 55%, var(--rule-hi));
+  background: color-mix(in oklab, var(--authority) 9%, var(--panel));
+}
+
+.opt.is-locked { cursor: not-allowed; opacity: 0.72; }
+
+/* Invisible, not absent: the tile borrows the input's keyboard and semantics. */
+.opt input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opt:has(input:focus-visible) {
+  outline: 2px solid var(--authority);
+  outline-offset: 2px;
+}
+
+.opt__mark {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--rule-hi);
+  border-radius: 4px;
+  background: var(--void);
+  position: relative;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+/* A radio reads as a radio: same tile, round mark. */
+.opt:has(input[type='radio']) .opt__mark { border-radius: 50%; }
+
+.opt.is-on .opt__mark {
+  border-color: var(--authority);
+  background: var(--authority);
+}
+
+.opt.is-on .opt__mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* A tick for a checkbox, drawn with two borders so it needs no glyph. */
+  width: 4px;
+  height: 8px;
+  margin: 1px auto auto;
+  inset-inline: 0;
+  border: solid var(--void);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.opt:has(input[type='radio']).is-on .opt__mark::after {
+  width: 5px;
+  height: 5px;
+  margin: auto;
+  inset: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--void);
+  transform: none;
+}
+
+.opt__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.opt__name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.opt__desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.opt__badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.opt.is-on .opt__badge { color: var(--authority); }
+
+.sheet__foot {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  position: sticky;
+  bottom: -16px;
+  margin: 18px -16px -16px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, transparent, var(--panel) 40%);
+  border-top: 1px solid var(--rule);
 }
 .setting__head {
   display: flex;

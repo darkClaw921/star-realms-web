@@ -276,8 +276,19 @@ export const UI = {
   playerTwo: 'Игрок 2',
 
   // настройки
-  settings: 'Настройки отображения',
+  settings: 'Настройки',
   settingsSaved: 'Сохраняются в этом браузере',
+  // ── вкладки панели настроек ────────────────────────────────────────────
+  tabView: 'Отображение',
+  tabSets: 'Наборы карт',
+  tabRules: 'Правила партии',
+  dealName: 'Раздача',
+  lastSetLocked: 'Последний включённый набор выключить нельзя — колода останется пустой',
+  setsOn: (on: number, all: number): string => `включено ${on} из ${all}`,
+  setSizeCards: (n: number): string => `${n} карт`,
+  setSizeGambits: (n: number): string => `${n} гамбитов`,
+  setSizeMissions: (n: number): string => `${n} миссий`,
+  setSizeDecks: (n: number): string => `${n} колод`,
   cardSize: 'Размер карт',
   cardSizeHint: 'Масштабирует карту целиком: иллюстрацию, текст и значки. ' +
     'Накладывается поверх размера, подобранного под ширину экрана.',

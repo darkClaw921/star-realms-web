@@ -66,6 +66,15 @@ async function textOf(page, selector) {
   return page.$eval(selector, (e) => e.textContent?.trim() ?? '').catch(() => '')
 }
 
+/** Настройки разложены по вкладкам; проверка обязана открыть нужную сама. */
+async function openTab(page, name) {
+  await page.evaluate((n) => {
+    const t = [...document.querySelectorAll('.tab')].find((x) => (x.textContent ?? '').trim() === n)
+    t?.click()
+  }, name)
+  await sleep(350)
+}
+
 const shots = []
 
 async function main() {
@@ -161,11 +170,27 @@ async function main() {
       b?.click()
     })
     await sleep(500)
-    // Два ползунка отображения (размер карты и текста) плюс два раздачи
-    // (гамбиты и миссии). Командная колода -- радиокнопки, не ползунок.
+    // Три вкладки: как стол выглядит, из чего собрана колода, как раздаётся
+    // партия. На вкладке отображения два ползунка -- размер карты и текста.
+    const tabs = await page.$$eval('.tab', (els) => els.map((e) => (e.textContent ?? '').trim()))
     const sliders = await page.$$eval('input[type=range]', (els) => els.length)
-    record('панель настроек открывается', sliders === 4, `ползунков: ${sliders}`)
-    shots.push(await shot(page, 'settings', 'Настройки отображения. Предпросмотр показывает настоящие карты, включая самую многословную в наборе, — на ней и видно, когда текст перестаёт помещаться.'))
+    record('панель настроек открывается',
+      tabs.length === 3 && sliders === 2, `вкладки: ${tabs.join(' · ')}, ползунков: ${sliders}`)
+    shots.push(await shot(page, 'settings', 'Настройки, вкладка отображения. Предпросмотр показывает настоящие карты, включая самую многословную в наборе, — на ней и видно, когда текст перестаёт помещаться.'))
+
+    // Вкладка «Правила партии» держит свои два ползунка -- гамбиты и миссии.
+    await openTab(page, 'Правила партии')
+    const rulesSliders = await page.$$eval('input[type=range]', (els) => els.length)
+    const optionTiles = await page.$$eval('.opt', (els) => els.length)
+    // 20 сценариев и 7 командных колод, у каждой группы своя плитка «без».
+    record('вкладки переключаются',
+      rulesSliders === 2 && optionTiles === 21 + 8,
+      `ползунков: ${rulesSliders}, плиток: ${optionTiles}`)
+    shots.push(await shot(page, 'settings-rules',
+      'Вкладка правил партии. Двадцать сценариев и семь командных колод — плитками, ' +
+      'а не строкой флажков: у каждого варианта есть название и предложение правил, ' +
+      'и подряд они читались как сплошной текст.'))
+    await openTab(page, 'Отображение')
 
     await page.evaluate(() => {
       const r = document.querySelector('input[type=range]')
@@ -270,6 +295,7 @@ async function main() {
         b?.click()
       })
       await sleep(500)
+      await openTab(page, 'Наборы карт')
 
       const deckSize = () => page.evaluate(() => {
         const el = [...document.querySelectorAll('.setting__value')]
@@ -311,7 +337,9 @@ async function main() {
         ['Командные колоды', 0],
       ]
 
-      const labels = await page.$$eval('.sets:not(.sets--decks) .switch', (els) =>
+      // Имя читается из своего элемента, а не из всей плитки: рядом с ним
+      // стоит размер набора, и он бы попал в сравнение.
+      const labels = await page.$$eval('.sets:not(.sets--decks) .opt__name', (els) =>
         els.map((e) => (e.textContent ?? '').trim()))
       record('все наборы карт перечислены',
         labels.length === SETS.length && SETS.every(([n], i) => labels[i] === n),
@@ -319,7 +347,7 @@ async function main() {
       record('партия начинается с базового набора', before === 80, `колода ${before}`)
 
       // Последний включённый набор выключить нельзя -- иначе колода пуста.
-      const coreLocked = await page.$eval('.sets:not(.sets--decks) .switch input', (e) => e.disabled)
+      const coreLocked = await page.$eval('.sets:not(.sets--decks) .opt input', (e) => e.disabled)
       record('последний набор выключить нельзя', coreLocked === true, `заблокирован: ${coreLocked}`)
 
       let expected = 80
@@ -327,7 +355,7 @@ async function main() {
       const seen = []
       for (let i = 1; i < SETS.length; i++) {
         await page.evaluate((n) => {
-          const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .switch input')]
+          const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .opt input')]
           if (boxes[n] && !boxes[n].checked) boxes[n].click()
         }, i)
         await sleep(300)
@@ -341,7 +369,7 @@ async function main() {
 
       // Вернуть всё, кроме Frontiers: следующая проверка ждёт две колоды.
       await page.evaluate(() => {
-        const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .switch input')]
+        const boxes = [...document.querySelectorAll('.sets:not(.sets--decks) .opt input')]
         boxes.forEach((b, i) => { if (i > 1 && b.checked) b.click() })
       })
       await sleep(400)
