@@ -83,18 +83,21 @@ function Opt({
 }
 
 function Slider({
-  name, hint, value, limits, format, onChange,
+  name, hint, value, limits, format, disabled, onChange,
 }: {
   name: string
   hint: string
   value: number
   limits: { min: number; max: number; step: number }
   format: (v: number) => string
+  /** Регулятор при выключенном звуке остаётся виден, но не работает: убирать
+   *  его значило бы прятать сохранённую громкость. */
+  disabled?: boolean | undefined
   onChange: (v: number) => void
 }): React.JSX.Element {
   const id = `set-${name}`
   return (
-    <div className="field">
+    <div className={`field${disabled ? ' is-off' : ''}`}>
       <div className="setting__head">
         <label className="setting__name" htmlFor={id}>{name}</label>
         <span className="setting__value">{format(value)}</span>
@@ -106,6 +109,7 @@ function Slider({
         max={limits.max}
         step={limits.step}
         value={value}
+        disabled={disabled ?? false}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <p className="setting__hint">{hint}</p>
@@ -249,16 +253,17 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
                 format={pct}
                 onChange={(v) => set('textScale', v)}
               />
-              <Slider
-                name={UI.soundName}
-                hint={UI.soundHint}
-                value={settings.volume}
-                limits={LIMITS.volume}
-                format={(v) => (v === 0 ? UI.soundOff : pct(v))}
-                onChange={(v) => set('volume', v)}
-              />
-              <Group title={UI.effectsName} note={UI.effectsHint}>
+              {/* Два выключателя рядом: звук и вспышки отключают по разным
+                * причинам — один мешает соседям, другой глазам. */}
+              <Group title={UI.soundGroup} note={UI.soundGroupHint}>
                 <div className="opt-grid opt-grid--wide">
+                  <Opt
+                    type="checkbox"
+                    name={UI.soundOnName}
+                    desc={UI.soundOnDesc}
+                    checked={settings.sound}
+                    onSelect={() => set('sound', !settings.sound)}
+                  />
                   <Opt
                     type="checkbox"
                     name={UI.effectsName}
@@ -267,6 +272,15 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
                     onSelect={() => set('effects', !settings.effects)}
                   />
                 </div>
+                <Slider
+                  name={UI.soundName}
+                  hint={UI.soundHint}
+                  value={settings.volume}
+                  limits={LIMITS.volume}
+                  disabled={!settings.sound}
+                  format={(v) => (settings.sound ? pct(v) : UI.soundOff)}
+                  onChange={(v) => set('volume', v)}
+                />
               </Group>
               <Group title={UI.preview} note={UI.previewHint}>
                 <div className="settings__preview">

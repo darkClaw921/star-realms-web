@@ -100,12 +100,19 @@ async function main() {
     watchConsole(page, 'menu')
     // Звук проверить глазами нельзя, а ушей у проверки нет. Считаем запуски
     // осцилляторов: их ровно столько, сколько звуков стол попытался сыграть.
+    // Считаются ОБА вида узлов: добор и утиль сделаны на шуме, и счётчик
+    // одних осцилляторов объявил бы их немыми.
     await page.evaluateOnNewDocument(() => {
       window.__osc = 0
-      const start = OscillatorNode.prototype.start
+      const osc = OscillatorNode.prototype.start
       OscillatorNode.prototype.start = function (...a) {
         window.__osc += 1
-        return start.apply(this, a)
+        return osc.apply(this, a)
+      }
+      const buf = AudioBufferSourceNode.prototype.start
+      AudioBufferSourceNode.prototype.start = function (...a) {
+        window.__osc += 1
+        return buf.apply(this, a)
       }
     })
     await page.goto(BASE, { waitUntil: 'networkidle2' })
@@ -200,11 +207,42 @@ async function main() {
         Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0))
       record('вспышки выключаются настройкой', off === 0, `частиц после выключения: ${off}`)
       await toggleEffects()
+
+      // Звук выключается своим переключателем, а не «поставьте громкость в
+      // ноль»: выключатель и регулятор — разные решения игрока.
+      const toggleSound = async () => {
+        await openSettings()
+        await page.evaluate(() => {
+          const label = [...document.querySelectorAll('.opt')].find(
+            (e) => (e.textContent ?? '').trim().startsWith('Звук'))
+          label?.querySelector('input')?.click()
+        })
+        await clickText(page, 'Готово', 2000)
+        await sleep(300)
+      }
+      await toggleSound()
+      // К этому месту рука уже почти разыграна: если карт не осталось,
+      // заканчиваем ход и ждём новую. Иначе проверка падает не на звуке, а на
+      // пустой руке.
+      for (let i = 0; i < 3; i++) {
+        if (await page.$('.band:last-of-type .card')) break
+        await clickText(page, 'Завершить ход', 1500)
+        await sleep(2400)
+      }
+      const soundBefore = await page.evaluate(() => window.__osc)
+      await page.click('.band:last-of-type .card')
+      await sleep(300)
+      const soundAfter = await page.evaluate(() => window.__osc)
+      record('звук выключается настройкой', soundAfter === soundBefore,
+        `аудиоузлов: ${soundBefore}→${soundAfter}`)
+      await toggleSound()
     }
 
     // Play a few turns and let the bot answer.
     let turns = 0
-    for (let i = 0; i < 14; i++) {
+    // Итераций с запасом: проверки звука и вспышек выше тратят карты, а иногда
+    // и целый ход на добор новой руки.
+    for (let i = 0; i < 20; i++) {
       if (await page.$('.choice')) {
         // Resolve whatever prompt is open, cheaply.
         if (!(await clickText(page, 'Подтвердить', 800))) {

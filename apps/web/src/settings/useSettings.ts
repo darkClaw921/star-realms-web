@@ -41,7 +41,15 @@ export interface Settings {
   commandDeck: string
   /** An Arena scenario, or '' for the ordinary game. Applies to both players. */
   variant: string
-  /** Громкость стола, 0..1. Ноль выключает звук: контекст даже не создаётся. */
+  /**
+   * Звук стола целиком.
+   *
+   * Отдельно от громкости, а не «поставьте ноль»: выключатель и регулятор —
+   * разные решения. Выключив звук на время, игрок возвращает его одним
+   * нажатием и на прежней громкости, а не подбирает её заново.
+   */
+  sound: boolean
+  /** Громкость стола, 0..1. */
   volume: number
   /** Вспышки на столе: взрывы, осколки, свечение союза. */
   effects: boolean
@@ -49,7 +57,7 @@ export interface Settings {
 
 export const DEFAULTS: Settings = {
   cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '', variant: '',
-  volume: 0.5, effects: true,
+  sound: true, volume: 0.5, effects: true,
 }
 
 export const LIMITS = {
@@ -82,6 +90,7 @@ export function sanitize(raw: unknown): Settings {
     variant: (VARIANTS as readonly string[]).includes(String(o.variant)) ? String(o.variant) : '',
     // Ноль — законное значение, поэтому `|| DEFAULT` здесь нельзя: он бы молча
     // включал звук каждому, кто его выключил.
+    sound: o.sound === undefined ? DEFAULTS.sound : Boolean(o.sound),
     volume: clamp(Number.isFinite(Number(o.volume)) ? Number(o.volume) : DEFAULTS.volume,
       LIMITS.volume.min, LIMITS.volume.max),
     effects: o.effects === undefined ? DEFAULTS.effects : Boolean(o.effects),
@@ -116,7 +125,9 @@ export function applySettings(s: Settings): void {
   const root = document.documentElement
   root.style.setProperty('--card-scale', String(s.cardScale))
   root.style.setProperty('--card-text-scale', String(s.textScale))
-  setVolume(s.volume)
+  // Выключатель главнее регулятора: при выключенном звуке до аудиоканала
+  // вообще ничего не доходит, и контекст не создаётся.
+  setVolume(s.sound ? s.volume : 0)
 }
 
 export function useSettings(): {
