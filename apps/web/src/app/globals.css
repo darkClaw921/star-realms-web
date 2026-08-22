@@ -1112,34 +1112,82 @@ button { font: inherit; color: inherit; }
 }
 .sheet__hint { font-size: 12px; color: var(--ink-dim); }
 
-/* Who asked. A prompt like "Выберите одно" says nothing about which of the
- * five bases on the table just fired, so the card itself stands next to its own
- * question -- full size and readable, not a name in the heading. */
-.asked-by {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  /* Only as wide as the card and its name: stretched across the sheet the
-   * block became a mostly-empty box with a card parked at one end. */
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--rule);
-  background: var(--void);
+/* ── the choice ─────────────────────────────────────────────────────────────
+ *
+ * A stage, not a sheet. The prompt "Выберите одно" says nothing about WHICH of
+ * the bases on the table just fired, so the card that asked stands in the
+ * middle exactly as it does when you hold it -- same composition, same size
+ * class -- and the options line up underneath.
+ *
+ * The panel under the card has no surface of its own. Give it one and a second
+ * frame appears around the card, which reads as another object on the table
+ * rather than as the question that card is asking. Only the buttons are
+ * surfaces. */
+.choice {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 16px;
+  padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  background: rgba(3, 5, 8, 0.82);
+  backdrop-filter: blur(3px);
+  animation: preview-in 160ms ease both;
+  overflow: auto;
 }
 
-.asked-by__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* No card to show: the options are the whole dialogue, so they go in the
+ * middle rather than sitting under an empty space. */
+.choice--bare { grid-template-rows: auto; align-content: center; }
 
-.asked-by__name {
+/* Bottom-aligned, so the card sits just above its own options rather than
+ * floating in the middle of the free space with a gap under it. */
+.choice__stage { display: grid; place-items: end center; min-height: 0; }
+
+/* cqi again: the same composition at a larger size, never a second layout.
+ * Smaller than a held card -- the options need the lower half of the screen. */
+.choice__slot { width: min(70vw, 34vh); }
+.choice__slot--base { width: min(88vw, 56vh); }
+
+/* <Card> carries its own slot, and that slot sets its own width -- including
+ * the 1.32x a landscape base gets. Here the stage decides the size, so the
+ * inner slot follows it; the container query inside still measures the real
+ * rendered width, so the composition is the same one the table draws. */
+.choice__slot .card-slot { width: 100%; }
+
+.choice__panel {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.choice__title {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  text-wrap: balance;
 }
 
-.branches { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.choice__hint { font-size: 12px; color: var(--ink-dim); }
+
+.choice__cards { justify-content: center; }
+
+.actions--centre { justify-content: center; }
+
+.branches { display: flex; flex-direction: column; gap: 8px; }
 .branch {
   display: flex;
   align-items: center;

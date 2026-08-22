@@ -77,27 +77,33 @@ export function ChoiceSheet({
     })
   }
 
+  const isBase = source ? cardDef(source).type !== 'ship' : false
+
   return (
-    <div className="overlay">
-      <div className="sheet">
-        <div className="sheet__head">
-          <span className="sheet__title">{title}</span>
-          <span className="sheet__hint">
+    // Сцена, а не плашка: карта, которая спросила, стоит по центру ровно так
+    // же, как увеличенная карта при удержании, а варианты выстроены под ней.
+    // Панель под картой своего фона не имеет -- фон есть только у кнопок,
+    // иначе вокруг карты появляется вторая рамка, и она читается как ещё один
+    // предмет на столе.
+    <div className={`choice${source ? '' : ' choice--bare'}`}>
+      {source && (
+        <div className="choice__stage">
+          <div className={`choice__slot${isBase ? ' choice__slot--base' : ''}`}>
+            <Card def={source} />
+          </div>
+        </div>
+      )}
+
+      <div className="choice__panel">
+        <div className="choice__head">
+          <span className="choice__title">{title}</span>
+          <span className="choice__hint">
+            {source ? `${cardName(source, cardDef(source).name)} · ` : ''}
             {choice.min === choice.max
               ? UI.chooseExactly(choice.max)
               : UI.chooseRange(choice.min, choice.max)}
           </span>
         </div>
-
-        {source && (
-          <div className="asked-by">
-            <Card def={source} />
-            <div className="asked-by__body">
-              <span className="eyebrow">{UI.askedBy}</span>
-              <span className="asked-by__name">{cardName(source, cardDef(source).name)}</span>
-            </div>
-          </div>
-        )}
 
         {branches.length > 0 && (
           <div className="branches">
@@ -120,7 +126,7 @@ export function ChoiceSheet({
         )}
 
         {confirmOnly && (
-          <div className="actions" style={{ marginTop: 12 }}>
+          <div className="actions actions--centre">
             <button type="button" className="btn btn--primary" onClick={() => resolve(opts as ChoiceOption[])}>
               {UI.yes}
             </button>
@@ -132,7 +138,7 @@ export function ChoiceSheet({
 
         {!confirmOnly && branches.length === 0 && (
           <>
-            <div className="row row--scroll" style={{ '--row-gap-top': '10px' } as React.CSSProperties}>
+            <div className="row row--scroll choice__cards">
               {opts.map((o) => {
                 if (o.o !== 'CARD') {
                   return (
@@ -158,7 +164,7 @@ export function ChoiceSheet({
                 )
               })}
             </div>
-            <div className="actions" style={{ marginTop: 12 }}>
+            <div className="actions actions--centre">
               <button
                 type="button"
                 className="btn btn--primary"

@@ -144,7 +144,7 @@ async function main() {
     // Play a few turns and let the bot answer.
     let turns = 0
     for (let i = 0; i < 14; i++) {
-      if (await page.$('.overlay')) {
+      if (await page.$('.choice')) {
         // Resolve whatever prompt is open, cheaply.
         if (!(await clickText(page, 'Подтвердить', 800))) {
           if (!(await clickText(page, 'Пропустить', 800))) {
@@ -711,19 +711,22 @@ async function main() {
       })
       await sleep(500)
       const asked = await page.evaluate(() => {
-        const sheet = document.querySelector('.overlay .sheet')
-        if (!sheet) return null
+        const el = document.querySelector('.choice')
+        if (!el) return null
         return {
-          title: sheet.querySelector('.sheet__title')?.textContent?.trim() ?? '',
-          source: sheet.querySelector('.asked-by__name')?.textContent?.trim() ?? '',
-          card: sheet.querySelectorAll('.asked-by .card').length,
-          branches: [...sheet.querySelectorAll('.branch')]
+          title: el.querySelector('.choice__title')?.textContent?.trim() ?? '',
+          hint: el.querySelector('.choice__hint')?.textContent?.trim() ?? '',
+          card: el.querySelectorAll('.choice__stage .card').length,
+          // Панель под картой своей плашки не имеет: фон только у кнопок.
+          panels: el.querySelectorAll('.sheet').length,
+          branches: [...el.querySelectorAll('.branch')]
             .map((e) => (e.textContent ?? '').trim()),
         }
       })
       record('окно выбора показывает карту, которая спросила',
-        asked !== null && asked.card === 1 && asked.source === 'Оборонный центр',
-        asked ? `${asked.title} · ${asked.source}, карт: ${asked.card}` : 'окно не открылось')
+        asked !== null && asked.card === 1 && asked.panels === 0
+        && asked.hint.includes('Оборонный центр'),
+        asked ? `${asked.title} · ${asked.hint}, карт: ${asked.card}` : 'окно не открылось')
 
       // Ветки движок хранит по-английски. Латиница в кнопке выбора значит, что
       // метку забыли перевести; полный список стережёт scripts/check-i18n.ts,
@@ -794,12 +797,14 @@ async function main() {
         // выбираем, пока кнопка подтверждения не станет активной, а не ровно
         // одну карту.
         for (let k = 0; k < 6; k++) {
-          if (!(await page.$('.overlay .card'))) break
+          if (!(await page.$('.choice__cards .card'))) break
           const done = await page.evaluate(() => {
-            const btn = [...document.querySelectorAll('.overlay button')]
+            const btn = [...document.querySelectorAll('.choice button')]
               .find((b) => /подтвердить|пропустить/i.test(b.textContent ?? ''))
             if (btn && !btn.disabled) { btn.click(); return true }
-            const card = [...document.querySelectorAll('.overlay .card')]
+            // Именно из вариантов: карта, которая ЗАДАЛА вопрос, стоит в той
+            // же сцене и кликом не выбирается.
+            const card = [...document.querySelectorAll('.choice__cards .card')]
               .find((c) => !c.disabled && !c.className.includes('is-selected'))
             card?.click()
             return false
