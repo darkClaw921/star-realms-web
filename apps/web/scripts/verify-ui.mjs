@@ -240,9 +240,11 @@ async function main() {
 
     // Play a few turns and let the bot answer.
     let turns = 0
-    // Итераций с запасом: проверки звука и вспышек выше тратят карты и иногда
-    // целый ход на добор новой руки, а окна выбора съедают итерацию каждое.
-    for (let i = 0; i < 30; i++) {
+    // Цикл идёт до нужного числа ходов, а не фиксированное число раз: окна
+    // выбора съедают итерацию каждое, и при невезении партия не успевала
+    // дойти даже до третьего хода — проверка падала на скорости прогона, а не
+    // на игре.
+    for (let i = 0; i < 60 && turns < 4; i++) {
       if (await page.$('.choice')) {
         // Resolve whatever prompt is open, cheaply.
         if (!(await clickText(page, 'Подтвердить', 800))) {
@@ -261,8 +263,19 @@ async function main() {
     shots.push(await shot(page, 'bot-midgame', 'Середина партии. Базы остаются в игре между ходами, значки фракций загораются при открытии союзных свойств, журнал проговаривает каждое срабатывание.'))
     record('ходы против бота проходят', turns >= 3, `сыграно ходов: ${turns}`)
 
+    // Журнал теперь живёт в выдвижной панели: чтобы его прочитать — и
+    // проверке, и игроку — панель надо открыть.
+    const logOpened = await page.evaluate(() => {
+      const t = document.querySelector('.logtab')
+      if (!(t instanceof HTMLElement)) return 'корешка нет'
+      const r = t.getBoundingClientRect()
+      const over = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      t.click()
+      return over === t || t.contains(over) ? 'открыт' : `перекрыт: ${over?.className ?? '?'}`
+    })
+    await sleep(400)
     const logLines = await page.$$eval('.log__line', (els) => els.length)
-    record('журнал партии заполняется', logLines > 8, `строк: ${logLines}`)
+    record('журнал партии заполняется', logLines > 8, `строк: ${logLines} (${logOpened})`)
 
     // Журнал — тоже канал утечки: если он называет добранные карты, соперник
     // читает чужую руку прямо с экрана.
@@ -270,6 +283,8 @@ async function main() {
       els.map((e) => e.textContent ?? '').filter((s) => /добирает\s*«/.test(s)))
     record('журнал не называет добранные карты', namedDraws.length === 0,
       namedDraws[0] ?? `проверено строк: ${logLines}`)
+    await clickText(page, 'Скрыть', 1500)
+    await sleep(250)
 
     // ── 2b. настройки отображения ─────────────────────────────────────────
     // Базы шире кораблей (.card-slot--base), поэтому «первый попавшийся слот»
@@ -1372,6 +1387,52 @@ async function main() {
           .map((slot) => slot.querySelectorAll('.actions .btn').length))
         const sorted = ordered.every((n, i) => i === 0 || (ordered[i - 1] > 0 || n === 0))
         record('карты с доступными свойствами стоят слева', sorted, ordered.join(' · '))
+      }
+
+      // Журнал: закрыт по умолчанию, открывается корешком, не растягивает
+      // стол и прокручивается внутри себя.
+      {
+        const closed = await fan.evaluate(() => ({
+          tab: !!document.querySelector('.logtab'),
+          panel: !!document.querySelector('.logpanel'),
+          board: Math.round(document.querySelector('.band--board').getBoundingClientRect().height),
+        }))
+        await fan.click('.logtab')
+        await sleep(350)
+        // Набиваем журнал заведомо длинным ходом: панель обязана остаться той
+        // же высоты, а расти должна прокрутка внутри неё.
+        await fan.evaluate(() => {
+          for (let i = 0; i < 120; i++) window.__lab.say(`Строка журнала №${i}`)
+        })
+        await sleep(600)
+        const opened = await fan.evaluate(() => {
+          const panel = document.querySelector('.logpanel')
+          const log = panel.querySelector('.log')
+          return {
+            panelH: Math.round(panel.getBoundingClientRect().height),
+            windowH: window.innerHeight,
+            scrolls: log.scrollHeight > log.clientHeight + 1,
+            board: Math.round(document.querySelector('.band--board').getBoundingClientRect().height),
+            first: log.querySelector('.log__line')?.textContent ?? '',
+            pageOverflow: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+          }
+        })
+        record('журнал закрыт по умолчанию и открывается корешком',
+          closed.tab && !closed.panel && opened.panelH > 0,
+          `корешок ${closed.tab}, панель до нажатия ${closed.panel}`)
+        record('журнал прокручивается, а не растягивает стол',
+          opened.scrolls && opened.panelH <= opened.windowH + 1
+          && opened.board === closed.board && opened.pageOverflow <= 1,
+          `панель ${opened.panelH}px при окне ${opened.windowH}px, прокрутка ${opened.scrolls}, `
+          + `полоса стола ${closed.board}→${opened.board}px`)
+        record('свежая запись стоит первой', opened.first.includes('№119'),
+          `первая строка: ${opened.first.slice(0, 40)}`)
+        await fan.evaluate(() => {
+          const b = [...document.querySelectorAll('.logpanel .btn')]
+            .find((x) => (x.textContent ?? '').includes('Скрыть'))
+          ;(b instanceof HTMLElement ? b : null)?.click()
+        })
+        await sleep(250)
       }
 
       shots.push(await shot(fan, 'fan',

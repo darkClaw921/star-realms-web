@@ -13,6 +13,7 @@ import type { SeatNames } from '@/match/log'
 import type { MatchSnapshot } from '@/match/types'
 import { FxLayer } from '@/fx/FxLayer'
 import { FanRow } from './FanRow'
+import { LogPanel } from './LogPanel'
 import { useSettings } from '@/settings/useSettings'
 import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
@@ -109,6 +110,14 @@ export function Board({
     const open = (iid: string): number => ((idx.activate.get(iid)?.size ?? 0) > 0 ? 0 : 1)
     return [...v.me.inPlay].sort((a, b) => open(a.iid) - open(b.iid))
   }, [v.me.inPlay, idx.activate])
+  // У соперника «ждёт хода» значит другое: базу можно снести прямо сейчас.
+  // Она и должна лежать слева, а не искаться в сложенном ряду.
+  const foeOrdered = useMemo(
+    () => [...v.opponent.inPlay].sort(
+      (a, b) => Number(idx.attack.has(b.iid)) - Number(idx.attack.has(a.iid)),
+    ),
+    [v.opponent.inPlay, idx.attack],
+  )
   const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const meName = seatNames[v.viewer] ?? v.viewer
@@ -180,7 +189,7 @@ export function Board({
           {v.opponent.inPlay.length === 0 && (
             <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
           )}
-          {v.opponent.inPlay.map((c) => (
+          {foeOrdered.map((c) => (
             <div key={c.iid} className="zone">
               <Card
                 def={c.copiedDef ?? c.def}
@@ -473,16 +482,6 @@ export function Board({
             })}
           </FanRow>
         </div>
-        <div className="zone" style={{ minHeight: 0 }}>
-          <span className="eyebrow">{UI.log}</span>
-          <div className="log">
-            {[...log].reverse().map((l) => (
-              <div key={l.id} className="log__line">
-                {l.emphasis ? <b>{l.text}</b> : l.text}
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
 
       {/* ── my hand ──────────────────────────────────────────────────────── */}
@@ -552,6 +551,10 @@ export function Board({
           ))}
         </div>
       </section>
+
+      {/* Журнал закрыт по умолчанию: читают его редко, а место он занимал
+        * постоянно — четверть ширины у зоны игры. */}
+      <LogPanel log={log} />
 
       {/* Слой эффектов ничего не рисует в разметку: он слушает события
         * последней команды и запускает звук и вспышки по элементам стола. */}

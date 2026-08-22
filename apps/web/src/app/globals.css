@@ -914,7 +914,9 @@ button { font: inherit; color: inherit; }
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
+  /* Одна колонка: журнал уехал в выдвижную панель, и ширина целиком досталась
+   * картам — их смотрят постоянно, а журнал читают изредка. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   overflow: hidden;
 }
@@ -927,7 +929,7 @@ button { font: inherit; color: inherit; }
   .table { height: auto; min-height: 100dvh; }
   .band--board {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto;
     overflow: visible;
   }
   .band--board > .zone { min-height: 104px; overflow: visible; }
@@ -1568,6 +1570,82 @@ input[type='range'] {
 .log__line { padding: 1px 0; }
 .log__line b { color: var(--ink); font-weight: 600; }
 
+/* ── журнал ─────────────────────────────────────────────────────────────────
+ *
+ * Панель фиксированной высоты с прокруткой внутри: длинный ход добавляет
+ * десятки строк, и без ограничения журнал растягивал бы стол ровно в тот
+ * момент, когда на столе интереснее всего.
+ */
+/* Не по центру: ровно там же стоит корешок пульта полигона, и два ярлыка
+ * ложились бы друг на друга. */
+.logtab {
+  position: fixed;
+  top: 38%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-right: 0;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  padding: 10px 8px;
+  writing-mode: vertical-rl;
+}
+.logtab:hover { color: var(--ink); background: var(--panel-hi); }
+.logtab.has-new { color: var(--ink); border-color: var(--rule-hi); }
+.logtab__n {
+  writing-mode: horizontal-tb;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--void);
+  background: var(--authority);
+  border-radius: 99px;
+  padding: 0 5px;
+}
+
+.logpanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  width: min(340px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border-left: 1px solid var(--rule);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, .45);
+}
+.logpanel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+/* Прокрутка живёт ЗДЕСЬ, а не на стороне списка: панель не должна расти от
+ * числа строк, поэтому высоту задаёт она, а список её только заполняет. */
+/* В панели свежее идёт СВЕРХУ: за новостями не нужно прокручивать вниз.
+ * Список отдаётся уже перевёрнутым, поэтому здесь обычное направление —
+ * column-reverse из узкой колонки перевернул бы его второй раз. */
+.logpanel .log {
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 16px;
+}
+
 /* ── campaign ───────────────────────────────────────────────────────────── */
 .menu__inner--wide { width: min(1040px, 100%); }
 
@@ -2197,7 +2275,7 @@ input[type='range'] {
   padding: 8px 10px;
 }
 
-.lab__tab { top: 50%; right: 0; transform: translateY(-50%); }
+.lab__tab { top: 62%; right: 0; transform: translateY(-50%); }
 .lab__deal { bottom: 8px; right: min(360px, 92vw); border-radius: var(--r-md); }
 
 .linkish {
