@@ -135,6 +135,25 @@ for (const [label, field, delta] of [
     `рука ${before.hand}→${a.hand}, сброс ${before.discard}→${a.discard}, колода ${before.deck}→${a.deck}`)
 }
 {
+  // Кнопку жмут подряд, и колода конечна: без перетасовки сброса она
+  // вычерпывалась досуха и пересдача навсегда переставала работать.
+  const start = await st()
+  const total = start.hand + start.deck + start.discard
+  let stuck = ''
+  for (let i = 0; i < 10; i++) {
+    await clickBtn('.lab__row .btn', 'Сбросить руку и добрать')
+    await sleep(160)
+    const a = await st()
+    if (a.hand !== Math.min(5, total) || a.hand + a.deck + a.discard !== total) {
+      stuck = `нажатие ${i + 1}: рука ${a.hand}, всего ${a.hand + a.deck + a.discard} из ${total}`
+      break
+    }
+  }
+  const now = await st()
+  rec('пересдача выдерживает десять нажатий подряд', stuck === '',
+    stuck || `рука ${now.hand}, колода ${now.deck}, сброс ${now.discard}, всего ${total}`)
+}
+{
   const before = await st()
   await clickBtn('.lab__row .btn', 'Убрать мои карты'); await sleep(300)
   const a = await st()

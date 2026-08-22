@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CARDS, cardDef, opponentOf,
+  CARDS, cardDef, opponentOf, shuffle,
   type CardDefId, type CardInstance, type Faction, type GameEvent, type GameState,
   type InPlayCard, type PlayerId, type SetId,
 } from '@sr/engine'
@@ -422,7 +422,19 @@ export function LabConsole({
                   const p = d.players[viewer]
                   p.discard.push(...p.hand)
                   p.hand = []
-                  for (let i = 0; i < 5 && p.deck.length > 0; i++) p.hand.push(p.deck.shift()!)
+                  for (let i = 0; i < 5; i++) {
+                    // Колода кончилась — тасуем сброс, ровно как движок при
+                    // доборе. Без этого второе нажатие подряд вычерпывало
+                    // колоду досуха, и кнопка навсегда переставала работать.
+                    if (p.deck.length === 0) {
+                      if (p.discard.length === 0) break
+                      const [mixed, rng] = shuffle(d.rng, p.discard)
+                      p.deck = mixed
+                      p.discard = []
+                      d.rng = rng
+                    }
+                    p.hand.push(p.deck.shift()!)
+                  }
                 })}
               >
                 {LAB.redraw}
