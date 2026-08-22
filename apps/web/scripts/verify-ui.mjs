@@ -1255,13 +1255,17 @@ async function main() {
         `карт ${four.n}, веер ${four.fanned}, наложений ${four.stacked}`)
 
       await expand()
-      await put('Станция переработки')
-      await put('Космическая станция')
+      // Кладём с запасом: сколько карт влезает в ряд, зависит от их ширины —
+      // база в полтора раза шире корабля, а на низкой полосе карты ещё и
+      // ужимаются по высоте. Проверяем не «шесть штук», а само правило.
+      for (const c of ['Станция переработки', 'Космическая станция', 'Торговый пост', 'Военный мир']) {
+        await put(c)
+      }
       await collapse()
-      const six = await rowState()
+      const many = await rowState()
       record('лишние карты складываются веером, а не в прокрутку',
-        six.n === 6 && six.fanned && six.stacked === 5 && six.overflow <= 1,
-        `карт ${six.n}, веер ${six.fanned}, сложено ${six.stacked}, прокрутка ${six.overflow}px`)
+        many.fanned && many.stacked === many.n - 1 && many.overflow <= 1,
+        `карт ${many.n}, веер ${many.fanned}, сложено ${many.stacked}, прокрутка ${many.overflow}px`)
 
       // Сложенная карта обязана открываться и отдавать свои кнопки: иначе
       // веер экономит место ценой недоступного свойства.
@@ -1465,6 +1469,67 @@ async function main() {
           ;(b instanceof HTMLElement ? b : null)?.click()
         })
         await sleep(250)
+      }
+
+      // Кнопки шапки обязаны ЛОВИТЬ КУРСОР, а не только существовать. Ряд
+      // карт держит запас сверху для подъёма карты и забирает его назад
+      // отрицательным отступом, то есть заезжает на шапку: пока в ней был один
+      // заголовок, это никого не задевало, а кнопки «Все свойства» и «Все
+      // союзы» оказались под рядом, и нажатия до них не доходили вовсе.
+      {
+        await expand()
+        await put('Оборонный центр')
+        await collapse()
+        const hit = await fan.evaluate(() => {
+          const btns = [...document.querySelectorAll('.band--board .zone__head .btn')]
+          if (btns.length === 0) return null
+          return btns.map((b) => {
+            const r = b.getBoundingClientRect()
+            const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+            return { name: (b.textContent ?? '').trim(), reachable: el === b || b.contains(el) }
+          })
+        })
+        record('кнопки над зоной игры не перекрыты рядом карт',
+          hit !== null && hit.every((h) => h.reachable),
+          hit ? hit.map((h) => `${h.name}: ${h.reachable ? 'доступна' : 'перекрыта'}`).join(' · ') : 'кнопок нет')
+      }
+
+      // Низкая полоса — обычный случай на ноутбуке: карта с кнопками выше,
+      // чем места дал стол. Кнопка под картой оказывалась за нижним краем ряда,
+      // наружу торчала верхняя кромка, и нажималась только она.
+      {
+        await fan.setViewport({ width: 1280, height: 800 })
+        await sleep(600)
+        const tight = await fan.evaluate(() => {
+          const row = document.querySelector('.band--board .row--fan')
+          const slot = row.children[0]
+          slot.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+          return { tight: row.classList.contains('is-tight') }
+        })
+        await sleep(250)
+        const reach = await fan.evaluate(() => {
+          const row = document.querySelector('.band--board .row--fan')
+          const slot = row.children[0]
+          const btn = slot.querySelector('.actions .btn')
+          if (!btn) return null
+          const r = btn.getBoundingClientRect()
+          const rr = row.getBoundingClientRect()
+          const visible = Math.min(r.bottom, rr.bottom) - Math.max(r.top, rr.top)
+          const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          return {
+            visible: Math.round(visible),
+            height: Math.round(r.height),
+            hits: el instanceof HTMLElement && el.classList.contains('btn'),
+          }
+        })
+        record('на низкой полосе кнопка видна целиком, а не кромкой',
+          reach !== null && reach.visible >= reach.height - 1 && reach.hits,
+          reach
+            ? `видно ${reach.visible} из ${reach.height}px, курсор ловит кнопку: ${reach.hits}`
+              + `, аварийный режим: ${tight.tight}`
+            : 'кнопок нет')
+        await fan.setViewport({ width: 1280, height: 1100 })
+        await sleep(500)
       }
 
       shots.push(await shot(fan, 'fan',

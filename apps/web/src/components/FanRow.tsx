@@ -34,34 +34,53 @@ export function FanRow({
     const el = ref.current
     if (!el) return
     const kids = [...el.children].filter((c): c is HTMLElement => c instanceof HTMLElement)
-    if (kids.length < 2) {
+    if (kids.length === 0) {
       el.style.setProperty('--fan', '0px')
-      el.classList.remove('is-fanned')
+      el.classList.remove('is-fanned', 'is-tight')
       return
     }
-    // Ширина слота, но не меньше ширины самой карты: под картой лежит ряд
-    // кнопок, и у карты с двумя свойствами он шире её самой. Мерить только
-    // карту значило бы недосчитать этих точек — и оставить прокрутку там, где
-    // веер должен был всё уместить.
+
+    // Ширину карты этот ряд не трогает: игрок задал её в настройках, и
+    // подгонять карты под высоту полосы значило бы молча отменять его выбор —
+    // на большинстве экранов зона игры ниже карты, и карты стали бы мелкими
+    // всегда. Нехватку высоты разбирает третий шаг.
+    const cs = getComputedStyle(el)
+
+    // ── 2. веер по ширине ──────────────────────────────────────────────────
     const widths = kids.map((k) => Math.max(
       k.getBoundingClientRect().width,
       k.querySelector('.card-slot')?.getBoundingClientRect().width ?? 0,
     ))
-    const gap = parseFloat(getComputedStyle(el).columnGap || '0') || 0
+    const gap = parseFloat(cs.columnGap || '0') || 0
     const total = widths.reduce((a, b) => a + b, 0) + gap * (kids.length - 1)
-    const avail = el.clientWidth
-    const over = total - avail
+    const over = kids.length < 2 ? -1 : total - el.clientWidth
     if (over <= 0) {
       el.style.setProperty('--fan', '0px')
       el.classList.remove('is-fanned')
-      return
+    } else {
+      const narrowest = Math.min(...kids.map(
+        (k) => k.querySelector('.card-slot')?.getBoundingClientRect().width ?? Infinity))
+      const fan = Math.min(narrowest * (1 - MIN_VISIBLE), over / (kids.length - 1))
+      el.style.setProperty('--fan', `${Math.ceil(fan)}px`)
+      el.classList.add('is-fanned')
     }
-    const narrowest = Math.min(...kids.map(
-      (k) => k.querySelector('.card-slot')?.getBoundingClientRect().width ?? Infinity))
-    const cap = narrowest * (1 - MIN_VISIBLE)
-    const fan = Math.min(cap, over / (kids.length - 1))
-    el.style.setProperty('--fan', `${Math.ceil(fan)}px`)
-    el.classList.add('is-fanned')
+
+    // ── 3. последняя мера ──────────────────────────────────────────────────
+    //
+    // Полоса бывает такой низкой, что не спасает и предельно ужатая карта:
+    // тогда кнопки прижимаются к низу ВИДИМОЙ части карты и ложатся на
+    // иллюстрацию. Кнопка на картинке хуже кнопки под картой, но несравнимо
+    // лучше кнопки, до которой не дотянуться.
+    const rowRect = el.getBoundingClientRect()
+    const slotTop = kids[0]!.getBoundingClientRect().top
+    const tallest = Math.max(...kids.map((k) => k.getBoundingClientRect().height))
+    if (slotTop + tallest > rowRect.bottom + 1) {
+      el.classList.add('is-tight')
+      el.style.setProperty('--acts-top', `${Math.max(24, Math.round(rowRect.bottom - 42 - slotTop))}px`)
+    } else {
+      el.classList.remove('is-tight')
+      el.style.removeProperty('--acts-top')
+    }
   }, [])
 
   useLayoutEffect(measure)
