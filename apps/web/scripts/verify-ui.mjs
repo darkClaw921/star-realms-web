@@ -771,7 +771,19 @@ async function main() {
         const b = document.querySelector('.band--board .actions .btn')
         b?.click()
       })
-      await sleep(500)
+      await sleep(300)
+      // Нажатие кнопки — такое же действие, как розыгрыш карты, и должно
+      // отзываться так же: без отклика кнопка выглядит нажатой впустую.
+      const activated = await page.evaluate(() => ({
+        live: Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0),
+        lit: [...document.querySelectorAll('.band--board [data-iid]')]
+          .filter((e) => e.style.animation.includes('fx-')).length,
+        osc: window.__osc ?? -1,
+      }))
+      record('свойство базы отзывается вспышкой и звуком',
+        activated.live > 0 && activated.lit > 0 && activated.osc > 0,
+        `частиц: ${activated.live}, свечений: ${activated.lit}, звуков: ${activated.osc}`)
+      await sleep(200)
       const asked = await page.evaluate(() => {
         const el = document.querySelector('.choice')
         if (!el) return null

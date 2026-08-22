@@ -132,6 +132,32 @@ function run(
         break
       }
 
+      case 'ABILITY_USED': {
+        // Свойство, включённое кнопкой под картой, — такое же действие, как
+        // розыгрыш, и без отклика кнопка выглядит нажатой впустую.
+        const el = document.querySelector<HTMLElement>(`[data-iid="${CSS.escape(e.iid)}"]`)
+        const colour = colorOf(e.def)
+        const ally = e.slot !== 'primary' && e.slot !== 'trigger'
+          && e.slot !== 'scrap' && e.slot !== 'splinter'
+        if (e.slot === 'primary') SFX.activate()
+        else if (ally) SFX.ally()
+        // Утиль озвучит событие SCRAP, а триггеры сыплются с каждого корабля:
+        // сигнал на каждый превратил бы ход в очередь писков.
+        if (el) {
+          el.style.setProperty('--fx-glow', colour)
+          anim(el, 'fx-ally', ally ? 0.8 : 0.55, 'ease-out')
+          const p = centreOf(el)
+          if (e.slot !== 'trigger') {
+            ring(p.x, p.y, colour, { size: Math.max(10, p.w / 3), grow: 40, life: 0.45 })
+            burst({
+              x: p.x, y: p.y, n: ally ? 10 : 7, dir: -Math.PI / 2, spread: 1.6,
+              speed: 90, color: colour, life: 0.6, size: 1.8, jitter: p.w / 2,
+            })
+          }
+        }
+        break
+      }
+
       case 'ACQUIRE': {
         SFX.acquire()
         const p = defs.get(e.def)
