@@ -85,6 +85,30 @@ export function FanRow({
     return () => document.removeEventListener('pointerdown', away)
   }, [open])
 
+  /**
+   * Наведение раскрывает слот через состояние, а не через CSS :hover.
+   *
+   * Разница решает задачу: кнопки сложенной карты невидимы и не ловят курсор,
+   * поэтому подойти к ним можно было только сверху, с самой карты. Курсор,
+   * подходящий снизу или сбоку, попадал на СОСЕДНЮЮ карту — она лежит выше, —
+   * и кнопка не появлялась вовсе. Открытый слот поднят над соседями целиком,
+   * вместе с кнопками, и добраться до них можно с любой стороны.
+   */
+  const onOver = (e: React.MouseEvent): void => {
+    const el = ref.current
+    if (!el?.classList.contains('is-fanned')) return
+    const kids = [...el.children]
+    const at = kids.findIndex((k) => k.contains(e.target as Node))
+    if (at >= 0) setOpen(at)
+  }
+
+  const onLeave = (): void => {
+    // Клавиатурный фокус внутри ряда важнее мыши: уводить раскрытие из-под
+    // человека, который дошёл до кнопки табом, нельзя.
+    if (ref.current?.contains(document.activeElement)) return
+    setOpen(null)
+  }
+
   const onClick = (e: React.MouseEvent): void => {
     const el = ref.current
     if (!el?.classList.contains('is-fanned')) return
@@ -93,7 +117,9 @@ export function FanRow({
     if (target.closest('.actions')) return
     const kids = [...el.children]
     const at = kids.findIndex((k) => k.contains(target))
-    if (at >= 0) setOpen((cur) => (cur === at ? null : at))
+    // На тач-экране mouseover не приходит вовсе, поэтому нажатие остаётся
+    // вторым способом раскрыть слот.
+    if (at >= 0) setOpen(at)
   }
 
   // Класс ставится на живой узел, а не клонированием детей: сюда приходит
@@ -112,6 +138,8 @@ export function FanRow({
       className={`row row--fan ${className}`.trim()}
       {...(style ? { style } : {})}
       onClick={onClick}
+      onMouseOver={onOver}
+      onMouseLeave={onLeave}
     >
       {children}
     </div>

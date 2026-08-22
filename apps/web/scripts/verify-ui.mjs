@@ -1294,6 +1294,33 @@ async function main() {
           }).length,
         }
       })
+      // Подход к кнопке СНИЗУ — так курсор и приходит из зоны руки. Пока
+      // раскрытие держалось на CSS :hover, кнопка была невидима и курсора не
+      // ловила: подойти к ней можно было только сверху, с самой карты, и она
+      // «нажималась только по верхней кромке».
+      const fromBelow = await fan.evaluate(() => {
+        const slot = document.querySelector('.band--board .row--fan').children[1]
+        const btn = slot.querySelector('.actions .btn')?.getBoundingClientRect()
+        if (!btn) return null
+        return {
+          x: Math.round(btn.left + btn.width / 2),
+          y: Math.round(btn.top + btn.height / 2),
+          below: Math.round(btn.bottom + 40),
+        }
+      })
+      if (fromBelow) {
+        await fan.mouse.move(fromBelow.x, fromBelow.below)
+        await sleep(120)
+        await fan.mouse.move(fromBelow.x, fromBelow.y)
+        await sleep(250)
+        const reachable = await fan.evaluate((g) => {
+          const el = document.elementFromPoint(g.x, g.y)
+          return el instanceof HTMLElement && el.classList.contains('btn')
+        }, fromBelow)
+        record('до кнопки можно дотянуться снизу, а не только с карты', reachable,
+          reachable ? 'кнопка ловит курсор' : 'под курсором чужая карта')
+      }
+
       record('сложенная карта поднимается, кнопки под ней',
         open.z === '20' && open.opacity === '1' && open.buttons > 0
         && open.under >= 0 && open.under < 20 && open.lit === 1,
