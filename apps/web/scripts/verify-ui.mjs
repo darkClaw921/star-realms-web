@@ -1579,7 +1579,11 @@ async function main() {
         })
         await sleep(300)
         await expand()
-        for (const c of ['Оборонный центр', 'Торговый пост', 'Мир торговли']) await put(c)
+        // Корабль кладётся вместе с базами: колонка баз стала шире карты ради
+        // запаса на подъём, и рядом должно быть чему проверить перекрытие.
+        for (const c of ['Оборонный центр', 'Торговый пост', 'Мир торговли', 'Челнок федерации']) {
+          await put(c)
+        }
         await collapse()
         await sleep(400)
         const stack = await fan.evaluate(() => {
@@ -1745,6 +1749,49 @@ async function main() {
             }
             return out
           })
+          // Под курсором карта растёт и приподнимается: прокручиваемая колонка
+          // резала ей кромки и тень, и база выглядела обрезанной по краям.
+          const grown = await fan.evaluate(async () => {
+            const col = document.querySelector('.band--board .play__bases')
+            const kids = [...col.children]
+            const slot = kids[Math.min(3, kids.length - 1)]
+            slot.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+            await new Promise((r) => setTimeout(r, 500))
+            const card = slot.querySelector('.card')
+            // :hover со скрипта не поднимается, поэтому рост берём как есть из
+            // тех же переменных, что применяет наведение.
+            card.style.setProperty('--scale', '1.055')
+            card.style.setProperty('--lift', '-6px')
+            await new Promise((r) => setTimeout(r, 60))
+            const c = card.getBoundingClientRect()
+            const r = col.getBoundingClientRect()
+            card.style.removeProperty('--scale')
+            card.style.removeProperty('--lift')
+            return {
+              left: Math.round(r.left - c.left),
+              right: Math.round(c.right - r.right),
+              top: Math.round(r.top - c.top),
+            }
+          })
+          record('поднятая база не срезается краем колонки',
+            grown.left <= 0 && grown.right <= 0 && grown.top <= 0,
+            `слева ${-grown.left}px, справа ${-grown.right}px, сверху ${-grown.top}px запаса`)
+
+          // Колонка стала шире карты ради этого запаса — и не должна ловить
+          // нажатия, адресованные соседнему ряду кораблей.
+          const near = await fan.evaluate(() => {
+            const row = document.querySelector('.band--board .play__ships')
+            const card = row?.querySelector('.card-slot')
+            if (!card) return null
+            const r = card.getBoundingClientRect()
+            const el = document.elementFromPoint(r.left + 4, r.top + r.height / 2)
+            return { own: !!(el instanceof HTMLElement && el.closest('.play__ships')), what: el?.className ?? '?' }
+          })
+          if (near) {
+            record('колонка баз не перехватывает нажатия по кораблям',
+              near.own, near.own ? 'левая кромка корабля ловит курсор' : `под курсором ${near.what}`)
+          }
+
           record('поднятая база и её кнопки видны целиком',
             whole.every((w) => w.card >= w.cardH - 2 && w.acts >= w.actsH - 2),
             whole.map((w) => `карта ${w.card}/${w.cardH}, кнопки ${w.acts}/${w.actsH}`).join(' · '))
