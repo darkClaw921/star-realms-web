@@ -1038,7 +1038,18 @@ button { font: inherit; color: inherit; }
  * lays out as running prose. The real input stays in the markup and stays
  * focusable -- it is only invisible -- so keyboard, screen readers and radio
  * grouping keep working, and the tile draws its own mark. */
-.sheet--settings { width: min(1180px, 100%); }
+/* Fixed frame, not a sheet that resizes with its contents: the three tabs are
+ * of very different lengths, and a sheet anchored to the bottom of the screen
+ * moved its own tab strip out from under the cursor on every switch. The head,
+ * the tabs and the footer stay put; only the body between them scrolls. */
+.sheet--settings {
+  width: min(1180px, 100%);
+  height: min(84dvh, 820px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
 
 .tabs {
   display: flex;
@@ -1079,6 +1090,13 @@ button { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 22px;
   margin-top: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Reserved whether or not this tab scrolls, so the grid does not shift
+   * sideways by the scrollbar's width when the tab changes. */
+  scrollbar-gutter: stable;
 }
 
 .group { display: flex; flex-direction: column; gap: 10px; }
@@ -1252,6 +1270,71 @@ button { font: inherit; color: inherit; }
   padding: 12px 16px;
   background: linear-gradient(180deg, transparent, var(--panel) 40%);
   border-top: 1px solid var(--rule);
+}
+
+/* Inside the fixed frame the footer is a real row, not a sticky overlay. */
+.sheet--settings .sheet__foot {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0 -16px;
+  background: var(--panel);
+}
+
+/* Held tile: the same gesture that enlarges a card on the table, so it gets the
+ * same growing fill rather than a second, differently-shaped affordance. */
+.opt.is-holding {
+  border-color: var(--authority);
+  background: color-mix(in oklab, var(--authority) 16%, var(--panel));
+}
+
+/* ── set gallery ────────────────────────────────────────────────────────────
+ *
+ * Opened by holding a set tile. Every card is a real <Card>, which means the
+ * hold gesture keeps working one level deeper: set -> card -> enlarged card. */
+.overlay--gallery { z-index: 45; place-items: center; }
+
+.sheet--gallery {
+  width: min(1400px, 100%);
+  height: min(90dvh, 1000px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sheet--gallery .sheet__head { gap: 10px; }
+.sheet--gallery .sheet__hint { margin-left: auto; }
+
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Flex wrap, not a grid: bases are printed landscape and are a third wider, so
+ * a fixed column track would either crop them or pad every ship. */
+.gallery__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.gallery__cell { display: flex; flex-direction: column; gap: 3px; }
+
+/* How many copies the printed set contains -- a caption under the card, not a
+ * badge on it: both corners of the face are already spoken for by the cost and
+ * by a base's defence. */
+.gallery__copies {
+  align-self: flex-end;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
 }
 .setting__head {
   display: flex;

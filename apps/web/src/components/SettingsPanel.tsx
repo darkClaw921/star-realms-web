@@ -1,12 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ALL_SETS, asDefId, CARDS, COMMAND_DECKS, tradeDeckComposition, VARIANTS, type SetId,
 } from '@sr/engine'
 import { UI } from '@/i18n/ui'
 import { DEFAULTS, LIMITS, useSettings, type Settings } from '@/settings/useSettings'
 import { Card } from './Card'
+import { SetGallery } from './SetGallery'
+import { useHold } from './useHold'
 
 /** Карты для живого предпросмотра: короткая, средняя и самая многословная в наборе. */
 const PREVIEW = [asDefId('scout'), asDefId('cutter'), asDefId('battlecruiser')]
@@ -40,7 +42,7 @@ function splitLabel(s: string): { name: string; desc: string } {
  * радиокнопок бесплатно, а рисуется своим значком.
  */
 function Opt({
-  type, group, name, desc, badge, checked, disabled, title, onSelect,
+  type, group, name, desc, badge, checked, disabled, title, onSelect, onHold,
 }: {
   type: 'checkbox' | 'radio'
   group?: string
@@ -51,11 +53,17 @@ function Opt({
   disabled?: boolean | undefined
   title?: string | undefined
   onSelect: () => void
+  /** Удержание на плитке. Тот же жест, что увеличивает карту на столе. */
+  onHold?: (() => void) | undefined
 }): React.JSX.Element {
+  const noop = useCallback(() => {}, [])
+  const hold = useHold(onHold ?? noop)
   return (
     <label
-      className={`opt${checked ? ' is-on' : ''}${disabled ? ' is-locked' : ''}`}
+      className={`opt${checked ? ' is-on' : ''}${disabled ? ' is-locked' : ''}${
+        onHold && hold.holding ? ' is-holding' : ''}`}
       title={title ?? undefined}
+      {...(onHold ? hold.handlers : {})}
     >
       <input
         type={type}
@@ -161,6 +169,8 @@ function sizeOf(id: SetId): string {
 export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.Element {
   const { settings, set, reset } = useSettings()
   const [tab, setTab] = useState<Tab>('view')
+  const [gallery, setGallery] = useState<SetId | null>(null)
+  const body = useRef<HTMLDivElement>(null)
   const pct = (v: number): string => `${Math.round(v * 100)}%`
   const isDefault = (Object.keys(DEFAULTS) as (keyof Settings)[])
     .every((k) => (k === 'sets'
@@ -202,14 +212,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
               aria-selected={tab === t.id}
               aria-controls={`panel-${t.id}`}
               className={`tab${tab === t.id ? ' is-on' : ''}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id)
+                // Лист не меняет высоту, но вторая вкладка длиннее первой:
+                // без этого она открывалась бы посередине.
+                if (body.current) body.current.scrollTop = 0
+              }}
             >
               {t.name}
             </button>
           ))}
         </div>
 
-        <div className="settings" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        <div
+          className="settings"
+          ref={body}
+          role="tabpanel"
+          id={`panel-${tab}`}
+          aria-labelledby={`tab-${tab}`}
+        >
           {tab === 'view' && (
             <>
               <Slider
@@ -241,7 +262,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
               <div className="group__meter">
                 <span className="setting__value">{UI.cardsInDeck(deckSize)}</span>
                 <span className="setting__hint" style={{ margin: 0 }}>
-                  {UI.setsOn(settings.sets.length, ALL_SETS.length)}
+                  {UI.setsOn(settings.sets.length, ALL_SETS.length)} · {UI.setHoldHint}
                 </span>
               </div>
               <div className="opt-grid sets">
@@ -256,8 +277,9 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
                       badge={sizes.get(id) ?? ''}
                       checked={on}
                       disabled={last}
-                      title={last ? UI.lastSetLocked : undefined}
+                      title={last ? UI.lastSetLocked : UI.setHoldHint}
                       onSelect={() => toggleSet(id)}
+                      onHold={() => setGallery(id)}
                     />
                   )
                 })}
@@ -342,6 +364,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
           </button>
         </div>
       </div>
+
+      {gallery ? <SetGallery set={gallery} onClose={() => setGallery(null)} /> : null}
     </div>
   )
 }

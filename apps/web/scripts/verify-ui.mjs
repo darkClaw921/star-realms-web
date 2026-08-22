@@ -190,7 +190,26 @@ async function main() {
       'Вкладка правил партии. Двадцать сценариев и семь командных колод — плитками, ' +
       'а не строкой флажков: у каждого варианта есть название и предложение правил, ' +
       'и подряд они читались как сплошной текст.'))
-    await openTab(page, 'Отображение')
+
+    // Лист настроек не должен менять высоту при переключении вкладок: он
+    // прижат к низу экрана, и вкладка, которая уезжает из-под курсора, --
+    // ровно то, на что жаловались. Голова, вкладки и подвал стоят, скроллит
+    // только тело между ними.
+    const frame = () => page.evaluate(() => {
+      const r = (sel) => {
+        const b = document.querySelector(sel)?.getBoundingClientRect()
+        return b ? `${Math.round(b.top)}/${Math.round(b.height)}` : '?'
+      }
+      return { sheet: r('.sheet--settings'), tabs: r('.tabs'), foot: r('.sheet__foot') }
+    })
+    const frames = []
+    for (const name of ['Отображение', 'Наборы карт', 'Правила партии', 'Отображение']) {
+      await openTab(page, name)
+      frames.push(await frame())
+    }
+    const stable = frames.every((f) => JSON.stringify(f) === JSON.stringify(frames[0]))
+    record('вкладки не сдвигают панель', stable,
+      frames.map((f) => `${f.sheet} ${f.tabs} ${f.foot}`).join(' | '))
 
     await page.evaluate(() => {
       const r = document.querySelector('input[type=range]')
@@ -395,6 +414,67 @@ async function main() {
       const backText = await textOf(page, '.band--market .zone__head')
       const backDeck = Number((backText.match(/(\d+)/) ?? [])[1] ?? 0)
       record('выключение возвращает базовый набор', backDeck < 80, `в колоде: ${backDeck}`)
+    }
+
+    // ── 2b3. набор целиком по удержанию ───────────────────────────────────
+    {
+      await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
+      await page.waitForSelector('.table', { timeout: 10000 })
+      await sleep(900)
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')]
+          .find((x) => x.getAttribute('aria-label') === 'Настройки')
+        b?.click()
+      })
+      await sleep(500)
+      await openTab(page, 'Наборы карт')
+
+      const tile = await page.$eval('.sets:not(.sets--decks) .opt', (el) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      })
+      await page.mouse.move(tile.x, tile.y)
+      await page.mouse.down()
+      await sleep(900)
+      await page.mouse.up()
+      await sleep(400)
+
+      const cards = await page.$$eval('.sheet--gallery .card', (els) => els.length)
+      const title = await textOf(page, '.sheet--gallery .sheet__title')
+      // Базовый набор -- 46 уникальных карт торговой колоды плюс разведчик,
+      // гадюка и исследователь.
+      record('удержание открывает набор целиком', cards === 49 && title === 'Базовый набор',
+        `${title}: карт ${cards}`)
+
+      shots.push(await shot(page, 'set-gallery',
+        'Набор, открытый удержанием на его плитке в настройках. Все карты набора ' +
+        'разложены по ролям; удержание работает и здесь — на самой карте.'))
+
+      await page.keyboard.press('Escape')
+      await sleep(300)
+      const closed = await page.$$eval('.sheet--gallery', (els) => els.length)
+      record('Esc закрывает набор', closed === 0, `окон: ${closed}`)
+
+      // Тот же жест не должен заодно включить набор. Берётся второй,
+      // выключенный: у первого флажок и так заблокирован, и он бы промолчал.
+      const second = () => page.$eval('.sets:not(.sets--decks) .opt:nth-of-type(2) input',
+        (e) => e.checked)
+      const wasOn = await second()
+      const tile2 = await page.$eval('.sets:not(.sets--decks) .opt:nth-of-type(2)', (el) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+      })
+      await page.mouse.move(tile2.x, tile2.y)
+      await page.mouse.down()
+      await sleep(900)
+      await page.mouse.up()
+      await sleep(400)
+      const nowOn = await second()
+      const title2 = await textOf(page, '.sheet--gallery .sheet__title')
+      record('удержание не переключает набор',
+        nowOn === wasOn && title2 === 'Frontiers', `${wasOn} → ${nowOn}, окно: ${title2}`)
+      await page.keyboard.press('Escape')
+      await sleep(250)
     }
 
     // ── 2b-bis. гамбиты и миссии ──────────────────────────────────────────
