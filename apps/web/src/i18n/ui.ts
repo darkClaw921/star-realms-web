@@ -57,6 +57,7 @@ export const UI = {
   applyAllies: 'Все союзы',
   applyAlliesHint: 'Применяет подряд только союзные свойства.',
   applyRunning: 'Применяю…',
+  applyStop: 'Стоп',
   log: 'Журнал',
   handEmpty: 'Рука пуста',
 

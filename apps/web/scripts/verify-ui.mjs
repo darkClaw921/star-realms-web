@@ -1317,6 +1317,10 @@ async function main() {
             .find((x) => (x.textContent ?? '').includes('Все свойства'))
           if (!b) return false
           b.click()
+          // Перерисовки во время очереди — не выдумка проверки, а обычный ход:
+          // снимок от бота, ответ сервера, любое изменение стола. Раньше
+          // каждая из них отменяла отложенный шаг, и очередь стояла на месте.
+          window.__spam = setInterval(() => window.__lab.patch(() => {}), 60)
           return true
         })
         // Свойство посреди цепочки может задать вопрос: отвечаем и смотрим,
@@ -1348,6 +1352,7 @@ async function main() {
           await sleep(200)
           await clickText(fan, 'Подтвердить', 700)
         }
+        await fan.evaluate(() => { clearInterval(window.__spam) })
         const stuck = await fan.$('.choice')
         const after = await fan.evaluate(() => {
           const s = window.__lab.info.state.players.p1
@@ -1358,7 +1363,7 @@ async function main() {
         })
         const gained = (after.trade - before.trade) + (after.combat - before.combat)
           + (after.auth - before.auth)
-        record('одно нажатие применяет все свойства',
+        record('очередь свойств не сбивается перерисовками',
           pressed && !stuck && before.acts > 1 && after.acts === 0 && gained > 0,
           `кнопок свойств ${before.acts}→${after.acts}, набрано ${gained}, `
           + `вопросов по пути ${asked}${stuck ? ', окно выбора осталось открытым' : ''}`)

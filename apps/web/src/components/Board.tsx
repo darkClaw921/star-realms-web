@@ -56,6 +56,7 @@ export function Board({
   // его ради удобства значило бы завести второй способ менять состояние.
   const [auto, setAuto] = useState<null | 'all' | 'ally'>(null)
   const autoSteps = useRef(0)
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /** Index the legal set once so every control can ask "is this allowed?" cheaply. */
   const idx = useMemo(() => {
@@ -131,11 +132,41 @@ export function Board({
   const nextAuto = (mode: 'all' | 'ally'): Action | undefined =>
     legal.find((a) => a.t === 'ACTIVATE' && autoFits(a.slot, mode))
 
+  /**
+   * Первое свойство применяется СРАЗУ, остальные — по очереди.
+   *
+   * Отклик на нажатие обязан быть мгновенным: очередь, которая начинается
+   * через паузу, неотличима от кнопки, которая ничего не сделала.
+   */
+  const startAuto = (mode: 'all' | 'ally'): void => {
+    autoSteps.current = 0
+    const first = nextAuto(mode)
+    setAuto(mode)
+    if (first) onAction(first)
+  }
+  const stopAuto = (): void => {
+    setAuto(null)
+    autoSteps.current = 0
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current)
+      autoTimer.current = null
+    }
+  }
+
   useEffect(() => {
     if (!auto) return
+    // Не наш ход — цепочке нечего делать. Иначе она осталась бы включённой,
+    // а кнопка — нажатой и бесполезной до конца партии.
+    if (!myTurn) { stopAuto(); return }
     // Вопрос ждёт ответа игрока — цепочка продолжится сама, как только он
     // ответит: прерывать её значило бы заставить начинать заново.
     if (v.pendingChoice) return
+    // Шаг уже запланирован. Проверка обязательна: эффект выполняется после
+    // КАЖДОЙ перерисовки, а их во время хода десятки — снимок от бота, ответ
+    // сервера, любое движение мыши по карте. Раньше каждая из них отменяла
+    // отложенный шаг и ставила новый, и при частых перерисовках очередь не
+    // двигалась вовсе: кнопка выглядела нажатой и не делала ничего.
+    if (autoTimer.current) return
     const next = nextAuto(auto)
     if (!next || autoSteps.current > 40) {
       setAuto(null)
@@ -145,9 +176,15 @@ export function Board({
     autoSteps.current += 1
     // Пауза не для красоты: без неё десяток свойств срабатывает в один кадр,
     // звуки сливаются в кашу, а журнал прокручивается быстрее, чем читается.
-    const t = setTimeout(() => onAction(next), 140)
-    return () => clearTimeout(t)
+    autoTimer.current = setTimeout(() => {
+      autoTimer.current = null
+      onAction(next)
+    }, 140)
   })
+
+  useEffect(() => () => {
+    if (autoTimer.current) clearTimeout(autoTimer.current)
+  }, [])
 
   if (passScreen) {
     return (
@@ -430,26 +467,27 @@ export function Board({
             {/* Пакетные кнопки появляются только когда есть что применять:
               * кнопка, которая всегда есть и обычно ничего не делает, читается
               * как сломанная. */}
-            {nextAuto('all') && (
+            {(nextAuto('all') || auto === 'all') && (
               <button
                 type="button"
-                className="btn btn--sm"
-                disabled={auto !== null}
+                className={`btn btn--sm${auto === 'all' ? ' btn--primary' : ''}`}
                 title={UI.applyAllHint}
-                onClick={() => { autoSteps.current = 0; setAuto('all') }}
+                // Пока цепочка идёт, кнопка её останавливает, а не отключается:
+                // мёртвая кнопка неотличима от сломанной, а прервать очередь
+                // после первой же неожиданности хочется чаще, чем кажется.
+                onClick={() => (auto ? stopAuto() : startAuto('all'))}
               >
-                {auto === 'all' ? UI.applyRunning : UI.applyAll}
+                {auto === 'all' ? UI.applyStop : UI.applyAll}
               </button>
             )}
-            {nextAuto('ally') && (
+            {(nextAuto('ally') || auto === 'ally') && (
               <button
                 type="button"
-                className="btn btn--sm"
-                disabled={auto !== null}
+                className={`btn btn--sm${auto === 'ally' ? ' btn--primary' : ''}`}
                 title={UI.applyAlliesHint}
-                onClick={() => { autoSteps.current = 0; setAuto('ally') }}
+                onClick={() => (auto ? stopAuto() : startAuto('ally'))}
               >
-                {auto === 'ally' ? UI.applyRunning : UI.applyAllies}
+                {auto === 'ally' ? UI.applyStop : UI.applyAllies}
               </button>
             )}
           </div>
