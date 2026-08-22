@@ -38,6 +38,7 @@ function Rail({
           className={`rail__cell${trade > 0 ? ' is-live' : ''}`}
           style={{ '--cell': 'var(--trade)' } as React.CSSProperties}
           title={UI.trade}
+          {...(fx ? { 'data-fx': `trade:${fx}` } : {})}
         >
           <Icon name="trade" />
           {trade}

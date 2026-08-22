@@ -1450,6 +1450,120 @@ async function main() {
         record('карты с доступными свойствами стоят слева', sorted, ordered.join(' · '))
       }
 
+      // ── полёт ресурсов ────────────────────────────────────────────────
+      //
+      // Ресурс идёт двумя отрезками: от карты в счётчик, когда его получают, и
+      // из счётчика в цель, когда тратят. Правило, ради которого всё делалось:
+      // сколько единиц — столько летящих значков, и форма у них та же, что у
+      // значка в счётчике, а не безымянная искра.
+      {
+        await fan.evaluate(() => {
+          window.__lab.patch((d) => {
+            const p = d.players.p1
+            p.inPlay = []; p.combat = 0; p.trade = 0
+            p.hand = [{ iid: 'flight-probe', def: 'battle-blob', used: {} }]
+          })
+        })
+        await sleep(500)
+        await fan.evaluate(() => {
+          const card = document.querySelector('.band--hand .card')
+          ;(card instanceof HTMLElement ? card : null)?.click()
+        })
+        await sleep(240)
+        const gain = await fan.evaluate(() => {
+          const layer = document.querySelector('.fx-flight')
+          const kids = layer ? [...layer.children] : []
+          const cell = document.querySelector('[data-fx="combat:me"]')?.getBoundingClientRect()
+          return {
+            n: kids.length,
+            shape: kids[0]?.querySelector('use')?.getAttribute('href') ?? null,
+            colour: kids[0] ? getComputedStyle(kids[0]).color : null,
+            combat: window.__lab.info.state.players.p1.combat,
+            toCell: !!cell,
+          }
+        })
+        // «Боевой слизень» даёт ровно 8 боя — восемь значков, не вспышка.
+        record('сколько ресурса — столько летящих значков',
+          gain.combat === 8 && gain.n === 8 && gain.shape === '#i-combat' && gain.toCell,
+          `бой ${gain.combat}, значков ${gain.n}, форма ${gain.shape}, цвет ${gain.colour}`)
+
+        await sleep(1200)
+        // Покупка: плата уходит из счётчика торговли в купленную карту.
+        await fan.evaluate(() => { window.__lab.patch((d) => { d.players.p1.trade = 9 }) })
+        await sleep(500)
+        const cost = await fan.evaluate(() => {
+          const card = [...document.querySelectorAll('.band--market .card')]
+            .find((c) => c.classList.contains('is-playable'))
+          const n = Number(card?.querySelector('.card__cost')?.textContent ?? 0)
+          ;(card instanceof HTMLElement ? card : null)?.click()
+          return n
+        })
+        await sleep(240)
+        const paid = await fan.evaluate(() => {
+          const layer = document.querySelector('.fx-flight')
+          const kids = layer ? [...layer.children] : []
+          return { n: kids.length, shape: kids[0]?.querySelector('use')?.getAttribute('href') ?? null }
+        })
+        record('плата летит из счётчика в купленную карту',
+          paid.n === cost && paid.shape === '#i-trade',
+          `цена ${cost}, значков ${paid.n}, форма ${paid.shape}`)
+
+        await sleep(1200)
+        // Атака: бой уходит из счётчика в авторитет соперника.
+        await fan.evaluate(() => {
+          window.__lab.patch((d) => { d.players.p1.combat = 7; d.players.p2.inPlay = [] })
+        })
+        await sleep(500)
+        await fan.evaluate(() => {
+          const b = [...document.querySelectorAll('.band .btn')]
+            .find((x) => (x.textContent ?? '').includes('Атака на'))
+          ;(b instanceof HTMLElement ? b : null)?.click()
+        })
+        await sleep(240)
+        const hit = await fan.evaluate(() => {
+          const layer = document.querySelector('.fx-flight')
+          const kids = layer ? [...layer.children] : []
+          return { n: kids.length, shape: kids[0]?.querySelector('use')?.getAttribute('href') ?? null }
+        })
+        record('удар летит из счётчика боя в авторитет соперника',
+          hit.n === 7 && hit.shape === '#i-combat',
+          `значков ${hit.n}, форма ${hit.shape}`)
+
+        await sleep(1200)
+        // Выключенные эффекты выключают и полёт: настройка одна на всё.
+        await fan.evaluate(() => {
+          const raw = localStorage.getItem('sr:settings')
+          const s = raw ? JSON.parse(raw) : {}
+          localStorage.setItem('sr:settings', JSON.stringify({ ...s, effects: false }))
+        })
+        await fan.reload({ waitUntil: 'networkidle2' })
+        await fan.waitForSelector('.lab', { timeout: 10000 })
+        await sleep(800)
+        await fan.evaluate(() => {
+          window.__lab.patch((d) => {
+            const p = d.players.p1
+            p.inPlay = []; p.combat = 0
+            p.hand = [{ iid: 'flight-probe-2', def: 'battle-blob', used: {} }]
+          })
+        })
+        await sleep(500)
+        await fan.evaluate(() => {
+          const card = document.querySelector('.band--hand .card')
+          ;(card instanceof HTMLElement ? card : null)?.click()
+        })
+        await sleep(240)
+        const off = await fan.evaluate(() => document.querySelectorAll('.fx-flight > *').length)
+        record('полёт выключается настройкой эффектов', off === 0, `значков ${off}`)
+        await fan.evaluate(() => {
+          const raw = localStorage.getItem('sr:settings')
+          const s = raw ? JSON.parse(raw) : {}
+          localStorage.setItem('sr:settings', JSON.stringify({ ...s, effects: true }))
+        })
+        await fan.reload({ waitUntil: 'networkidle2' })
+        await fan.waitForSelector('.lab', { timeout: 10000 })
+        await sleep(800)
+      }
+
       // ── стопка баз ────────────────────────────────────────────────────
       //
       // Базы и аванпосты стоят слева отдельной колонкой и складываются сверху

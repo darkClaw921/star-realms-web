@@ -2076,6 +2076,44 @@ input[type='range'] {
   pointer-events: none;
 }
 
+/* ── полёт ресурсов ─────────────────────────────────────────────────────────
+ *
+ * Значки летят поверх стола отдельным слоем: канва занята частицами, а здесь
+ * нужен настоящий <svg><use> — форма летящего ресурса обязана совпадать со
+ * значком в счётчике один в один, иначе это просто цветная точка. */
+.fx-flight {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  pointer-events: none;
+}
+.fx-drop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+.fx-drop svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  filter: drop-shadow(0 0 6px currentColor);
+  will-change: transform, opacity;
+}
+
+/* Щелчок цели на каждую прилетевшую единицу. */
+.rail__cell.is-tick,
+.card-slot.is-tick,
+[data-iid].is-tick {
+  animation: fx-tick 0.2s ease-out;
+}
+@keyframes fx-tick {
+  0% { transform: none; }
+  45% { transform: scale(1.1); }
+  100% { transform: none; }
+}
+
 .fx-pop {
   position: fixed;
   z-index: 41;
@@ -2151,7 +2189,7 @@ input[type='range'] {
 /* Просьба системы «поменьше движения» относится и к эффектам: канвас с
  * летящими осколками — ровно то, от чего эта настройка защищает. */
 @media (prefers-reduced-motion: reduce) {
-  .fx-canvas, .fx-pop, .fx-flash { display: none; }
+  .fx-canvas, .fx-pop, .fx-flash, .fx-flight { display: none; }
 }
 
 /* ── полигон ────────────────────────────────────────────────────────────────

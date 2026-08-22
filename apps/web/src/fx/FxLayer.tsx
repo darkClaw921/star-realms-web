@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { cardDef, type CardDefId, type GameEvent, type PlayerId } from '@sr/engine'
 import type { MatchSnapshot } from '@/match/types'
 import { armAudio, SFX } from './audio'
+import { rain, clearFlight } from './flight'
 import { anim, burst, clearFx, popText, ring, screenFlash } from './particles'
 
 const BLOB = '#5fd08a'
@@ -61,7 +62,7 @@ export function FxLayer({
     }
   }, [])
 
-  useEffect(() => clearFx, [])
+  useEffect(() => () => { clearFx(); clearFlight() }, [])
 
   useLayoutEffect(() => {
     const fresh = snapshot.tick !== seen.current
@@ -102,9 +103,16 @@ function anchorIid(iid: string | null, iids: Map<string, Point>): Point | null {
   return live ? centreOf(live) : iids.get(iid) ?? null
 }
 
-function hudPoint(who: 'me' | 'them', what: 'authority' | 'combat'): Point | null {
-  const el = document.querySelector(`[data-fx="${what}:${who}"]`)
+function hudPoint(who: 'me' | 'them', what: 'authority' | 'combat' | 'trade'): Point | null {
+  const el = hudCell(who, what)
   return el ? centreOf(el) : null
+}
+
+/** Ячейка счётчика как элемент: полёту нужна не точка, а живая цель. */
+function hudCell(
+  who: 'me' | 'them', what: 'authority' | 'combat' | 'trade',
+): Element | null {
+  return document.querySelector(`[data-fx="${what}:${who}"]`)
 }
 
 function colorOf(def: CardDefId): string {
@@ -115,12 +123,18 @@ function run(
   events: readonly GameEvent[], viewer: PlayerId,
   iids: Map<string, Point>, defs: Map<string, Point>,
 ): void {
+  // Событие GAIN не называет карту, которая его дала: движок сообщает «плюс
+  // три торговли», и всё. Но приходит оно сразу за розыгрышем или включённым
+  // свойством, в одном пакете, — поэтому источником служит последняя карта,
+  // о которой пакет говорил. Ресурсу есть откуда лететь.
+  let source: Element | Point | null = null
   for (const e of events) {
     switch (e.e) {
       case 'PLAY_CARD': {
         const base = cardDef(e.def).type !== 'ship'
         if (base) SFX.playBase(); else SFX.playShip()
         const el = document.querySelector(`[data-iid="${CSS.escape(e.iid)}"]`)
+        if (e.player === viewer) source = el ?? anchorIid(e.iid, iids)
         if (el) {
           anim(el, 'fx-lift', 0.45)
           const p = centreOf(el)
@@ -136,6 +150,7 @@ function run(
         // Свойство, включённое кнопкой под картой, — такое же действие, как
         // розыгрыш, и без отклика кнопка выглядит нажатой впустую.
         const el = document.querySelector<HTMLElement>(`[data-iid="${CSS.escape(e.iid)}"]`)
+        if (e.player === viewer) source = el ?? anchorIid(e.iid, iids)
         const colour = colorOf(e.def)
         const ally = e.slot !== 'primary' && e.slot !== 'trigger'
           && e.slot !== 'scrap' && e.slot !== 'splinter'
@@ -161,6 +176,12 @@ function run(
       case 'ACQUIRE': {
         SFX.acquire()
         const p = defs.get(e.def)
+        // Плата уходит из счётчика в карту: столько значков торговли, сколько
+        // она стоила. Бесплатное приобретение не платится и не летит.
+        if (e.player === viewer && e.cost > 0) {
+          const live = document.querySelector(`.band--market [data-def="${CSS.escape(e.def)}"]`)
+          rain(hudCell('me', 'trade'), live ?? p ?? null, 'trade', e.cost)
+        }
         if (p) {
           burst({
             x: p.x, y: p.y, n: 14, speed: 150, g: 420,
@@ -219,6 +240,12 @@ function run(
       case 'BASE_DESTROYED': {
         SFX.baseDestroyed()
         const p = anchorIid(e.iid, iids)
+        // Снос базы боем — та же трата: значки уходят из счётчика в базу, по
+        // одному на каждую единицу её защиты.
+        if (e.by === 'combat' && e.owner !== viewer) {
+          const live = document.querySelector(`[data-iid="${CSS.escape(e.iid)}"]`)
+          rain(hudCell('me', 'combat'), live ?? p ?? null, 'combat', cardDef(e.def).defense ?? 0)
+        }
         if (p) {
           ring(p.x, p.y, '#ffd0a0', { life: 0.45, size: 10, grow: 150 })
           burst({
@@ -246,19 +273,24 @@ function run(
 
       case 'GAIN': {
         if (e.player !== viewer) break
+        if (e.n <= 0) break
+        // Ресурс проливается от карты, которая его дала, в свой счётчик —
+        // столькими значками, сколько единиц пришло.
+        const cell = hudCell('me', e.what)
+        rain(source ?? cell, cell, e.what, e.n)
         if (e.what === 'authority') { SFX.authority(); break }
         if (e.what !== 'combat') break
         // Прирост боя без звука: он капает почти с каждой карты, и озвученный
         // превращает ход в очередь сигналов.
-        const p = hudPoint('me', 'combat')
-        const cell = document.querySelector('[data-fx="combat:me"]')
         if (cell) anim(cell, 'fx-tickle', 0.35)
-        if (p) {
-          burst({
-            x: p.x, y: p.y, n: 12, dir: -Math.PI / 2, spread: 2, speed: 150, g: 400,
-            color: ['#ffd0a0', CULT], shape: 'spark', size: 2.2, life: 0.5, jitter: 12,
-          })
-        }
+        break
+      }
+
+      case 'ATTACK_PLAYER': {
+        // Бой уходит из счётчика в авторитет цели: удар видно как перелёт, а
+        // не только как убывшее число.
+        if (e.attacker !== viewer) break
+        rain(hudCell('me', 'combat'), hudCell('them', 'authority'), 'combat', e.n)
         break
       }
 

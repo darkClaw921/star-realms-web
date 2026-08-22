@@ -101,7 +101,9 @@ function tick(t: number): void {
       c.strokeStyle = p.color
       c.lineWidth = Math.max(1, 3 * fade)
       c.beginPath()
-      c.arc(0, 0, p.size + k * p.grow, 0, Math.PI * 2)
+      // Радиус не бывает отрицательным: canvas на такое бросает исключение и
+      // рвёт весь кадр, а с ним и все остальные частицы.
+      c.arc(0, 0, Math.max(0, p.size + k * p.grow), 0, Math.PI * 2)
       c.stroke()
     } else if (p.shape === 'shard') {
       c.fillStyle = p.color
@@ -122,7 +124,7 @@ function tick(t: number): void {
     } else {
       c.fillStyle = p.color
       c.beginPath()
-      c.arc(0, 0, p.size * (p.shrink ? fade : 1), 0, Math.PI * 2)
+      c.arc(0, 0, Math.max(0, p.size * (p.shrink ? fade : 1)), 0, Math.PI * 2)
       c.fill()
     }
     c.restore()
