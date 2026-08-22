@@ -2048,3 +2048,167 @@ input[type='range'] {
 @media (prefers-reduced-motion: reduce) {
   .fx-canvas, .fx-pop, .fx-flash { display: none; }
 }
+
+/* ── полигон ────────────────────────────────────────────────────────────────
+ *
+ * Пульт стоит поверх настоящего стола, а не вместо него: смысл полигона в том,
+ * что эффект ложится на реальную карту реального размера, а механика после
+ * расстановки проверяется обычными ходами.
+ *
+ * Панель отдельным столбцом справа и сворачивается в корешок: стол под ней
+ * должен оставаться играбельным целиком, включая руку и торговый ряд.
+ */
+.lab {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 38;
+  width: min(360px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border-left: 1px solid var(--rule);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, .45);
+}
+
+.lab__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.lab__title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.lab__meters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.tabs--lab { padding: 0 8px; }
+
+.lab__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 10px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lab__row, .lab__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lab__grid .btn { flex: 1 1 44%; }
+
+.lab__group {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.lab__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.lab__search {
+  font: inherit;
+  color: var(--ink);
+  background: var(--hull);
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+}
+
+.lab__list, .lab__cases {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lab__card, .lab__case {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  background: var(--hull);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  padding: 6px 9px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.lab__card:hover, .lab__case:hover { background: var(--panel-hi); border-color: var(--rule-hi); }
+
+.lab__cost {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--trade);
+}
+
+.lab__case { flex-direction: column; align-items: stretch; gap: 3px; }
+.lab__case-name { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.lab__case-hint { font-size: 12px; color: var(--ink-dim); line-height: 1.4; }
+
+/* Корешок свёрнутого пульта. */
+.lab__tab, .lab__deal {
+  position: fixed;
+  z-index: 38;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  background: var(--panel-hi);
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  padding: 8px 10px;
+}
+
+.lab__tab { top: 50%; right: 0; transform: translateY(-50%); }
+.lab__deal { bottom: 8px; right: min(360px, 92vw); border-radius: var(--r-md); }
+
+.linkish {
+  font: inherit;
+  color: var(--authority);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Пульт полигона занимает свой столбец, а не накрывает стол. */
+body.has-lab .table { padding-right: min(360px, 92vw); }

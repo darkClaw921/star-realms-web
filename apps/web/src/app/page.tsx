@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { FACTION_VAR } from '@/components/Icons'
+import { LAB } from '@/i18n/lab.ru'
 import { UI } from '@/i18n/ui'
 
 const MODES = [
@@ -63,6 +64,15 @@ export default function Menu(): React.JSX.Element {
             </button>
           ))}
         </div>
+
+        {/* Полигон — инструмент, а не режим игры: отдельной строкой под
+          * плитками, чтобы его нельзя было принять за шестой способ сыграть. */}
+        <p className="menu__foot">
+          <button type="button" className="linkish" onClick={() => router.push('/lab')}>
+            {LAB.title}
+          </button>
+          {' — '}{LAB.subtitle}
+        </p>
 
         <p className="menu__foot">{UI.legal}</p>
       </div>

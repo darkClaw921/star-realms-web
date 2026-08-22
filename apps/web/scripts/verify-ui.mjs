@@ -1138,6 +1138,90 @@ async function main() {
       record('командный режим отработал', false, String(e).slice(0, 200))
     }
 
+    // ── 4d. полигон ───────────────────────────────────────────────────────
+    // Смысл полигона в том, что стол под пультом остаётся НАСТОЯЩИМ: движок,
+    // бот и правила те же. Проверяется именно это, а не пульт сам по себе.
+    {
+      const lab = await browser.newPage()
+      watchConsole(lab, 'lab')
+      await lab.evaluateOnNewDocument(() => {
+        window.__osc = 0
+        const start = OscillatorNode.prototype.start
+        OscillatorNode.prototype.start = function (...a) {
+          window.__osc += 1
+          return start.apply(this, a)
+        }
+      })
+      await lab.goto(`${BASE}/lab`, { waitUntil: 'networkidle2' })
+      await lab.waitForSelector('.lab', { timeout: 10000 })
+      await sleep(1200)
+
+      // Карта из пульта попадает на настоящий стол и становится настоящей
+      // картой: с якорем для эффектов и с кнопками свойств.
+      await lab.evaluate(() => {
+        const b = [...document.querySelectorAll('.lab__row .btn')]
+          .find((x) => (x.textContent ?? '').includes('Мне в игру'))
+        b?.click()
+      })
+      await lab.type('.lab__search', 'Колесо')
+      await sleep(300)
+      await lab.click('.lab__card')
+      await sleep(400)
+      const placed = await lab.evaluate(() => ({
+        inPlay: document.querySelectorAll('.band--board [data-iid]').length,
+        buttons: document.querySelectorAll('.band--board .actions .btn').length,
+      }))
+      record('полигон кладёт карту на настоящий стол',
+        placed.inPlay === 1 && placed.buttons > 0,
+        `в игре: ${placed.inPlay}, кнопок свойств: ${placed.buttons}`)
+
+      // Эффект запускается настоящим событием по настоящей карте.
+      await lab.evaluate(() => {
+        const t = [...document.querySelectorAll('.tabs--lab .tab')]
+          .find((x) => (x.textContent ?? '').includes('Эффекты'))
+        t?.click()
+      })
+      await sleep(200)
+      await lab.evaluate(() => {
+        const b = [...document.querySelectorAll('.lab__grid .btn')]
+          .find((x) => (x.textContent ?? '').includes('База уничтожена'))
+        b?.click()
+      })
+      await sleep(250)
+      const fired = await lab.evaluate(() => ({
+        live: Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0),
+        osc: window.__osc ?? -1,
+      }))
+      record('полигон показывает эффект на настоящей карте',
+        fired.live > 0 && fired.osc > 0, `частиц: ${fired.live}, звуков: ${fired.osc}`)
+
+      // Главное: расстановка идёт мимо правил, а ИГРА — нет. Аутпост обязан
+      // закрывать обычную базу от выбора цели, как и в настоящей партии.
+      await lab.evaluate(() => {
+        const t = [...document.querySelectorAll('.tabs--lab .tab')]
+          .find((x) => (x.textContent ?? '').includes('Ситуации'))
+        t?.click()
+      })
+      await sleep(200)
+      await lab.evaluate(() => {
+        const b = [...document.querySelectorAll('.lab__case')]
+          .find((x) => (x.textContent ?? '').includes('Аутпост'))
+        b?.click()
+      })
+      await sleep(500)
+      const shield = await lab.evaluate(() => ({
+        bases: document.querySelectorAll('.band:first-of-type [data-iid]').length,
+        open: document.querySelectorAll('.band:first-of-type .card.is-playable').length,
+      }))
+      record('на полигоне правила те же: аутпост прикрывает базу',
+        shield.bases === 2 && shield.open === 1,
+        `баз: ${shield.bases}, доступно для атаки: ${shield.open}`)
+      shots.push(await shot(lab, 'lab',
+        'Полигон. Стол настоящий — тот же движок, бот и правила; пульт справа только расставляет положение, '
+        + 'запускает эффекты по настоящим картам и собирает ситуации вроде «аутпост прикрывает».'))
+      await lab.close()
+    }
+
     // ── 5. mobile portrait ────────────────────────────────────────────────
     const m = await browser.newPage()
     watchConsole(m, 'mobile')

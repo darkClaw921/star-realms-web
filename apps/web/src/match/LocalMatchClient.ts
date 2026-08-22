@@ -37,16 +37,20 @@ export interface LocalOptions {
 /**
  * Runs the engine in the browser for hot-seat and vs-AI.
  *
+ * Несколько полей объявлены protected, а не private: полигон (LabMatchClient)
+ * правит состояние напрямую. Это его единственная законная точка входа — в
+ * обычной партии состояние меняет только reduce().
+ *
  * Note that it STILL calls redact(), with the viewer set to whoever currently
  * owns the input. Skipping redaction because "it's local" would mean the online
  * mode is the first place redaction ever runs in anger -- which is exactly how
  * leaks ship.
  */
 export class LocalMatchClient implements MatchClient {
-  private state: GameState
-  private log: LogLine[] = []
-  private events: readonly GameEvent[] = []
-  private tick = 0
+  protected state: GameState
+  protected log: LogLine[] = []
+  protected events: readonly GameEvent[] = []
+  protected tick = 0
   private subs = new Set<(s: MatchSnapshot) => void>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
@@ -109,7 +113,7 @@ export class LocalMatchClient implements MatchClient {
     return () => { this.subs.delete(cb) }
   }
 
-  private emit(): void {
+  protected emit(): void {
     if (this.disposed) return
     const snap = this.snapshot()
     for (const cb of this.subs) cb(snap)
