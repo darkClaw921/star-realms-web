@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   cardDef, costFor, EXPLORER, TENTACLE_FACTIONS,
   type Action, type CardIid, type Faction, type PlayerId,
@@ -49,6 +49,12 @@ export function Board({
   const { view: v, legal, log, botThinking } = snapshot
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { settings } = useSettings()
+  // «Применить всё» шлёт действия ПО ОДНОМУ и перечитывает список законных
+  // после каждого: союз может открыться посреди цепочки, а свойство —
+  // задать вопрос. Пакетного действия в движке нет намеренно, и придумывать
+  // его ради удобства значило бы завести второй способ менять состояние.
+  const [auto, setAuto] = useState<null | 'all' | 'ally'>(null)
+  const autoSteps = useRef(0)
 
   /** Index the legal set once so every control can ask "is this allowed?" cheaply. */
   const idx = useMemo(() => {
@@ -95,10 +101,44 @@ export function Board({
   // A co-op team shares its turn, so "my turn" is membership in the actor set
   // rather than being the single actor.
   const myTurn = v.actors.includes(v.viewer) && v.phase === 'main'
+  // Карты, у которых осталось непримененное свойство, идут первыми: в
+  // сложенном ряду левые видны целиком, и искать среди отработавших то, что
+  // ещё ждёт нажатия, не приходится. Сортировка устойчива, поэтому порядок
+  // разыгрывания внутри каждой группы сохраняется.
+  const inPlayOrdered = useMemo(() => {
+    const open = (iid: string): number => ((idx.activate.get(iid)?.size ?? 0) > 0 ? 0 : 1)
+    return [...v.me.inPlay].sort((a, b) => open(a.iid) - open(b.iid))
+  }, [v.me.inPlay, idx.activate])
   const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
+
+  // Утилизация и сплинтер уничтожают карту, поэтому в пакет не входят: их
+  // выбирают поимённо, а не «применить всё».
+  const AUTO_SLOTS: readonly string[] = ['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly']
+  const autoFits = (slot: string, mode: 'all' | 'ally'): boolean =>
+    mode === 'all' ? AUTO_SLOTS.includes(slot) : AUTO_SLOTS.includes(slot) && slot !== 'primary'
+  const nextAuto = (mode: 'all' | 'ally'): Action | undefined =>
+    legal.find((a) => a.t === 'ACTIVATE' && autoFits(a.slot, mode))
+
+  useEffect(() => {
+    if (!auto) return
+    // Вопрос ждёт ответа игрока — цепочка продолжится сама, как только он
+    // ответит: прерывать её значило бы заставить начинать заново.
+    if (v.pendingChoice) return
+    const next = nextAuto(auto)
+    if (!next || autoSteps.current > 40) {
+      setAuto(null)
+      autoSteps.current = 0
+      return
+    }
+    autoSteps.current += 1
+    // Пауза не для красоты: без неё десяток свойств срабатывает в один кадр,
+    // звуки сливаются в кашу, а журнал прокручивается быстрее, чем читается.
+    const t = setTimeout(() => onAction(next), 140)
+    return () => clearTimeout(t)
+  })
 
   if (passScreen) {
     return (
@@ -376,12 +416,39 @@ export function Board({
       {/* ── my board ─────────────────────────────────────────────────────── */}
       <section className="band band--board">
         <div className="zone" style={{ minHeight: 0, overflow: 'auto' }}>
-          <span className="eyebrow">{UI.inPlay}</span>
+          <div className="zone__head">
+            <span className="eyebrow">{UI.inPlay}</span>
+            {/* Пакетные кнопки появляются только когда есть что применять:
+              * кнопка, которая всегда есть и обычно ничего не делает, читается
+              * как сломанная. */}
+            {nextAuto('all') && (
+              <button
+                type="button"
+                className="btn btn--sm"
+                disabled={auto !== null}
+                title={UI.applyAllHint}
+                onClick={() => { autoSteps.current = 0; setAuto('all') }}
+              >
+                {auto === 'all' ? UI.applyRunning : UI.applyAll}
+              </button>
+            )}
+            {nextAuto('ally') && (
+              <button
+                type="button"
+                className="btn btn--sm"
+                disabled={auto !== null}
+                title={UI.applyAlliesHint}
+                onClick={() => { autoSteps.current = 0; setAuto('ally') }}
+              >
+                {auto === 'ally' ? UI.applyRunning : UI.applyAllies}
+              </button>
+            )}
+          </div>
           <FanRow className="row--scroll">
             {v.me.inPlay.length === 0 && (
               <span className="eyebrow" style={{ padding: '8px 2px' }}>{UI.nothingInPlay}</span>
             )}
-            {v.me.inPlay.map((c) => {
+            {inPlayOrdered.map((c) => {
               const slots = idx.activate.get(c.iid)
               return (
                 <div key={c.iid} className="zone">

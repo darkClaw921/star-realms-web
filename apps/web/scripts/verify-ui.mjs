@@ -1284,6 +1284,96 @@ async function main() {
         && open.under >= 0 && open.under < 20 && open.lit === 1,
         `z-index ${open.z}, видимых наборов ${open.lit}, кнопок ${open.buttons}, `
         + `отступ от карты ${open.under}px`)
+      // Пакетные кнопки: одно нажатие вместо десяти, но по одному действию за
+      // раз — и с ответом на вопрос посреди цепочки.
+      {
+        await expand()
+        for (const c of ['Оборонный центр', 'Мир торговли']) await put(c)
+        await collapse()
+        const before = await fan.evaluate(() => {
+          const s = window.__lab.info.state.players.p1
+          const row = document.querySelector('.band--board .row--fan')
+          const acts = [...row.querySelectorAll('.actions .btn')]
+            .filter((b) => !(b.textContent ?? '').includes('Утиль')).length
+          return { trade: s.trade, combat: s.combat, auth: s.authority, acts }
+        })
+        const pressed = await fan.evaluate(() => {
+          const b = [...document.querySelectorAll('.band--board .zone__head .btn')]
+            .find((x) => (x.textContent ?? '').includes('Все свойства'))
+          if (!b) return false
+          b.click()
+          return true
+        })
+        // Свойство посреди цепочки может задать вопрос: отвечаем и смотрим,
+        // что цепочка идёт дальше сама.
+        let asked = 0
+        for (let i = 0; i < 12; i++) {
+          await sleep(600)
+          if (!(await fan.$('.choice'))) continue
+          asked += 1
+          // Тот же порядок, что и в игровом цикле выше: подтвердить, иначе
+          // пропустить, иначе взять первую ветку. Не закрытое окно оставило бы
+          // весь стол без законных действий, и проверка «кнопок стало ноль»
+          // прошла бы по ложной причине.
+          // Часть вопросов требует ВЫБРАТЬ карту («утилизируйте карту с руки»),
+          // и «Подтвердить» у них до выбора отключено — поэтому сначала ветка
+          // или карта, и только потом подтверждение.
+          const branched = await fan.evaluate(() => {
+            const el = document.querySelector('.branch')
+            if (!(el instanceof HTMLElement)) return false
+            el.click()
+            return true
+          })
+          if (branched) continue
+          if (await clickText(fan, 'Пропустить', 500)) continue
+          await fan.evaluate(() => {
+            const card = document.querySelector('.choice__cards .card')
+            ;(card instanceof HTMLElement ? card : null)?.click()
+          })
+          await sleep(200)
+          await clickText(fan, 'Подтвердить', 700)
+        }
+        const stuck = await fan.$('.choice')
+        const after = await fan.evaluate(() => {
+          const s = window.__lab.info.state.players.p1
+          const row = document.querySelector('.band--board .row--fan')
+          const acts = [...row.querySelectorAll('.actions .btn')]
+            .filter((b) => !(b.textContent ?? '').includes('Утиль')).length
+          return { trade: s.trade, combat: s.combat, auth: s.authority, acts }
+        })
+        const gained = (after.trade - before.trade) + (after.combat - before.combat)
+          + (after.auth - before.auth)
+        record('одно нажатие применяет все свойства',
+          pressed && !stuck && before.acts > 1 && after.acts === 0 && gained > 0,
+          `кнопок свойств ${before.acts}→${after.acts}, набрано ${gained}, `
+          + `вопросов по пути ${asked}${stuck ? ', окно выбора осталось открытым' : ''}`)
+
+        // Утилизация в пакет не входит: она уничтожает карту, и решение о ней
+        // принимают поимённо. Карта кладётся здесь же, а не берётся из уже
+        // разложенных: к этому месту прогон успел израсходовать их свойства.
+        await expand()
+        await put('Колесо слизней')
+        await collapse()
+        const scrapBefore = await fan.evaluate(() => [...document.querySelectorAll('.band--board .actions .btn')]
+          .filter((b) => (b.textContent ?? '').includes('Утиль')).length)
+        await fan.evaluate(() => {
+          const b = [...document.querySelectorAll('.band--board .zone__head .btn')]
+            .find((x) => (x.textContent ?? '').includes('Все свойства'))
+          ;(b instanceof HTMLElement ? b : null)?.click()
+        })
+        await sleep(2200)
+        const scrapLeft = await fan.evaluate(() => [...document.querySelectorAll('.band--board .actions .btn')]
+          .filter((b) => (b.textContent ?? '').includes('Утиль')).length)
+        record('пакет не трогает утилизацию', scrapBefore > 0 && scrapLeft === scrapBefore,
+          `кнопок утиля ${scrapBefore}→${scrapLeft}`)
+
+        // Отработавшие карты уходят вправо: слева стоит то, что ещё ждёт хода.
+        const ordered = await fan.evaluate(() => [...document.querySelectorAll('.band--board .row--fan > *')]
+          .map((slot) => slot.querySelectorAll('.actions .btn').length))
+        const sorted = ordered.every((n, i) => i === 0 || (ordered[i - 1] > 0 || n === 0))
+        record('карты с доступными свойствами стоят слева', sorted, ordered.join(' · '))
+      }
+
       shots.push(await shot(fan, 'fan',
         'Зона игры при шести картах. Пока карты помещаются, ряд обычный; дальше они уходят друг под друга '
         + 'ровно настолько, чтобы влезть, — наружу торчит левый край со стоимостью и названием, а карта под '

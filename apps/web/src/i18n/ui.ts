@@ -49,6 +49,12 @@ export const UI = {
   inTradeDeck: (n: number): string => `в торговой колоде: ${n}`,
   explorersLeft: (n: number): string => `осталось: ${n}`,
   inPlay: 'В игре',
+  applyAll: 'Все свойства',
+  applyAllHint: 'Применяет подряд все доступные свойства: первичные и союзные. ' +
+    'Утилизация и сплинтер не трогаются — они уничтожают карту.',
+  applyAllies: 'Все союзы',
+  applyAlliesHint: 'Применяет подряд только союзные свойства.',
+  applyRunning: 'Применяю…',
   log: 'Журнал',
   handEmpty: 'Рука пуста',
 
