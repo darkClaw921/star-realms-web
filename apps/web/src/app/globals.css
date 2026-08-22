@@ -293,11 +293,144 @@ button { font: inherit; color: inherit; }
  * table alone, large enough that the objective text stays legible. Sizing the
  * cards rather than clipping the band is the point: a clipped card hides the
  * very text that says when a mission can be claimed. */
-.band--sides {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--rule);
-  padding: 6px 0;
+/* ── the left rail: gambits and missions ────────────────────────────────────
+ *
+ * They sit on the table for the whole game and are touched twice: a gambit is
+ * revealed once, a mission claimed once. A full-width strip of them was taking
+ * room from the trade row and the hand -- the two things looked at every turn.
+ * Docked here as narrow plates, they cost a gutter and open on hover.
+ *
+ * Hover is not the only way in. Touch has no hover at all, and hiding a LEGAL
+ * move behind it hides the move -- so a plate also opens on click and on
+ * keyboard focus, and lights a dot when there is something to do inside. */
+.table.has-rail { padding-left: calc(var(--gap) + 46px); }
+
+.rail-side {
+  position: absolute;
+  left: var(--gap);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plate { position: relative; }
+
+.plate__tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 34px;
+  padding: 14px 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.plate__tab:hover,
+.plate.is-pinned .plate__tab { border-color: var(--rule-hi); color: var(--ink); }
+
+.plate__label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  /* Upright on a 34px rail: the label is the whole affordance, so it reads
+   * bottom-to-top rather than being truncated to three letters. */
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.plate__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.plate__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--authority);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--authority) 25%, transparent);
+}
+
+.plate__flyout {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  /* Discrete properties need the opt-in, or the fade-out is skipped entirely
+   * and the cards vanish on the frame the pointer leaves. */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 130ms ease, visibility 130ms;
+  transition-behavior: allow-discrete;
+}
+
+/* Hover only where hovering is a real thing. */
+@media (hover: hover) and (pointer: fine) {
+  .plate:hover .plate__flyout { opacity: 1; visibility: visible; }
+}
+
+.plate:focus-within .plate__flyout,
+.plate.is-pinned .plate__flyout { opacity: 1; visibility: visible; }
+
+.plate__cards {
+  display: flex;
+  gap: var(--gap);
+  max-width: min(70vw, 900px);
+  max-height: 72dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel-hi) 0%, var(--panel) 100%);
+  box-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.9);
   --card-w: calc(var(--card-w-base) * var(--card-scale) * 0.85);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plate__flyout { transition-duration: 0ms; }
+}
+
+/* Narrow screens have no gutter to spare: the rail lies down across the top of
+ * the board and its plates open downwards. */
+@media (max-width: 760px) {
+  .table.has-rail { padding-left: var(--gap); }
+  .rail-side {
+    position: static;
+    transform: none;
+    flex-direction: row;
+    gap: 6px;
+  }
+  .plate__tab {
+    flex-direction: row;
+    width: auto;
+    padding: 6px 10px;
+  }
+  .plate__label { writing-mode: horizontal-tb; transform: none; }
+  /* Anchored to the RAIL, not to the plate: hung off the second plate, a
+   * full-width panel would start at its offset and run off the screen -- and a
+   * hidden box still counts towards the document's scroll width. */
+  .rail-side { position: relative; width: 100%; }
+  .plate { position: static; }
+  .plate__flyout {
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    transform: none;
+  }
+  .plate__cards { max-width: 100%; }
 }
 
 .card__body {
@@ -590,6 +723,7 @@ button { font: inherit; color: inherit; }
  * A flex column has no such assumption: every band takes what it needs and the
  * play area is the one that absorbs the slack. */
 .table {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--gap);

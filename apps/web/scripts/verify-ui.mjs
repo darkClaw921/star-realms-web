@@ -411,13 +411,37 @@ async function main() {
         } catch { /* */ }
       })
       await page.goto(`${BASE}/play?mode=bot&difficulty=normal`, { waitUntil: 'networkidle2' })
-      await page.waitForSelector('.band--sides .card', { timeout: 10000 })
+      await page.waitForSelector('.plate__tab', { timeout: 10000 })
       await sleep(900)
 
-      const sideLabels = await page.$$eval('.band--sides .zone .eyebrow',
-        (els) => els.map((e) => (e.textContent ?? '').trim()))
-      const gambitCount = sideLabels.filter((t) => t === 'Гамбит (закрыт)').length
-      const missionCount = sideLabels.filter((t) => t === 'Миссия').length
+      // Гамбиты и миссии убраны в левую полосу и раскрываются наведением;
+      // проверке хватает щелчка, который закрепляет плашку открытой.
+      const plateLabels = await page.$$eval('.plate__tab',
+        (els) => els.map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
+      record('гамбиты и миссии убраны в боковые плашки',
+        plateLabels.length === 2 && /Гамбиты\s*2/.test(plateLabels[0] ?? '')
+          && /Миссии\s*3/.test(plateLabels[1] ?? ''),
+        plateLabels.join(' · '))
+      // Плашка с легальным ходом внутри обязана его показывать: иначе ход,
+      // спрятанный за наведением, спрятан насовсем.
+      const dots = await page.$$eval('.plate__dot', (els) => els.length)
+      record('плашка отмечает доступный ход', dots >= 1, `точек: ${dots}`)
+      // Открыта всегда одна плашка, поэтому каждую считаем отдельно.
+      const openPlate = async (i) => {
+        await page.evaluate((n) => {
+          const tabs = [...document.querySelectorAll('.plate__tab')]
+          if (tabs[n]?.getAttribute('aria-expanded') !== 'true') tabs[n]?.click()
+        }, i)
+        await sleep(350)
+        return page.$$eval('.plate__cards .zone .eyebrow',
+          (els) => els.map((e) => (e.textContent ?? '').trim()))
+      }
+      const gambitCount = (await openPlate(0)).filter((t) => t === 'Гамбит (закрыт)').length
+      const missionCount = (await openPlate(1)).filter((t) => t === 'Миссия').length
+      record('открыта всегда одна плашка',
+        (await page.$$eval('.plate.is-pinned', (els) => els.length)) === 1,
+        'закреплена одна')
+      await openPlate(0)
       record('гамбиты и миссии раздаются на стол',
         gambitCount === 2 && missionCount === 3,
         `гамбитов ${gambitCount}, миссий ${missionCount}`)
@@ -426,13 +450,13 @@ async function main() {
       // дожидаемся, пока ход действительно наш и карта стала кликабельной:
       // клик по неактивной карте прошёл бы молча и проверка врала бы.
       await page.waitForFunction(
-        () => [...document.querySelectorAll('.band--sides .zone')].some(
+        () => [...document.querySelectorAll('.plate__cards .zone')].some(
           (z) => (z.querySelector('.eyebrow')?.textContent ?? '').includes('закрыт')
             && z.querySelector('.card.is-playable')),
         { timeout: 10000 },
       )
       const revealed = await page.evaluate(() => {
-        const zones = [...document.querySelectorAll('.band--sides .zone')]
+        const zones = [...document.querySelectorAll('.plate__cards .zone')]
         const z = zones.find((x) => (x.querySelector('.eyebrow')?.textContent ?? '').includes('закрыт')
           && x.querySelector('.card.is-playable'))
         if (!z) return false
@@ -440,15 +464,16 @@ async function main() {
         return true
       })
       await sleep(700)
-      const after = await page.$$eval('.band--sides .zone .eyebrow',
+      const after = await page.$$eval('.plate__cards .zone .eyebrow',
         (els) => els.map((e) => (e.textContent ?? '').trim()))
       record('гамбит раскрывается кликом',
         revealed && after.filter((t) => t === 'Гамбит (закрыт)').length === 1,
         `было 2, стало ${after.filter((t) => t === 'Гамбит (закрыт)').length}`)
       shots.push(await shot(page, 'gambits',
-        'Гамбиты и миссии. Гамбиты раздаются закрытыми и раскрываются в свой ход; ' +
-        'миссия становится доступной ровно тогда, когда её задача выполнена, ' +
-        'а выполнив все свои миссии, игрок выигрывает партию.'))
+        'Гамбиты и миссии убраны в плашки у левого края и раскрываются наведением: ' +
+        'к ним обращаются дважды за партию, а места они занимали как торговый ряд. ' +
+        'Точка на плашке горит, когда внутри есть ход, — иначе ход, спрятанный ' +
+        'за наведением, спрятан насовсем.'))
 
       await page.evaluate(() => {
         try {

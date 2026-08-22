@@ -15,6 +15,7 @@ import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
 import { SettingsPanel } from './SettingsPanel'
 import { AllyStrip, OpponentHud, SelfHud } from './Hud'
+import { SidePlate, SideRail } from './SideRail'
 import { FACTION_VAR, Icon } from './Icons'
 
 const SLOT_LABEL: Record<
@@ -90,6 +91,8 @@ export function Board({
   // A co-op team shares its turn, so "my turn" is membership in the actor set
   // rather than being the single actor.
   const myTurn = v.actors.includes(v.viewer) && v.phase === 'main'
+  const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
+  const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
 
@@ -111,7 +114,7 @@ export function Board({
   }
 
   return (
-    <div className="table">
+    <div className={`table${hasGambits || hasMissions ? ' has-rail' : ''}`}>
       {/* ── opponent ─────────────────────────────────────────────────────── */}
       <section className="band">
         <OpponentHud
@@ -294,58 +297,72 @@ export function Board({
         </div>
       </section>
 
-      {/* ── gambits and missions ─────────────────────────────────────────── */}
-      {(v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
-        || v.me.missions.length > 0 || v.me.missionsDone.length > 0) && (
-        <section className="band band--sides">
-          <div className="row row--scroll">
-            {v.me.gambits.map((c) => (
-              <div key={c.iid} className="zone">
-                <Card
-                  def={c.def}
-                  playable={idx.revealGambit.has(c.iid)}
-                  dimmed={!idx.revealGambit.has(c.iid) && myTurn}
-                  onClick={idx.revealGambit.has(c.iid)
-                    ? () => onAction({ t: 'REVEAL_GAMBIT', card: c.iid as CardIid })
-                    : undefined}
-                  title={UI.revealGambit(nameOf(c.def))}
-                />
-                <span className="eyebrow">{UI.gambitFaceDown}</span>
-              </div>
-            ))}
-            {v.me.gambitsInPlay.map((c) => (
-              <div key={c.iid} className="zone">
-                <Card def={c.def} title={nameOf(c.def)} />
-                <span className="eyebrow">{UI.gambitRevealed}</span>
-              </div>
-            ))}
-            {v.me.missions.map((c) => (
-              <div key={c.iid} className="zone">
-                <Card
-                  def={c.def}
-                  playable={idx.claimMission.has(c.iid)}
-                  dimmed={!idx.claimMission.has(c.iid) && myTurn}
-                  onClick={idx.claimMission.has(c.iid)
-                    ? () => onAction({ t: 'CLAIM_MISSION', card: c.iid as CardIid })
-                    : undefined}
-                  title={idx.claimMission.has(c.iid)
-                    ? UI.claimMission(nameOf(c.def))
-                    : UI.missionPending(nameOf(c.def))}
-                />
-                <span className="eyebrow">{UI.missionOpen}</span>
-              </div>
-            ))}
-            {/* Completed missions are the win track, so the count is the point. */}
-            {v.me.missionsDone.length > 0 && (
-              <div className="zone">
-                <span className="eyebrow">
-                  {UI.missionsDone(v.me.missionsDone.length,
-                    v.me.missionsDone.length + v.me.missions.length)}
-                </span>
-              </div>
-            )}
-          </div>
-        </section>
+      {/* ── gambits and missions, docked to the left edge ────────────────── */}
+      {(hasGambits || hasMissions) && (
+        <SideRail>
+          {hasGambits && (
+            <SidePlate
+              label={UI.gambitsName}
+              count={v.me.gambits.length + v.me.gambitsInPlay.length}
+              alert={v.me.gambits.some((c) => idx.revealGambit.has(c.iid))}
+            >
+              {v.me.gambits.map((c) => (
+                <div key={c.iid} className="zone">
+                  <Card
+                    def={c.def}
+                    playable={idx.revealGambit.has(c.iid)}
+                    dimmed={!idx.revealGambit.has(c.iid) && myTurn}
+                    onClick={idx.revealGambit.has(c.iid)
+                      ? () => onAction({ t: 'REVEAL_GAMBIT', card: c.iid as CardIid })
+                      : undefined}
+                    title={UI.revealGambit(nameOf(c.def))}
+                  />
+                  <span className="eyebrow">{UI.gambitFaceDown}</span>
+                </div>
+              ))}
+              {v.me.gambitsInPlay.map((c) => (
+                <div key={c.iid} className="zone">
+                  <Card def={c.def} title={nameOf(c.def)} />
+                  <span className="eyebrow">{UI.gambitRevealed}</span>
+                </div>
+              ))}
+            </SidePlate>
+          )}
+
+          {hasMissions && (
+            <SidePlate
+              label={UI.missionsName}
+              count={v.me.missions.length}
+              alert={v.me.missions.some((c) => idx.claimMission.has(c.iid))}
+            >
+              {v.me.missions.map((c) => (
+                <div key={c.iid} className="zone">
+                  <Card
+                    def={c.def}
+                    playable={idx.claimMission.has(c.iid)}
+                    dimmed={!idx.claimMission.has(c.iid) && myTurn}
+                    onClick={idx.claimMission.has(c.iid)
+                      ? () => onAction({ t: 'CLAIM_MISSION', card: c.iid as CardIid })
+                      : undefined}
+                    title={idx.claimMission.has(c.iid)
+                      ? UI.claimMission(nameOf(c.def))
+                      : UI.missionPending(nameOf(c.def))}
+                  />
+                  <span className="eyebrow">{UI.missionOpen}</span>
+                </div>
+              ))}
+              {/* Completed missions are the win track, so the count is the point. */}
+              {v.me.missionsDone.length > 0 && (
+                <div className="zone">
+                  <span className="eyebrow">
+                    {UI.missionsDone(v.me.missionsDone.length,
+                      v.me.missionsDone.length + v.me.missions.length)}
+                  </span>
+                </div>
+              )}
+            </SidePlate>
+          )}
+        </SideRail>
       )}
 
       {/* ── my board ─────────────────────────────────────────────────────── */}
