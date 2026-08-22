@@ -40,7 +40,7 @@ export interface BurstOpts {
  * тряска ровно то, от чего эта настройка защищает. Проверяется в момент
  * запуска, а не при загрузке модуля: пользователь может включить её на ходу.
  */
-function calm(): boolean {
+export function calm(): boolean {
   return typeof window !== 'undefined'
     && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 }

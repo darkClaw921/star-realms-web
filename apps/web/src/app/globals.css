@@ -957,6 +957,13 @@ button { font: inherit; color: inherit; }
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  /* Ряд карт под HUD держит запас сверху для подъёма карты и забирает его
+   * назад отрицательным отступом — то есть заезжает НА эту полосу. Пока в ней
+   * стояли только счётчики, это никого не задевало; «Разыграть все корабли» и
+   * «Завершить ход» оказывались под рядом, и нажатия до них не доходили. Та же
+   * история, что была с шапкой зоны игры. */
+  position: relative;
+  z-index: 2;
 }
 
 .hud__name {
@@ -2367,6 +2374,10 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
    * самая верхняя база, остальные подняли бы край под соседку. */
   padding-top: 10px;
   margin-top: -10px;
+  /* Место под кнопки нижней базы. Они висят ПОД своей картой, в высоту стопки
+   * не входят, и без этого поля их срезал бы либо край прокрутки, либо край
+   * полосы — карта поднималась, а кнопки показывались наполовину. */
+  padding-bottom: 44px;
 }
 .play__ships { flex: 1 1 auto; min-width: 0; }
 /* В своей зоне у баз есть кнопки свойств, поэтому предел выше, чем у
@@ -2378,54 +2389,29 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
 .band--board:has(.play__bases) { min-height: calc(var(--card-w) * 1.9); }
 
 .row--stack { flex-direction: column; align-items: flex-start; }
-
-/* ── барабан ────────────────────────────────────────────────────────────────
- *
- * Баз больше, чем влезает даже вплотную: дальше стопка не сжимается, а
- * прокручивается — колесом, как барабан выбора у Apple. Карта в середине стоит
- * прямо и читается целиком, дальние от центра отклоняются от зрителя, гаснут и
- * уменьшаются, а края колонки растворяются маской. Наклон считает не скрипт, а
- * сама прокрутка: view() привязывает кадры анимации к положению карты в окне
- * колонки, поэтому барабан идёт с той же плавностью, что и палец на трекпаде.
- *
- * Прокрутка липкая: карта останавливается по центру, а не между делениями. */
-.row--stack.is-scroll {
-  overflow-y: auto;
-  overflow-x: clip;
-  scroll-snap-type: y proximity;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-  perspective: 900px;
-  perspective-origin: 50% 50%;
-  mask-image: linear-gradient(180deg,
-    transparent 0, #000 34px, #000 calc(100% - 34px), transparent 100%);
-}
-.row--stack.is-scroll::-webkit-scrollbar { width: 0; height: 0; }
-.row--stack.is-scroll > * {
-  scroll-snap-align: center;
-  transform-style: preserve-3d;
-  animation: drum linear both;
-  animation-timeline: view(block);
-  animation-range: cover 0% cover 100%;
-}
-@keyframes drum {
-  0% { transform: rotateX(46deg) scale(.86); opacity: .45; }
-  46%, 54% { transform: none; opacity: 1; }
-  100% { transform: rotateX(-46deg) scale(.86); opacity: .45; }
-}
-/* Барабан — движение ради движения там, где его просили не показывать. */
-@media (prefers-reduced-motion: reduce) {
-  .row--stack.is-scroll > * { animation: none; }
-  .row--stack.is-scroll { scroll-snap-type: none; mask-image: none; }
-}
-/* Браузер без привязки анимации к прокрутке получает обычную прокрутку с
- * полосой — барабан здесь украшение, а доступность карт держится не на нём. */
-@supports not (animation-timeline: view()) {
-  .row--stack.is-scroll { scrollbar-width: thin; mask-image: none; }
-}
+/* Наезд идёт сверху вниз: каждая следующая база ложится НА предыдущую, и
+ * наружу остаётся верхняя кромка с именем, стоимостью и защитой. */
 .row--stack.is-fanned > * + * { margin-left: 0; margin-top: calc(-1 * var(--fan, 0px)); }
 /* Тень падает вверх — стопка растёт вниз, и подчёркивать надо верхний край. */
 .row--stack.is-fanned .card-slot { box-shadow: 0 -14px 22px rgba(3, 5, 8, .55); }
+
+/* ── прибой ─────────────────────────────────────────────────────────────────
+ *
+ * Баз больше, чем влезает даже вплотную: дальше стопка не сжимается, а
+ * прокручивается. Новая база въезжает снизу, стопка отступает вверх коротким
+ * пружинным движением (его ведёт FanRow), и колонка сама доезжает до свежей
+ * карты. Верхний край растворяется маской — так видно, что выше есть ещё. */
+.row--stack.is-scroll {
+  overflow-y: auto;
+  /* Вбок обрезать нечего, кроме тени и подъёма карты, — им оставлен запас. */
+  overflow-x: clip;
+  overflow-clip-margin: 20px;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 100%);
+}
+.row--stack.is-scroll::-webkit-scrollbar { width: 0; height: 0; }
+
 /* В стопке кнопки выходят из потока и висят под своей картой.
  *
  * Оставь их в потоке — и каждая база становится выше себя самой на высоту
@@ -2434,10 +2420,16 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
  * поднятой карты, и место им не нужно. */
 .row--stack.is-fanned > * > .actions {
   position: absolute;
+  /* Отступ от карты — ПОЛЕ блока кнопок, а не пустота под ним.
+   *
+   * Пока это был margin, между картой и кнопками лежала ничья полоса: курсор,
+   * идущий к кнопке, попадал в неё, наведение уходило на базу, которая лежит
+   * под ней, поднятая карта складывалась обратно — и кнопка исчезала из-под
+   * пальца. Теперь полоса принадлежит самим кнопкам, и путь к ним непрерывен. */
   top: 100%;
   left: 0;
   z-index: 3;
-  margin-top: 4px;
+  padding-top: 6px;
 }
 /* Кнопки поднятой базы накрывают соседку снизу — им нужен свой фон, иначе
  * подпись читается поверх чужой иллюстрации. */
@@ -2446,7 +2438,9 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
 .row--stack.is-fanned > *:focus-within > .actions {
   background: color-mix(in srgb, var(--panel) 92%, transparent);
   border-radius: var(--r-sm);
-  padding: 4px;
+  /* Верхнее поле сохраняется: это дорожка от карты к кнопке, и разрывать её
+   * нельзя даже ради ровной плашки. */
+  padding: 6px 4px 4px;
 }
 
 /* Тень нужна, чтобы стопка читалась как стопка: без неё края карт сливаются

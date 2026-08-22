@@ -246,10 +246,21 @@ async function main() {
     // на игре.
     for (let i = 0; i < 60 && turns < 4; i++) {
       if (await page.$('.choice')) {
-        // Resolve whatever prompt is open, cheaply.
-        if (!(await clickText(page, 'Подтвердить', 800))) {
-          if (!(await clickText(page, 'Пропустить', 800))) {
-            await page.evaluate(() => { document.querySelector('.branch')?.click() })
+        // Отвечаем в том же порядке, что и живой игрок: ветка, отказ, а если
+        // спрашивают карту — сначала выбрать её, и только потом подтверждать.
+        // «Подтвердить» до выбора отключено, и цикл, знающий только эту
+        // кнопку, застревал на «Сбросьте карту» до конца отведённых итераций.
+        const answered = await page.evaluate(() => {
+          const branch = document.querySelector('.branch')
+          if (branch instanceof HTMLElement) { branch.click(); return true }
+          const card = document.querySelector('.choice__cards .card')
+          if (card instanceof HTMLElement) { card.click(); return false }
+          return false
+        })
+        if (!answered) {
+          await sleep(200)
+          if (!(await clickText(page, 'Подтвердить', 800))) {
+            await clickText(page, 'Пропустить', 800)
           }
         }
         await sleep(400)
@@ -1523,54 +1534,110 @@ async function main() {
             reach.hits, reach.hits ? 'кнопка ловит курсор' : `под курсором ${reach.what}`)
         }
 
-        // Барабан: баз больше, чем влезает даже вплотную. Дальше стопка не
-        // сжимается, а прокручивается — карта в середине стоит прямо, дальние
-        // отклоняются от зрителя.
+        // Прибой: баз больше, чем влезает даже вплотную. Дальше стопка не
+        // сжимается, а прокручивается; новая база въезжает снизу, стопка
+        // отступает вверх, и колонка сама доезжает до свежей карты.
         {
           await expand()
           for (const c of ['Колесо слизней', 'Станция переработки', 'Военный мир', 'Боевая станция']) {
             await put(c)
           }
           await collapse()
-          await sleep(500)
-          const drum = await fan.evaluate(() => {
+          await sleep(600)
+          const surf = await fan.evaluate(() => {
             const col = document.querySelector('.band--board .play__bases')
             const kids = [...col.children]
-            const tilt = (k) => {
-              const t = getComputedStyle(k).transform
-              return t !== 'none'
-            }
+            const last = kids[kids.length - 1].querySelector('.card-slot').getBoundingClientRect()
+            const box = col.getBoundingClientRect()
             return {
               n: kids.length,
               scroll: col.classList.contains('is-scroll'),
               scrollable: col.scrollHeight - col.clientHeight,
-              // Наклонены крайние, а не та, что стоит в середине окна.
-              edgesTilted: tilt(kids[0]) && tilt(kids[kids.length - 1]),
-              snap: getComputedStyle(col).scrollSnapType.startsWith('y'),
+              // Колонка стоит у свежей карты, а не в начале списка.
+              atBottom: col.scrollTop >= col.scrollHeight - col.clientHeight - 2,
+              // Свежая база видна целиком: ради неё прокрутка и заводилась.
+              freshVisible: Math.round(Math.min(last.bottom, box.bottom) - Math.max(last.top, box.top)),
+              freshHeight: Math.round(last.height),
             }
           })
-          record('лишние базы прокручиваются барабаном',
-            drum.n >= 6 && drum.scroll && drum.scrollable > 0 && drum.edgesTilted && drum.snap,
-            `баз ${drum.n}, прокрутка ${drum.scrollable}px, края наклонены ${drum.edgesTilted}, `
-            + `липкая ${drum.snap}`)
+          record('лишние базы уходят в прокрутку, а стопка стоит у свежей карты',
+            surf.n >= 6 && surf.scroll && surf.scrollable > 0 && surf.atBottom,
+            `баз ${surf.n}, прокрутка ${surf.scrollable}px, у свежей карты ${surf.atBottom}`)
+          record('свежая база видна целиком',
+            surf.freshVisible >= surf.freshHeight - 8,
+            `видно ${surf.freshVisible} из ${surf.freshHeight}px`)
 
-          // И до нижней базы можно доехать: барабан не декорация, а способ
-          // добраться до карты, которой не хватило места.
-          const rolled = await fan.evaluate(async () => {
+          // Новая база приезжает снизу: без этого движения карта появляется
+          // так, будто всегда там стояла.
+          const rode = await fan.evaluate(async () => {
             const col = document.querySelector('.band--board .play__bases')
-            col.scrollTop = col.scrollHeight
-            await new Promise((r) => setTimeout(r, 400))
-            const last = col.children[col.children.length - 1]
-            const c = last.querySelector('.card-slot').getBoundingClientRect()
-            const box = col.getBoundingClientRect()
+            window.__lab.patch((d) => {
+              const p = d.players.p1
+              p.inPlay = [...p.inPlay, { ...p.inPlay[0], iid: `probe-${p.inPlay.length}`, used: {} }]
+            })
+            await new Promise((r) => setTimeout(r, 120))
+            const kids = [...col.children]
+            const fresh = kids[kids.length - 1]
             return {
-              visible: Math.round(Math.min(c.bottom, box.bottom) - Math.max(c.top, box.top)),
-              height: Math.round(c.height),
+              running: fresh.getAnimations().length > 0,
+              // Старые тоже отступают, иначе движение читается как рывок одной карты.
+              others: kids.slice(0, -1).filter((k) => k.getAnimations().length > 0).length,
             }
           })
-          record('прокрученная база видна целиком',
-            rolled.visible >= rolled.height - 8,
-            `видно ${rolled.visible} из ${rolled.height}px`)
+          record('новая база въезжает снизу, стопка отступает вверх',
+            rode.running && rode.others > 0,
+            `анимация свежей: ${rode.running}, отступивших: ${rode.others}`)
+
+          // Дорожка от карты к её кнопкам не должна прерываться: пустая полоса
+          // между ними уводила наведение на базу под ней, и кнопка исчезала
+          // из-под курсора.
+          const path = await fan.evaluate(async () => {
+            const col = document.querySelector('.band--board .play__bases')
+            const kids = [...col.children]
+            const slot = kids.find((k) => k.querySelector('.actions .btn')) ?? kids[0]
+            slot.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+            await new Promise((r) => setTimeout(r, 250))
+            const card = slot.querySelector('.card-slot').getBoundingClientRect()
+            const acts = slot.querySelector('.actions')
+            if (!acts) return null
+            const gap = Math.round(acts.getBoundingClientRect().top - card.bottom)
+            const own = [1, 3, 5].every((dy) => {
+              const el = document.elementFromPoint(card.left + 30, card.bottom + dy)
+              return el instanceof HTMLElement && slot.contains(el)
+            })
+            return { gap, own }
+          })
+          // Поднятая база показывается целиком: в прокрученной колонке карта,
+          // к которой потянулись, часто наполовину за краем — обрезанную
+          // карту с обрезанной кнопкой нажать нельзя.
+          const whole = await fan.evaluate(async () => {
+            const col = document.querySelector('.band--board .play__bases')
+            const kids = [...col.children]
+            col.scrollTop = 0
+            await new Promise((r) => setTimeout(r, 200))
+            const out = []
+            for (const i of [kids.length - 1, 0]) {
+              kids[i].dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+              await new Promise((r) => setTimeout(r, 600))
+              const box = col.getBoundingClientRect()
+              const card = kids[i].querySelector('.card-slot').getBoundingClientRect()
+              const acts = kids[i].querySelector('.actions')?.getBoundingClientRect()
+              out.push({
+                card: Math.round(Math.min(card.bottom, box.bottom) - Math.max(card.top, box.top)),
+                cardH: Math.round(card.height),
+                acts: acts ? Math.round(Math.min(acts.bottom, box.bottom) - Math.max(acts.top, box.top)) : 0,
+                actsH: acts ? Math.round(acts.height) : 0,
+              })
+            }
+            return out
+          })
+          record('поднятая база и её кнопки видны целиком',
+            whole.every((w) => w.card >= w.cardH - 2 && w.acts >= w.actsH - 2),
+            whole.map((w) => `карта ${w.card}/${w.cardH}, кнопки ${w.acts}/${w.actsH}`).join(' · '))
+
+          record('от карты до её кнопок нет ничьей полосы',
+            path !== null && path.gap <= 0 && path.own,
+            path ? `зазор ${path.gap}px, дорожка своя: ${path.own}` : 'кнопок нет')
         }
 
         // Стол вернуть как было: ниже проверки меряют высоту полос и ждут в
@@ -1648,6 +1715,26 @@ async function main() {
         record('кнопки над зоной игры не перекрыты рядом карт',
           hit !== null && hit.every((h) => h.reachable),
           hit ? hit.map((h) => `${h.name}: ${h.reachable ? 'доступна' : 'перекрыта'}`).join(' · ') : 'кнопок нет')
+
+        // То же самое в полосе руки: ряд карт заезжает на неё тем же запасом,
+        // а под ним стоят «Разыграть все корабли» и «Завершить ход». Проверяем
+        // всю высоту кнопки, а не центр: перекрытой оказывалась нижняя часть, и
+        // кнопка «нажималась только верхней кромкой».
+        const handHit = await fan.evaluate(() => {
+          const btns = [...document.querySelectorAll('.band--hand .hud .btn')]
+            .filter((b) => (b.textContent ?? '').trim())
+          return btns.map((b) => {
+            const r = b.getBoundingClientRect()
+            const ok = [0.1, 0.5, 0.9].every((f) => {
+              const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * f)
+              return el instanceof HTMLElement && (el === b || b.contains(el))
+            })
+            return { name: (b.textContent ?? '').trim(), ok }
+          })
+        })
+        record('кнопки над рукой не перекрыты рядом карт',
+          handHit.length > 0 && handHit.every((h) => h.ok),
+          handHit.map((h) => `${h.name}: ${h.ok ? 'доступна' : 'перекрыта'}`).join(' · ') || 'кнопок нет')
       }
 
       // Низкая полоса — обычный случай на ноутбуке: карта с кнопками выше,

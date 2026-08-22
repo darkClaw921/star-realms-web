@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { calm } from '@/fx/particles'
+
 /**
  * Ряд, который начинает складывать карты веером, когда они перестают помещаться.
  *
@@ -28,6 +30,59 @@ const MIN_VISIBLE = 0.36
  */
 const MIN_VISIBLE_Y_PX = 34
 
+/**
+ * Прибой: новая база въезжает снизу, а стопка отступает вверх.
+ *
+ * Карта, которую только что поставили, лежит ПОВЕРХ старых и снизу — там же,
+ * куда её кладут на столе. Заметить это движение важнее, чем кажется: базы
+ * ставят посреди хода, взгляд в этот момент в торговом ряду, и без короткого
+ * толчка новая карта появляется словно всегда там и была.
+ *
+ * Признак «новая» — отсутствие метки на узле: React переиспользует узлы между
+ * перерисовками, поэтому по индексу или числу детей отличить добавление от
+ * перестановки нельзя.
+ */
+function surf(el: HTMLElement, kids: readonly HTMLElement[]): void {
+  const fresh: HTMLElement[] = []
+  for (const k of kids) {
+    if (k.dataset.stacked === '1') continue
+    k.dataset.stacked = '1'
+    fresh.push(k)
+  }
+  // Первая же раскладка помечает всё, что уже стояло: анимировать раздачу
+  // нечего, карты просто были на столе.
+  const known = kids.length - fresh.length
+  // Прокрутка всегда к свежей карте: она нижняя, и в переполненной колонке
+  // именно она уезжает за край. Кадром позже — на этой строке раскладка ещё
+  // считается по старому числу карт, и доехать «до конца» значит доехать до
+  // конца, которого уже нет.
+  if (fresh.length > 0) {
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: calm() ? 'auto' : 'smooth' })
+    })
+  }
+  if (known === 0 || fresh.length === 0 || calm()) return
+
+  for (const k of fresh) {
+    k.animate(
+      [
+        { transform: 'translateY(46px)', opacity: 0 },
+        { transform: 'translateY(-7px)', opacity: 1, offset: 0.72 },
+        { transform: 'none', opacity: 1 },
+      ],
+      { duration: 420, easing: 'cubic-bezier(.22,1.2,.36,1)' },
+    )
+  }
+  // Старые карты отступают вверх — коротко и тем сильнее, чем ближе к новой.
+  const old = kids.filter((k) => !fresh.includes(k))
+  old.forEach((k, i) => {
+    k.animate(
+      [{ transform: `translateY(${Math.min(14, 3 + i)}px)` }, { transform: 'none' }],
+      { duration: 360, easing: 'cubic-bezier(.22,.9,.3,1)' },
+    )
+  })
+}
+
 export function FanRow({
   className = '', children, style, axis = 'x',
 }: {
@@ -42,6 +97,8 @@ export function FanRow({
 }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState<number | null>(null)
+  /** К какой карте колонка уже подавалась: без этого прокрутка зациклится. */
+  const rolledTo = useRef<number | null>(null)
 
   const measure = useCallback(() => {
     const el = ref.current
@@ -80,12 +137,9 @@ export function FanRow({
     const pad = axis === 'y'
       ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
       : (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
-    // Кнопки нижней базы висят ПОД ней и в высоту стопки не входят — значит
-    // место под них надо занять заранее, иначе карты укладываются впритык, а
-    // кнопки последней оказываются за полосой.
-    const acts = axis === 'y' ? el.querySelector('.actions') : null
-    const reserve = acts ? acts.getBoundingClientRect().height + 10 : 0
-    const room = (axis === 'y' ? el.clientHeight : el.clientWidth) - pad - reserve
+    // Место под кнопки нижней базы уже вычтено вместе с отступами: колонка
+    // держит его нижним полем, а не считает отдельно.
+    const room = (axis === 'y' ? el.clientHeight : el.clientWidth) - pad
     const over = kids.length < 2 ? -1 : total - room
     if (over <= 0) {
       el.style.setProperty('--fan', '0px')
@@ -119,6 +173,7 @@ export function FanRow({
     if (axis === 'y') {
       el.classList.remove('is-tight')
       el.style.removeProperty('--acts-top')
+      surf(el, kids)
       return
     }
 
@@ -206,7 +261,28 @@ export function FanRow({
     if (!el) return
     const kids = [...el.children]
     kids.forEach((k, i) => k.classList.toggle('is-open', i === open))
-  }, [open, children])
+
+    // Поднятая база должна быть видна целиком — вместе с кнопками.
+    //
+    // В прокрученной колонке карта, к которой потянулись, часто наполовину за
+    // краем: показывать её обрезанной и предлагать нажать обрезанную кнопку
+    // нельзя. Колонка подаётся ровно настолько, чтобы карта поместилась, и
+    // только когда открыли другую карту — иначе прокрутка, меняющая наведение,
+    // гоняла бы стопку сама с собой.
+    if (axis !== 'y' || open === null || !el.classList.contains('is-scroll')) {
+      rolledTo.current = null
+      return
+    }
+    if (rolledTo.current === open) return
+    rolledTo.current = open
+    const k = kids[open]
+    if (!(k instanceof HTMLElement)) return
+    const box = el.getBoundingClientRect()
+    const top = k.getBoundingClientRect().top
+    const foot = (k.querySelector('.actions') ?? k).getBoundingClientRect().bottom
+    const dy = foot > box.bottom ? foot - box.bottom : (top < box.top ? top - box.top : 0)
+    if (Math.abs(dy) > 2) el.scrollBy({ top: dy, behavior: calm() ? 'auto' : 'smooth' })
+  }, [open, children, axis])
 
   return (
     <div
