@@ -202,6 +202,14 @@ export interface CardProps {
   quiet?: boolean | undefined
   /** See CardFrameProps. */
   cost?: number | undefined
+  /**
+   * Экземпляр карты на столе.
+   *
+   * Нужен слою эффектов: взрыв базы и утиль привязываются к тому месту, где
+   * карта стояла. Ставится там, где карта — предмет партии; в галерее и
+   * предпросмотре карты экземпляра нет и атрибута тоже.
+   */
+  iid?: string | undefined
 }
 
 /**
@@ -242,7 +250,7 @@ export function cardLabel(def: CardDefId): string {
 }
 
 export function Card({
-  def, onClick, playable, selected, dimmed, title, quiet, cost,
+  def, onClick, playable, selected, dimmed, title, quiet, cost, iid,
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
   // Orientation follows the printed card everywhere: a base lies landscape in
@@ -282,6 +290,9 @@ export function Card({
   return (
     <div
       className={`card-slot${isBase ? ' card-slot--base' : ''}`}
+      data-def={def}
+      data-faction={c.faction}
+      {...(iid ? { 'data-iid': iid } : {})}
       {...tilt.handlers}
     >
       <button

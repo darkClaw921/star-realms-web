@@ -14,6 +14,15 @@ export interface MatchSnapshot {
   readonly log: readonly LogLine[]
   /** True while a bot is deciding, so the UI can show it is thinking. */
   readonly botThinking: boolean
+  /**
+   * Видимые события ПОСЛЕДНЕЙ команды — для звука и вспышек.
+   *
+   * Тот же редактированный поток, из которого собирается журнал: эффект
+   * физически не может показать то, чего зрителю не отдали.
+   */
+  readonly events: readonly GameEvent[]
+  /** Растёт с каждой пачкой. Одна и та же пачка не должна звучать дважды. */
+  readonly tick: number
 }
 
 /**

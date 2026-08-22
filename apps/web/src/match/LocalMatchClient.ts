@@ -1,6 +1,7 @@
 import {
   actorOf, createGame, enumerateLegalActions, redact, redactEvent, reduce,
-  type Action, type BossState, type GameState, type PlayerId, type ScenarioSetup, type SetId,
+  type Action, type BossState, type GameEvent, type GameState, type PlayerId, type ScenarioSetup,
+  type SetId,
   type VariantId,
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
@@ -44,6 +45,8 @@ export interface LocalOptions {
 export class LocalMatchClient implements MatchClient {
   private state: GameState
   private log: LogLine[] = []
+  private events: readonly GameEvent[] = []
+  private tick = 0
   private subs = new Set<(s: MatchSnapshot) => void>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
@@ -95,6 +98,8 @@ export class LocalMatchClient implements MatchClient {
       legal: enumerateLegalActions(view, viewer),
       log: this.log,
       botThinking: this.thinking,
+      events: this.events,
+      tick: this.tick,
     }
   }
 
@@ -120,6 +125,8 @@ export class LocalMatchClient implements MatchClient {
     // Иначе онлайн станет первым местом, где редакция запускается всерьёз,
     // а дыры уже уедут в прод.
     const visible = events.map((e) => redactEvent(e, viewer)).filter((e) => e !== null)
+    this.events = visible
+    this.tick += 1
     const lines = toLines(visible, this.names())
     if (lines.length > 0) this.log = [...this.log, ...lines].slice(-400)
   }

@@ -1954,3 +1954,97 @@ input[type='range'] {
 }
 
 .ally__give { display: flex; gap: 6px; }
+
+/* ── эффекты ────────────────────────────────────────────────────────────────
+ *
+ * Слой вспышек: один канвас на весь экран для частиц и несколько CSS-анимаций,
+ * которые вешаются на уже стоящие на столе элементы — карту, ячейку HUD.
+ *
+ * Канвас именно на весь экран, а не на зону: осколки уничтоженной базы обязаны
+ * улетать за границы своей полосы, иначе взрыв выглядит как анимация внутри
+ * коробочки. Мышь его не видит: ни один эффект не должен перехватить клик.
+ */
+.fx-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.fx-pop {
+  position: fixed;
+  z-index: 41;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .8);
+}
+
+.fx-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@keyframes fx-lift {
+  0% { transform: translateY(38px) scale(.86); opacity: 0; }
+  55% { transform: translateY(-6px) scale(1.04); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* Свечение по контуру фракции: цвет приходит переменной, потому что фракций
+ * пять, а анимация нужна одна. */
+@keyframes fx-ally {
+  0% { box-shadow: 0 0 0 0 var(--fx-glow, var(--ink)); }
+  100% { box-shadow: 0 0 0 22px transparent; }
+}
+
+@keyframes fx-shake {
+  0%, 100% { transform: none; }
+  12% { transform: translate(-7px, 3px); }
+  28% { transform: translate(6px, -3px); }
+  44% { transform: translate(-4px, -2px); }
+  62% { transform: translate(3px, 2px); }
+  80% { transform: translate(-2px, 0); }
+}
+
+@keyframes fx-dissolve {
+  0% { opacity: 1; filter: none; }
+  100% { opacity: 0; filter: blur(6px) brightness(2.2); }
+}
+
+@keyframes fx-tickle {
+  0%, 100% { transform: none; }
+  25% { transform: scale(1.22); }
+  60% { transform: scale(.96); }
+}
+
+@keyframes fx-pop-up {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.8); }
+  25% { opacity: 1; transform: translate(-50%, -66%) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -160%) scale(1); }
+}
+
+@keyframes fx-pop-punch {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(.9); }
+}
+
+@keyframes fx-flash-out {
+  0% { opacity: .85; }
+  100% { opacity: 0; }
+}
+
+/* Просьба системы «поменьше движения» относится и к эффектам: канвас с
+ * летящими осколками — ровно то, от чего эта настройка защищает. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-canvas, .fx-pop, .fx-flash { display: none; }
+}

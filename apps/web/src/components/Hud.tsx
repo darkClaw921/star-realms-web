@@ -8,9 +8,14 @@ import { FACTION_VAR, FactionMark, Icon } from './Icons'
 const ALLY_FACTIONS: Faction[] = FACTIONS.filter((f) => f !== 'unaligned')
 
 function Rail({
-  authority, trade, combat, shielded, endless,
+  authority, trade, combat, shielded, endless, fx,
 }: {
   authority: number
+  /**
+   * Чьи это счётчики — «me» или «them». Слой эффектов ищет ячейки по этому
+   * признаку: тряска и осколки должны появиться у того, кто получил урон.
+   */
+  fx?: 'me' | 'them' | undefined
   /** The Dimensional Horror has no authority; its pool is a placeholder. */
   endless?: boolean | undefined
   trade?: number
@@ -23,6 +28,7 @@ function Rail({
         className="rail__cell is-live"
         style={{ '--cell': 'var(--authority)' } as React.CSSProperties}
         title={UI.authority}
+        {...(fx ? { 'data-fx': `authority:${fx}` } : {})}
       >
         <Icon name="authority" />
         {endless ? '∞' : authority}
@@ -42,6 +48,7 @@ function Rail({
           className={`rail__cell${combat > 0 ? ' is-live' : ''}`}
           style={{ '--cell': 'var(--combat)' } as React.CSSProperties}
           title={UI.combat}
+          {...(fx ? { 'data-fx': `combat:${fx}` } : {})}
         >
           <Icon name="combat" />
           {combat}
@@ -79,7 +86,10 @@ export function SelfHud({
   return (
     <div className="hud">
       <span className={`hud__name${active ? ' is-active' : ''}`}>{name}</span>
-      <Rail authority={me.authority} trade={me.trade} combat={me.combat} shielded={shielded} />
+      <Rail
+        authority={me.authority} trade={me.trade} combat={me.combat}
+        shielded={shielded} fx="me"
+      />
       <AllyPips unlocked={me.allyUnlocked} />
       <span className="eyebrow">{UI.deckDiscard(me.deckCount, me.discard.length)}</span>
       {children}
@@ -100,7 +110,7 @@ export function OpponentHud({
   return (
     <div className="hud">
       <span className={`hud__name${active ? ' is-active' : ''}`}>{name}</span>
-      <Rail authority={them.authority} shielded={shielded} endless={endless} />
+      <Rail authority={them.authority} shielded={shielded} endless={endless} fx="them" />
       <AllyPips unlocked={them.allyUnlocked} />
       <span className="eyebrow">
         {UI.handDeckDiscard(them.handCount, them.deckCount, them.discard.length)}

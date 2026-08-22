@@ -98,6 +98,16 @@ async function main() {
     // ── 1. menu ───────────────────────────────────────────────────────────
     const page = await browser.newPage()
     watchConsole(page, 'menu')
+    // Звук проверить глазами нельзя, а ушей у проверки нет. Считаем запуски
+    // осцилляторов: их ровно столько, сколько звуков стол попытался сыграть.
+    await page.evaluateOnNewDocument(() => {
+      window.__osc = 0
+      const start = OscillatorNode.prototype.start
+      OscillatorNode.prototype.start = function (...a) {
+        window.__osc += 1
+        return start.apply(this, a)
+      }
+    })
     await page.goto(BASE, { waitUntil: 'networkidle2' })
     await sleep(700)
     shots.push(await shot(page, 'menu', 'Экран входа. Три режима; оговорка о лицензии на иллюстрации стоит на виду, а не спрятана.'))
@@ -139,6 +149,57 @@ async function main() {
       record('короткий клик разыгрывает карту',
         inPlayAfter === inPlayBefore + 1 && handAfter === handCount - 1,
         `в игре ${inPlayBefore}→${inPlayAfter}, на руке ${handCount}→${handAfter}`)
+    }
+
+    // Эффекты. Проверяется механизм, а не красота: канвас публикует число
+    // живых частиц, а перехваченный OscillatorNode.start — число звуков.
+    {
+      const before = await page.evaluate(() => ({
+        live: Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0),
+        osc: window.__osc ?? -1,
+      }))
+      await page.click('.band:last-of-type .card')
+      await sleep(300)
+      const after = await page.evaluate(() => ({
+        live: Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0),
+        osc: window.__osc ?? -1,
+        lifted: [...document.querySelectorAll('.band--board [data-iid]')]
+          .filter((e) => e.style.animation.includes('fx-')).length,
+      }))
+      record('розыгрыш карты даёт вспышку и звук',
+        after.live > 0 && after.osc > before.osc && after.lifted > 0,
+        `частиц: ${after.live}, звуков: ${before.osc}→${after.osc}, анимаций: ${after.lifted}`)
+
+      // Выключатель обязан выключать. Настройка живёт в другом инстансе хука,
+      // и без общего канала она молча меняла бы только собственную копию.
+      const openSettings = async () => {
+        await page.evaluate(() => {
+          const b = [...document.querySelectorAll('button')]
+            .find((x) => x.getAttribute('aria-label') === 'Настройки')
+          b?.click()
+        })
+        await sleep(500)
+      }
+      const toggleEffects = async () => {
+        await openSettings()
+        await page.evaluate(() => {
+          const label = [...document.querySelectorAll('.opt')].find(
+            (e) => (e.textContent ?? '').includes('Вспышки на столе'))
+          label?.querySelector('input')?.click()
+        })
+        await clickText(page, 'Готово', 2000)
+        await sleep(300)
+      }
+      await toggleEffects()
+      // Ждём, пока догорят частицы предыдущего розыгрыша: иначе проверка
+      // измерит хвост прошлой вспышки, а не новую.
+      await sleep(1600)
+      await page.click('.band:last-of-type .card')
+      await sleep(300)
+      const off = await page.evaluate(() =>
+        Number(document.querySelector('.fx-canvas')?.dataset.live ?? 0))
+      record('вспышки выключаются настройкой', off === 0, `частиц после выключения: ${off}`)
+      await toggleEffects()
     }
 
     // Play a few turns and let the bot answer.
@@ -187,11 +248,12 @@ async function main() {
     })
     await sleep(500)
     // Три вкладки: как стол выглядит, из чего собрана колода, как раздаётся
-    // партия. На вкладке отображения два ползунка -- размер карты и текста.
+    // партия. На вкладке отображения три ползунка -- размер карты, размер
+    // текста и громкость.
     const tabs = await page.$$eval('.tab', (els) => els.map((e) => (e.textContent ?? '').trim()))
     const sliders = await page.$$eval('input[type=range]', (els) => els.length)
     record('панель настроек открывается',
-      tabs.length === 3 && sliders === 2, `вкладки: ${tabs.join(' · ')}, ползунков: ${sliders}`)
+      tabs.length === 3 && sliders === 3, `вкладки: ${tabs.join(' · ')}, ползунков: ${sliders}`)
     shots.push(await shot(page, 'settings', 'Настройки, вкладка отображения. Предпросмотр показывает настоящие карты, включая самую многословную в наборе, — на ней и видно, когда текст перестаёт помещаться.'))
 
     // Вкладка «Правила партии» держит свои два ползунка -- гамбиты и миссии.

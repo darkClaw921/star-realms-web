@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { ALL_SETS, COMMAND_DECKS, VARIANTS, type SetId } from '@sr/engine'
+import { setVolume } from '@/fx/audio'
 
 /**
  * Пользовательские настройки отображения.
@@ -40,10 +41,15 @@ export interface Settings {
   commandDeck: string
   /** An Arena scenario, or '' for the ordinary game. Applies to both players. */
   variant: string
+  /** Громкость стола, 0..1. Ноль выключает звук: контекст даже не создаётся. */
+  volume: number
+  /** Вспышки на столе: взрывы, осколки, свечение союза. */
+  effects: boolean
 }
 
 export const DEFAULTS: Settings = {
   cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '', variant: '',
+  volume: 0.5, effects: true,
 }
 
 export const LIMITS = {
@@ -51,6 +57,7 @@ export const LIMITS = {
   textScale: { min: 0.85, max: 1.4, step: 0.05 },
   gambits: { min: 0, max: 3, step: 1 },
   missions: { min: 0, max: 3, step: 1 },
+  volume: { min: 0, max: 1, step: 0.05 },
 } as const
 
 const KEY = 'sr:settings'
@@ -73,6 +80,11 @@ export function sanitize(raw: unknown): Settings {
     // is always a legal setup.
     commandDeck: COMMAND_DECKS.some((c) => c.id === o.commandDeck) ? String(o.commandDeck) : '',
     variant: (VARIANTS as readonly string[]).includes(String(o.variant)) ? String(o.variant) : '',
+    // Ноль — законное значение, поэтому `|| DEFAULT` здесь нельзя: он бы молча
+    // включал звук каждому, кто его выключил.
+    volume: clamp(Number.isFinite(Number(o.volume)) ? Number(o.volume) : DEFAULTS.volume,
+      LIMITS.volume.min, LIMITS.volume.max),
+    effects: o.effects === undefined ? DEFAULTS.effects : Boolean(o.effects),
   }
 }
 
@@ -97,10 +109,14 @@ export function readSettings(): Settings {
   }
 }
 
+/** Канал синхронизации: панель настроек и стол — разные инстансы одного хука. */
+const CHANNEL = 'sr:settings-changed'
+
 export function applySettings(s: Settings): void {
   const root = document.documentElement
   root.style.setProperty('--card-scale', String(s.cardScale))
   root.style.setProperty('--card-text-scale', String(s.textScale))
+  setVolume(s.volume)
 }
 
 export function useSettings(): {
@@ -114,11 +130,18 @@ export function useSettings(): {
     const stored = readSettings()
     setSettings(stored)
     applySettings(stored)
+    // Стол и панель настроек держат по своему инстансу хука. Без этого
+    // ползунок громкости менял бы только собственную копию состояния, и
+    // выключить вспышки прямо во время партии было бы нельзя.
+    const sync = (e: Event): void => setSettings((e as CustomEvent<Settings>).detail)
+    window.addEventListener(CHANNEL, sync)
+    return () => window.removeEventListener(CHANNEL, sync)
   }, [])
 
   const persist = useCallback((next: Settings) => {
     setSettings(next)
     applySettings(next)
+    window.dispatchEvent(new CustomEvent(CHANNEL, { detail: next }))
     try {
       localStorage.setItem(KEY, JSON.stringify(next))
     } catch {

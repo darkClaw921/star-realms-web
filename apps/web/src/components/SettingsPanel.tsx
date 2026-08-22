@@ -249,6 +249,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
                 format={pct}
                 onChange={(v) => set('textScale', v)}
               />
+              <Slider
+                name={UI.soundName}
+                hint={UI.soundHint}
+                value={settings.volume}
+                limits={LIMITS.volume}
+                format={(v) => (v === 0 ? UI.soundOff : pct(v))}
+                onChange={(v) => set('volume', v)}
+              />
+              <Group title={UI.effectsName} note={UI.effectsHint}>
+                <div className="opt-grid opt-grid--wide">
+                  <Opt
+                    type="checkbox"
+                    name={UI.effectsName}
+                    desc={UI.effectsDesc}
+                    checked={settings.effects}
+                    onSelect={() => set('effects', !settings.effects)}
+                  />
+                </div>
+              </Group>
               <Group title={UI.preview} note={UI.previewHint}>
                 <div className="settings__preview">
                   {PREVIEW.map((def) => <Card key={def} def={def} />)}

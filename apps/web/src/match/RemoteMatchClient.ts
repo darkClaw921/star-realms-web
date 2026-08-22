@@ -51,6 +51,8 @@ export class RemoteMatchClient implements MatchClient {
   private socket: Socket
   private view: PlayerView | null = null
   private log: LogLine[] = []
+  private events: readonly GameEvent[] = []
+  private tick = 0
   private subs = new Set<(s: MatchSnapshot) => void>()
   private seat: PlayerId | null = null
   /** Held from the join ack: later updates do not carry it, and reporting an
@@ -98,6 +100,8 @@ export class RemoteMatchClient implements MatchClient {
     if (this.disposed) return
     this.view = u.state
     this.opponentConnected = u.opponentConnected
+    this.events = u.events ?? []
+    this.tick += 1
     const lines = toLines(u.events ?? [], this.seatNames())
     if (lines.length > 0) this.log = [...this.log, ...lines].slice(-400)
     this.opts.onInfo?.({
@@ -127,6 +131,8 @@ export class RemoteMatchClient implements MatchClient {
       legal: enumerateLegalActions(this.view, this.seat),
       log: this.log,
       botThinking: false,
+      events: this.events,
+      tick: this.tick,
     }
   }
 

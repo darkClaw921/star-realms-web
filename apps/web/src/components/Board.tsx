@@ -11,6 +11,8 @@ import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import type { SeatNames } from '@/match/log'
 import type { MatchSnapshot } from '@/match/types'
+import { FxLayer } from '@/fx/FxLayer'
+import { useSettings } from '@/settings/useSettings'
 import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
 import { SettingsPanel } from './SettingsPanel'
@@ -45,6 +47,7 @@ export function Board({
 }: BoardProps): React.JSX.Element {
   const { view: v, legal, log, botThinking } = snapshot
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const { settings } = useSettings()
 
   /** Index the legal set once so every control can ask "is this allowed?" cheaply. */
   const idx = useMemo(() => {
@@ -138,6 +141,7 @@ export function Board({
             <div key={c.iid} className="zone">
               <Card
                 def={c.copiedDef ?? c.def}
+                iid={c.iid}
                 playable={idx.attack.has(c.iid)}
                 onClick={idx.attack.has(c.iid)
                   ? () => onAction({ t: 'ATTACK_BASE', base: c.iid as CardIid })
@@ -249,6 +253,7 @@ export function Board({
               <Card
                 key={c.iid}
                 def={c.def}
+                iid={c.iid}
                 playable={idx.buy.has(c.iid)}
                 dimmed={!idx.buy.has(c.iid) && myTurn}
                 onClick={idx.buy.has(c.iid)
@@ -377,7 +382,7 @@ export function Board({
               const slots = idx.activate.get(c.iid)
               return (
                 <div key={c.iid} className="zone">
-                  <Card def={c.copiedDef ?? c.def} title={nameOf(c.def)} />
+                  <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
                   {slots && slots.size > 0 && (
                     <div className="actions">
                       {(['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly', 'scrap', 'splinter'] as const)
@@ -467,6 +472,7 @@ export function Board({
             <Card
               key={c.iid}
               def={c.def}
+              iid={c.iid}
               playable={idx.play.has(c.iid)}
               dimmed={!idx.play.has(c.iid)}
               onClick={idx.play.has(c.iid)
@@ -476,6 +482,10 @@ export function Board({
           ))}
         </div>
       </section>
+
+      {/* Слой эффектов ничего не рисует в разметку: он слушает события
+        * последней команды и запускает звук и вспышки по элементам стола. */}
+      <FxLayer snapshot={snapshot} enabled={settings.effects} />
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
 
