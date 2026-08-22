@@ -240,9 +240,9 @@ async function main() {
 
     // Play a few turns and let the bot answer.
     let turns = 0
-    // Итераций с запасом: проверки звука и вспышек выше тратят карты, а иногда
-    // и целый ход на добор новой руки.
-    for (let i = 0; i < 20; i++) {
+    // Итераций с запасом: проверки звука и вспышек выше тратят карты и иногда
+    // целый ход на добор новой руки, а окна выбора съедают итерацию каждое.
+    for (let i = 0; i < 30; i++) {
       if (await page.$('.choice')) {
         // Resolve whatever prompt is open, cheaply.
         if (!(await clickText(page, 'Подтвердить', 800))) {
@@ -1259,17 +1259,31 @@ async function main() {
       await fan.mouse.move(pt.x, pt.y)
       await sleep(300)
       const open = await fan.evaluate(() => {
-        const slot = document.querySelector('.band--board .row--fan').children[2]
+        const row = document.querySelector('.band--board .row--fan')
+        const slot = row.children[2]
         const acts = slot.querySelector('.actions')
+        const card = slot.querySelector('.card-slot').getBoundingClientRect()
+        const a = acts?.getBoundingClientRect()
         return {
           z: getComputedStyle(slot).zIndex,
           opacity: acts ? getComputedStyle(acts).opacity : '0',
           buttons: slot.querySelectorAll('.actions .btn').length,
+          // Кнопки остаются под своей картой, как в обычном ряду, а не
+          // переезжают на иллюстрацию.
+          under: a ? Math.round(a.top - card.bottom) : -1,
+          // И ровно одна карта отдаёт кнопки: иначе в сложенном ряду висел бы
+          // десяток чужих кнопок поверх соседей.
+          lit: [...row.children].filter((k) => {
+            const el = k.querySelector('.actions')
+            return el && getComputedStyle(el).opacity !== '0'
+          }).length,
         }
       })
-      record('сложенная карта поднимается и отдаёт кнопки',
-        open.z === '20' && open.opacity === '1' && open.buttons > 0,
-        `z-index ${open.z}, кнопки ${open.opacity}, штук ${open.buttons}`)
+      record('сложенная карта поднимается, кнопки под ней',
+        open.z === '20' && open.opacity === '1' && open.buttons > 0
+        && open.under >= 0 && open.under < 20 && open.lit === 1,
+        `z-index ${open.z}, видимых наборов ${open.lit}, кнопок ${open.buttons}, `
+        + `отступ от карты ${open.under}px`)
       shots.push(await shot(fan, 'fan',
         'Зона игры при шести картах. Пока карты помещаются, ряд обычный; дальше они уходят друг под друга '
         + 'ровно настолько, чтобы влезть, — наружу торчит левый край со стоимостью и названием, а карта под '

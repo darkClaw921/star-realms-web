@@ -39,10 +39,14 @@ export function FanRow({
       el.classList.remove('is-fanned')
       return
     }
-    // Считаем по собственной ширине карты, а не по ширине обёртки: обёртку
-    // уже мог сжать флексбокс, и тогда измерение подтвердило бы само себя.
-    const widths = kids.map((k) => k.querySelector('.card-slot')?.getBoundingClientRect().width
-      ?? k.getBoundingClientRect().width)
+    // Ширина слота, но не меньше ширины самой карты: под картой лежит ряд
+    // кнопок, и у карты с двумя свойствами он шире её самой. Мерить только
+    // карту значило бы недосчитать этих точек — и оставить прокрутку там, где
+    // веер должен был всё уместить.
+    const widths = kids.map((k) => Math.max(
+      k.getBoundingClientRect().width,
+      k.querySelector('.card-slot')?.getBoundingClientRect().width ?? 0,
+    ))
     const gap = parseFloat(getComputedStyle(el).columnGap || '0') || 0
     const total = widths.reduce((a, b) => a + b, 0) + gap * (kids.length - 1)
     const avail = el.clientWidth
@@ -52,7 +56,8 @@ export function FanRow({
       el.classList.remove('is-fanned')
       return
     }
-    const narrowest = Math.min(...widths)
+    const narrowest = Math.min(...kids.map(
+      (k) => k.querySelector('.card-slot')?.getBoundingClientRect().width ?? Infinity))
     const cap = narrowest * (1 - MIN_VISIBLE)
     const fan = Math.min(cap, over / (kids.length - 1))
     el.style.setProperty('--fan', `${Math.ceil(fan)}px`)

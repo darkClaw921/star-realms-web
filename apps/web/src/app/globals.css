@@ -2248,25 +2248,18 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
 .row--fan.is-fanned > *:focus-within,
 .row--fan.is-fanned > .is-open { z-index: 20; }
 
-/* Кнопки свойств в сложенном ряду ложатся на СВОЮ карту сразу под названием.
+/* Кнопки свойств остаются ТАМ ЖЕ, где всегда, — под своей картой.
  *
- * Не под картой — там их накрыл бы сосед. И не у нижнего края карты: полоса
- * зоны игры ниже самой карты, низ обрезается, и кнопка оказалась бы за краем
- * видимой области. Сверху же видно всегда — это тот самый корешок, по
- * которому карту и узнают. */
+ * В сложенном ряду они лежат друг на друге так же, как карты, поэтому видны
+ * только у той карты, которая сейчас поднята: у неё z-index выше соседей, и
+ * её кнопки оказываются поверх всего ряда целиком. Класть их на карту было
+ * бы честнее к месту, но кнопка на иллюстрации перестаёт читаться как кнопка.
+ */
 .row--fan.is-fanned > * > .actions {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(var(--card-w) * 0.21);
-  z-index: 3;
-  justify-content: center;
-  padding: 6px;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--panel) 94%, transparent) 70%, transparent 100%);
   opacity: 0;
   pointer-events: none;
   transition: opacity .12s ease-out;
+  flex-wrap: nowrap;
 }
 .row--fan.is-fanned > *:hover > .actions,
 .row--fan.is-fanned > *:focus-within > .actions,
