@@ -9,8 +9,8 @@
     "build": "next build && node scripts/build-server.mjs",
     "start": "NODE_ENV=production node dist/server.js",
     "fetch-cards": "tsx scripts/fetch-cards.ts",
-    "verify": "node scripts/verify-ui.mjs",
-    "report": "node scripts/verify-ui.mjs && node scripts/build-report.mjs",
+    "verify": "tsx scripts/check-i18n.ts && node scripts/verify-ui.mjs",
+    "report": "tsx scripts/check-i18n.ts && node scripts/verify-ui.mjs && node scripts/build-report.mjs",
     "art-manifest": "node scripts/art-manifest.mjs",
     "predev": "npm run art-manifest",
     "prebuild": "npm run art-manifest"

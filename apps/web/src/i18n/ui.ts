@@ -289,6 +289,7 @@ export const UI = {
   setSizeGambits: (n: number): string => `${n} гамбитов`,
   setSizeMissions: (n: number): string => `${n} миссий`,
   setSizeDecks: (n: number): string => `${n} колод`,
+  askedBy: 'Свойство карты',
   setHoldHint: 'Удержите набор, чтобы рассмотреть все его карты',
   setGalleryHint: 'Удержите карту, чтобы увеличить',
   setGalleryCount: (n: number): string => `${n} уникальных карт`,

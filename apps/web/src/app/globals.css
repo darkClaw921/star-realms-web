@@ -1112,6 +1112,33 @@ button { font: inherit; color: inherit; }
 }
 .sheet__hint { font-size: 12px; color: var(--ink-dim); }
 
+/* Who asked. A prompt like "Выберите одно" says nothing about which of the
+ * five bases on the table just fired, so the card itself stands next to its own
+ * question -- full size and readable, not a name in the heading. */
+.asked-by {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* Only as wide as the card and its name: stretched across the sheet the
+   * block became a mostly-empty box with a card parked at one end. */
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule);
+  background: var(--void);
+}
+
+.asked-by__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.asked-by__name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 .branches { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .branch {
   display: flex;

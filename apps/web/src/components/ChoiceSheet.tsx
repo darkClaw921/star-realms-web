@@ -50,6 +50,9 @@ export function ChoiceSheet({
   }
 
   const opts = choice.options
+  // Кто задал вопрос. «Выберите одно» само по себе не говорит, чьё это
+  // свойство: на столе может стоять пять баз, и любая из них могла сработать.
+  const source = choice.sourceDef
   const branches = opts.filter((o) => o.o === 'BRANCH')
   // TOPDECK_ACQUIRED names the card in its title; it arrives as the only option.
   const firstCard = opts.find((o) => o.o === 'CARD')
@@ -85,6 +88,16 @@ export function ChoiceSheet({
               : UI.chooseRange(choice.min, choice.max)}
           </span>
         </div>
+
+        {source && (
+          <div className="asked-by">
+            <Card def={source} />
+            <div className="asked-by__body">
+              <span className="eyebrow">{UI.askedBy}</span>
+              <span className="asked-by__name">{cardName(source, cardDef(source).name)}</span>
+            </div>
+          </div>
+        )}
 
         {branches.length > 0 && (
           <div className="branches">

@@ -75,6 +75,32 @@ describe('engine invariants over fuzzed full games', () => {
     }
   })
 
+  it('names the card that asked only when it is face up', () => {
+    let seenNamed = 0
+    for (const seed of SEEDS.slice(0, 16)) {
+      playRandomGame(seed, ({ after }) => {
+        for (const viewer of ['p1', 'p2'] as PlayerId[]) {
+          const pc = redact(after, viewer).pendingChoice
+          if (!pc?.sourceDef) continue
+          seenNamed++
+          // The source is named out of face-up zones only, so the iid it names
+          // must be findable in one of them -- never in a hand or a deck.
+          const faceUp = [
+            ...after.players.p1.inPlay, ...after.players.p2.inPlay,
+            ...after.players.p1.gambitsInPlay, ...after.players.p2.gambitsInPlay,
+            ...after.tradeRow.filter((c) => c !== null),
+            ...after.setAside, ...after.scrapHeap,
+          ]
+          expect(faceUp.some((c) => c.iid === pc.source),
+            `sourceDef named ${pc.sourceDef} for an iid in no face-up zone`).toBe(true)
+        }
+      })
+    }
+    // A vacuous pass would be worse than a failure: the property has to have
+    // been exercised by prompts that actually named a card.
+    expect(seenNamed).toBeGreaterThan(0)
+  })
+
   it('every enumerated action applies without throwing', () => {
     for (const seed of SEEDS.slice(0, 10)) {
       playRandomGame(seed, ({ before, seat, legal }: Step) => {

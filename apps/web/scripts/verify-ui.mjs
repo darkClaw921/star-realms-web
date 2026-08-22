@@ -701,6 +701,49 @@ async function main() {
       const myBases = await page.$$eval('.band--board .card', (e) => e.length)
       record('стартовая база вылета стоит в игре', myBases === 1, `баз: ${myBases}`)
 
+      // «Оборонный центр» -- {authority:3} ИЛИ {combat:2}. Единственная карта,
+      // которая в этом прогоне гарантированно стоит в игре и задаёт вопрос с
+      // ветками, поэтому окно выбора проверяется именно на ней.
+      await page.evaluate(() => {
+        // Свойство базы активируется кнопкой под картой, а не кликом по ней.
+        const b = document.querySelector('.band--board .actions .btn')
+        b?.click()
+      })
+      await sleep(500)
+      const asked = await page.evaluate(() => {
+        const sheet = document.querySelector('.overlay .sheet')
+        if (!sheet) return null
+        return {
+          title: sheet.querySelector('.sheet__title')?.textContent?.trim() ?? '',
+          source: sheet.querySelector('.asked-by__name')?.textContent?.trim() ?? '',
+          card: sheet.querySelectorAll('.asked-by .card').length,
+          branches: [...sheet.querySelectorAll('.branch')]
+            .map((e) => (e.textContent ?? '').trim()),
+        }
+      })
+      record('окно выбора показывает карту, которая спросила',
+        asked !== null && asked.card === 1 && asked.source === 'Оборонный центр',
+        asked ? `${asked.title} · ${asked.source}, карт: ${asked.card}` : 'окно не открылось')
+
+      // Ветки движок хранит по-английски. Латиница в кнопке выбора значит, что
+      // метку забыли перевести; полный список стережёт scripts/check-i18n.ts,
+      // а это -- та же проверка, но на живом экране.
+      const english = (asked?.branches ?? []).filter((t) => /[A-Za-z]{2}/.test(t))
+      record('в вариантах выбора нет английского',
+        asked !== null && asked.branches.length === 2 && english.length === 0,
+        (asked?.branches ?? []).join(' | ') || 'веток нет')
+
+      shots.push(await shot(page, 'choice',
+        'Окно выбора. Над вариантами стоит сама карта, которая задала вопрос: ' +
+        '«Выберите одно» ничего не говорит о том, какая из баз на столе сработала.'))
+
+      // Вернуть стол в исходное состояние: ниже проверяется торговая колода.
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.branch')][0]
+        b?.click()
+      })
+      await sleep(400)
+
       // Пул миссии -- две фракции из четырёх, поэтому колода заведомо меньше
       // полных 80 карт минус пятёрка ряда.
       const deckText = await textOf(page, '.band--market .zone__head')

@@ -110,6 +110,17 @@ export interface PendingChoiceView {
   readonly actor: PlayerId
   readonly prompt: PromptKind
   readonly source: CardIid | null
+  /**
+   * The card that asked the question, when it is a card anyone can see.
+   *
+   * Resolved here rather than by the client, and resolved ONLY out of face-up
+   * zones -- play, revealed gambits, the trade row, the set-aside pile and the
+   * scrap heap. A source that is not in one of those (a card being played out
+   * of hand, say) stays null: the prompt is not worth leaking a card from a
+   * hidden zone for, and "look it up in the zones you can see" is a rule the
+   * projection can enforce, unlike a client-side lookup.
+   */
+  readonly sourceDef: CardDefId | null
   readonly label: string
   readonly min: number
   readonly max: number
@@ -192,7 +203,21 @@ function viewInPlay(c: InPlayCard): InPlayCardView {
   }
 }
 
-function redactChoice(c: PendingChoice, viewer: PlayerId): PendingChoiceView {
+/** The def of a card, looked up in FACE-UP ZONES ONLY. See `sourceDef`. */
+function publicDefOf(s: GameState, iid: CardIid | null): CardDefId | null {
+  if (iid === null) return null
+  for (const seat of s.seats) {
+    const p = s.players[seat]
+    for (const c of p.inPlay) if (c.iid === iid) return c.copiedDef ?? c.def
+    for (const c of p.gambitsInPlay) if (c.iid === iid) return c.def
+  }
+  for (const c of s.tradeRow) if (c && c.iid === iid) return c.def
+  for (const c of s.setAside) if (c.iid === iid) return c.def
+  for (const c of s.scrapHeap) if (c.iid === iid) return c.def
+  return null
+}
+
+function redactChoice(s: GameState, c: PendingChoice, viewer: PlayerId): PendingChoiceView {
   // A forced-discard choice's options literally ARE the opponent's hand. Sending
   // them to both players is the single most common hand leak in this design.
   const isActor = c.actor === viewer
@@ -201,6 +226,7 @@ function redactChoice(c: PendingChoice, viewer: PlayerId): PendingChoiceView {
     actor: c.actor,
     prompt: c.prompt,
     source: c.source,
+    sourceDef: publicDefOf(s, c.source),
     label: c.label,
     min: c.min,
     max: c.max,
@@ -278,7 +304,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     explorerPile: s.explorerPile,
     scrapHeap: s.scrapHeap.map((c) => ({ iid: c.iid, def: c.def })),
     setAside: s.setAside.map((c) => ({ iid: c.iid, def: c.def })),
-    pendingChoice: choice ? redactChoice(choice, viewer) : null,
+    pendingChoice: choice ? redactChoice(s, choice, viewer) : null,
     winner: s.winner,
     scenario: s.scenario,
     basesDestroyed: Object.fromEntries(

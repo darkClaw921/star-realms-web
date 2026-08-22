@@ -143,11 +143,46 @@ const CARDS_RU: Record<string, CardRu> = {
 }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */
+/**
+ * Ветки выбора по-русски.
+ *
+ * Полный список: `npm run verify` начинается с проверки, которая собирает все
+ * метки веток из реестра карт и падает, если какая-то сюда не дописана.
+ * Английская метка в окне выбора -- ровно то, что эта проверка ловит.
+ *
+ * Метки, состоящие из одних токенов («{trade:2}»), переводить нечего: их
+ * рисует CardText значками. Здесь только те, где есть слова.
+ */
 export const BRANCH_RU: Record<string, string> = {
   'Draw a card for each Blob card played this turn':
     'Доберите по карте за каждую карту слизней, разыгранную в этот ход',
   'Discard up to two cards, then draw that many':
     'Сбросьте до двух карт, затем доберите столько же',
+  'Acquire a card of cost six or less for free':
+    'Получите бесплатно карту стоимостью 6 или меньше',
+  'Acquire an Explorer for free, on top of your deck':
+    'Получите исследователя бесплатно — на верх колоды',
+  'Destroy target base': 'Уничтожьте выбранную базу',
+  'Draw a card': 'Доберите карту',
+  'Draw a card, then discard a card': 'Доберите карту, затем сбросьте карту',
+  'Draw, then discard': 'Доберите карту, затем сбросьте карту',
+  'Put a card from your discard pile into your hand':
+    'Возьмите карту из стопки сброса в руку',
+  'Put a card from your discard pile on top of your deck':
+    'Положите карту из стопки сброса на верх колоды',
+  'Put it into your hand': 'Возьмите её в руку',
+  'Scrap a card from your discard pile': 'Утилизируйте карту из стопки сброса',
+  'Scrap a card in your hand': 'Утилизируйте карту с руки',
+  'Scrap a card in your hand or discard pile':
+    'Утилизируйте карту с руки или из стопки сброса',
+  'Top-deck a base': 'Положите базу на верх колоды',
+  'Top-deck the next ship or base you acquire':
+    'Следующие купленные корабль или базу положите на верх колоды',
+  '{combat:2} Target opponent discards a card': '{combat:2} Соперник сбрасывает карту',
+  '{combat:3} Scrap a card in the trade row': '{combat:3} Утилизируйте карту из торгового ряда',
+  // Куда отправить купленную карту: метки собирает reduce.ts, а не карта.
+  'Into your hand': 'В руку',
+  'On top of your deck': 'На верх колоды',
 }
 
 export function cardRu(def: CardDefId): CardRu | null {
