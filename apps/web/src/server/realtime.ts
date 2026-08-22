@@ -2,7 +2,9 @@ import type { Server as HttpServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { Server, type Socket } from 'socket.io'
 import type { GameEvent, PlayerId } from '@sr/engine'
-import { ENGINE_VERSION, commandSchema, joinSchema, rejoinSchema, type WireError } from '@sr/protocol'
+import {
+  ENGINE_VERSION, commandSchema, createSchema, joinSchema, rejoinSchema, type WireError,
+} from '@sr/protocol'
 import {
   MatchError, applyCommand, createMatch, getMatch, joinByCode, updateFor, verifyToken,
   type Match,
@@ -43,8 +45,9 @@ export function attachRealtime(httpServer: HttpServer): Server {
   /** A seat may hold several sockets, so a second tab works. */
   const room = (matchId: string, seat: PlayerId): string => `${matchId}:${seat}`
 
+  // Every human seat, which at a co-op table is up to four.
   const push = (m: Match, events: readonly GameEvent[]): void => {
-    for (const seat of ['p1', 'p2'] as PlayerId[]) {
+    for (const seat of m.humanSeats) {
       io.to(room(m.id, seat)).emit('update', updateFor(m, seat, events))
     }
   }
@@ -57,9 +60,12 @@ export function attachRealtime(httpServer: HttpServer): Server {
   }
 
   io.on('connection', (socket: Sock) => {
-    socket.on('create', (_payload: unknown, ack?: (r: unknown) => void) => {
+    socket.on('create', (payload: unknown, ack?: (r: unknown) => void) => {
       try {
-        const { match, seat, token } = createMatch()
+        // An unparseable payload is treated as a plain duel rather than an
+        // error: the older client sends nothing at all.
+        const parsed = createSchema.safeParse(payload ?? {})
+        const { match, seat, token } = createMatch(parsed.success ? parsed.data.coop : undefined)
         bind(socket, match, seat)
         ack?.({
           matchId: match.id, roomCode: match.roomCode, seat, token,

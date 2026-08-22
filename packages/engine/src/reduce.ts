@@ -7,20 +7,24 @@ import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
 import {
-  allySlotFaction, allyCountFor, canAttackFace, costFor, defenseOf, effectiveDefId,
+  allFoesOf, allySlotFaction, allyCountFor, canAttackFace, costFor, defenseOf, effectiveDefId,
+  foeOf, foeGroups, foesOf,
   factionsOf,
   findInPlay, isBase,
   isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets, objectiveMet,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
-import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
+import { asDefId, FACTIONS, opponentOf } from './ids'
+import {
+  authorityHolder, livePlayers, sharedTurn, type CoopState,
+} from './coop'
 import { nextHex, nextInt, shuffle } from './rng'
 import {
   EXPLORER_COST, TRADE_ROW_SIZE, emptyFactionCounts,
   type CardInstance, type ChoiceCont, type EffectCtx, type GameState, type InPlayCard,
   type PlayerState, type ResolutionFrame,
 } from './state'
-import { actorOf } from './state'
+import { actorsOf } from './state'
 
 export class IllegalActionError extends Error {
   constructor(message: string) {
@@ -58,12 +62,48 @@ function pushChoice(d: D, choice: PendingChoice, cont?: ChoiceCont): void {
   d.resolution.unshift(frame as Draft<GameState>['resolution'][number])
 }
 
+/**
+ * The seat that physically holds this seat's Authority.
+ *
+ * A Hydra team has ONE score. Routing every read and write through here is what
+ * makes "gain 5 Authority" gain the team five rather than five each, and a
+ * five-damage hit cost the team five rather than five per member.
+ */
+function holder(d: D, pid: PlayerId): PlayerId {
+  return authorityHolder(d.coop as CoopState | null, pid)
+}
+
+/** Copy a Hydra team's single score back onto every member, so views agree. */
+function syncTeamAuthority(d: D): void {
+  const c = d.coop
+  if (!c || c.mode !== 'hydra') return
+  const head = c.players[0]
+  if (!head) return
+  const score = d.players[head].authority
+  for (const pid of c.players) d.players[pid].authority = score
+}
+
+/**
+ * Authority lost. Never a negative gain: a loss floors at zero, is not counted
+ * as something gained, and is routed to whoever holds the score.
+ */
+function loseAuthority(d: D, pid: PlayerId, n: number, ev: GameEvent[]): number {
+  if (n <= 0) return 0
+  const seat = holder(d, pid)
+  const before = d.players[seat].authority
+  const dealt = Math.min(before, n)
+  d.players[seat].authority = before - dealt
+  syncTeamAuthority(d)
+  ev.push({ e: 'AUTHORITY_LOST', player: pid, n: dealt })
+  return dealt
+}
+
 function gain(d: D, pid: PlayerId, what: 'trade' | 'combat' | 'authority', n: number, ev: GameEvent[]): void {
   if (n === 0) return
   const p = d.players[pid]
   if (what === 'trade') p.trade += n
   else if (what === 'combat') p.combat += n
-  else p.authority += n
+  else { d.players[holder(d, pid)].authority += n; syncTeamAuthority(d) }
   // Diversify asks what you GAINED, not what you still have, so a spent point
   // still counts. Losses are not negative gains and are not counted.
   if (n > 0) p.gainedThisTurn[what] += n
@@ -95,9 +135,73 @@ function win(d: D, who: PlayerId, ev: GameEvent[]): void {
  * objective get consulted, so a hero who completes their objective on the same
  * turn they are killed still loses.
  */
+/**
+ * Losing, at a co-op table.
+ *
+ * Three shapes, because the rulebook prints three. A Hydra team has one score
+ * and dies all at once. Pirates of the Dark Star gives each player their own
+ * score and eliminates them one at a time; the Boss wins only when the last one
+ * is gone. The Dimensional Horror is the same on this point, having never made
+ * the players a team at all.
+ *
+ * Elimination removes a player from the turn order and from everything that
+ * targets a player. Their board is left standing but unreachable, which is what
+ * taking their cards off the table amounts to.
+ */
+function checkCoopWin(d: D, ev: GameEvent[]): void {
+  const c = d.coop as CoopState
+  const bossId = d.boss?.id
+  const head = c.players[0] as PlayerId
+
+  // The Horror has no Authority to spend down: killing it means emptying every
+  // tentacle, which the scenario objective below decides.
+  if (bossId !== 'dimensional-horror' && d.players[c.boss].authority <= 0) {
+    win(d, head, ev)
+    return
+  }
+
+  if (c.mode === 'hydra') {
+    if (d.players[head].authority <= 0) { win(d, c.boss, ev); return }
+  } else {
+    for (const pid of c.players) {
+      if (c.eliminated.includes(pid)) continue
+      if (d.players[pid].authority <= 0) {
+        c.eliminated.push(pid)
+        // "When a player is reduced to 0 or less Authority, they are defeated.
+        // Put all the cards that player acquired this game into the scrap
+        // heap." Their Scouts and Vipers were never acquired, so they stay.
+        const gone = d.players[pid]
+        for (const zone of ['deck', 'hand', 'discard'] as const) {
+          const keep: CardInstance[] = []
+          for (const card of gone[zone]) {
+            if (isStarter(card.def)) keep.push(card as CardInstance)
+            else d.scrapHeap.push({ iid: card.iid, def: card.def })
+          }
+          gone[zone] = keep as never
+        }
+        for (const card of gone.inPlay) {
+          if (!isStarter(card.def)) d.scrapHeap.push({ iid: card.iid, def: card.def })
+        }
+        gone.inPlay = []
+        ev.push({ e: 'ELIMINATED', player: pid })
+      }
+    }
+    if (livePlayers(c).length === 0) { win(d, c.boss, ev); return }
+  }
+
+  const sc = d.scenario
+  if (sc?.objective.k === 'DESTROY_TENTACLES') {
+    const b = d.boss
+    if (b && b.tentaclesEverFed && TENTACLE_FACTIONS.every((f) => b.tentacles[f].length === 0)) {
+      win(d, head, ev)
+    }
+  }
+}
+
 function checkWin(d: D, ev: GameEvent[]): void {
   if (d.winner) return
-  for (const pid of PLAYERS) {
+  if (d.coop) return checkCoopWin(d, ev)
+  for (const pid of d.seats) {
     if (d.players[pid].authority <= 0) {
       win(d, opponentOf(pid), ev)
       return
@@ -434,8 +538,9 @@ function fireScrapTriggers(d: D, pid: PlayerId, ev: GameEvent[]): void {
 
 function destroyBase(
   d: D, owner: PlayerId, card: InPlayCard, by: 'combat' | 'effect', ev: GameEvent[],
-  destroyer: PlayerId = opponentOf(owner),
+  by_: PlayerId | null = null,
 ): void {
+  const destroyer = by_ ?? foeOf(d as unknown as GameState, owner)
   const p = d.players[owner]
   const idx = p.inPlay.findIndex((c) => c.iid === card.iid)
   if (idx < 0) return
@@ -561,6 +666,20 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
     case 'BOSS_ATTACK': { bossAttacks(d, ev); return }
+    case 'BOSS_BLOB_DRAW': {
+      // "If the Boss would draw a card, instead it puts the lowest cost base it
+      // has in its discard pile into play. If there isn't a base in its discard
+      // pile, it gains 7 Combat."
+      const bp = d.players[me]
+      const bases = bp.discard.filter((c) => isBase({ def: c.def }))
+      if (bases.length === 0) { gain(d, me, 'combat', 7, ev); return }
+      let best = bases[0] as CardInstance
+      for (const c of bases) if (cardDef(c.def).cost < cardDef(best.def).cost) best = c
+      const at = bp.discard.findIndex((c) => c.iid === best.iid)
+      const inst = bp.discard.splice(at, 1)[0] as CardInstance
+      playCardFor(d, me, inst, ev, ctx)
+      return
+    }
     case 'BOSS_ASSIMILATE': { automatonsStep(d, ev, ctx); return }
     case 'BOSS_GROW': { if (d.boss) d.boss.assimilation += 1; return }
     case 'BOSS_NEMESIS_STEP': { nemesisStep(d, ev, ctx); return }
@@ -579,35 +698,40 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     case 'TOPDECK_RANDOM_FROM_HAND': {
       // Random, so the engine picks -- and it picks from the seeded stream, not
       // from Math.random, or the replay would diverge.
-      const foe = opponentOf(me)
-      const fp = d.players[foe]
-      for (let i = 0; i < effect.n && fp.hand.length > 0; i++) {
-        let idx: number
-        ;[idx, d.rng] = nextInt(d.rng, fp.hand.length) as [number, typeof d.rng]
-        const inst = fp.hand.splice(idx, 1)[0] as CardInstance
-        fp.deck.unshift(inst)
-        ev.push({ e: 'TOPDECK', player: foe, iid: inst.iid, def: inst.def })
+      // "EACH player", on the Nemesis Beast's card: at a co-op table this is
+      // every living player, which is what foesOf returns for the boss.
+      for (const foe of foesOf(d as unknown as GameState, me, ctx)) {
+        const fp = d.players[foe]
+        for (let i = 0; i < effect.n && fp.hand.length > 0; i++) {
+          let idx: number
+          ;[idx, d.rng] = nextInt(d.rng, fp.hand.length) as [number, typeof d.rng]
+          const inst = fp.hand.splice(idx, 1)[0] as CardInstance
+          fp.deck.unshift(inst)
+          ev.push({ e: 'TOPDECK', player: foe, iid: inst.iid, def: inst.def })
+        }
       }
       return
     }
 
     case 'TOPDECK_STARTER': {
-      const foe = opponentOf(me)
+      for (const foe of foesOf(d as unknown as GameState, me, ctx)) {
       const fp = d.players[foe]
       const opts: ChoiceOption[] = [
         ...cardOpts(fp.hand.filter((c) => isStarter(c.def)), 'hand', foe),
         ...cardOpts(fp.discard.filter((c) => isStarter(c.def)), 'discard', foe),
       ]
-      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'no starter card to top-deck' }); return }
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'no starter card to top-deck' }); continue }
       pushChoice(d, makeChoice(d, foe, 'TOPDECK_BASE', 'Put a Scout or Viper on top of your deck',
         1, 1, opts, ctx.source))
+      }
       return
     }
 
     case 'DESTROY_ALL_ENEMY_BASES': {
-      const foe = opponentOf(me)
-      const bases = d.players[foe].inPlay.filter((c) => isBase(c))
-      for (const b of bases) destroyBase(d, foe, b as InPlayCard, 'effect', ev, me)
+      for (const foe of foesOf(d as unknown as GameState, me, ctx)) {
+        const bases = d.players[foe].inPlay.filter((c) => isBase(c))
+        for (const b of bases) destroyBase(d, foe, b as InPlayCard, 'effect', ev, me)
+      }
       return
     }
 
@@ -647,13 +771,22 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'OPPONENT_DISCARD': {
-      const target = opponentOf(me)
-      const hand = d.players[target].hand as CardInstance[]
-      if (hand.length === 0) { ev.push({ e: 'FIZZLE', label: 'opponent has no cards to discard' }); return }
-      const n = Math.min(effect.n, hand.length)
-      const label = n === 1 ? 'Discard a card' : `Discard ${n} cards`
-      pushChoice(d, makeChoice(d, target, 'DISCARD', label, n, n,
-        cardOpts(hand, 'hand', target), ctx.source))
+      // Automatons: "If the Boss makes a player discard cards, each other
+      // player must also discard that number of cards." Every other boss aims
+      // its discard at the one player it targeted this turn.
+      const spreads = d.boss?.id === 'automatons' && me === bossSeat(d) && !ctx.target
+      const victims = spreads
+        ? allFoesOf(d as unknown as GameState, me)
+        : foesOf(d as unknown as GameState, me, ctx)
+      // Pushed in reverse so the stack asks the players in seat order.
+      for (const target of [...victims].reverse()) {
+        const hand = d.players[target].hand as CardInstance[]
+        if (hand.length === 0) { ev.push({ e: 'FIZZLE', label: 'opponent has no cards to discard' }); continue }
+        const n = Math.min(effect.n, hand.length)
+        const label = n === 1 ? 'Discard a card' : `Discard ${n} cards`
+        pushChoice(d, makeChoice(d, target, 'DISCARD', label, n, n,
+          cardOpts(hand, 'hand', target), ctx.source))
+      }
       return
     }
 
@@ -662,7 +795,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       if (targets.length === 0) { ev.push({ e: 'FIZZLE', label: 'no base to destroy' }); return }
       const opts: ChoiceOption[] = targets.map((c) => ({
         o: 'CARD', iid: c.iid, def: c.def, zone: 'inPlay',
-        owner: d.players[me].inPlay.some((x) => x.iid === c.iid) ? me : opponentOf(me),
+        owner: findInPlay(d as unknown as GameState, c.iid)?.owner ?? me,
       }))
       pushChoice(d, makeChoice(d, me, 'DESTROY_BASE', 'Destroy target base', effect.min, effect.max, opts, ctx.source))
       return
@@ -815,11 +948,21 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       return
     }
 
+    case 'EACH_FOE': {
+      // Pushed in reverse so the stack works through the players in seat order.
+      const foes = allFoesOf(d as unknown as GameState, me)
+      for (const foe of [...foes].reverse()) {
+        pushEffects(d, effect.then, { ...ctx, target: foe })
+      }
+      return
+    }
+
     case 'EACH_PLAYER': {
       // Active player first, and pushed in that order so the stack resolves it
       // first: an event that asks both players a question must ask in turn
       // order, not in whatever order the seats happen to be listed.
-      const order = [d.activePlayer, opponentOf(d.activePlayer)]
+      const from = d.seats.indexOf(d.activePlayer)
+      const order = d.seats.map((_, i) => d.seats[(from + i) % d.seats.length] as PlayerId)
       for (const pid of [...order].reverse()) {
         pushEffects(d, effect.then, { controller: pid, source: ctx.source, slot: ctx.slot })
       }
@@ -829,8 +972,8 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     case 'LOSE_AUTHORITY': {
       // A loss is not a negative gain: authority floors at zero, and dropping to
       // zero is a loss condition checked by settle().
-      const n = Math.min(effect.n, p.authority)
-      p.authority -= n
+      const n = Math.min(effect.n, d.players[holder(d, me)].authority)
+      loseAuthority(d, me, n, ev)
       ev.push({ e: 'GAIN', player: me, what: 'authority', n: -n })
       return
     }
@@ -878,7 +1021,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'OPPONENT_EFFECT':
-      return pushEffects(d, effect.then, { ...ctx, controller: opponentOf(me) })
+      return pushEffects(d, effect.then, { ...ctx, controller: foeOf(d as unknown as GameState, me, ctx) })
 
     case 'GAIN_PHANTOM': {
       for (let i = 0; i < effect.n; i++) p.phantomFactions.push(effect.faction)
@@ -1019,7 +1162,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'STEAL_FROM_DISCARD': {
-      const foe = opponentOf(me)
+      const foe = foeOf(d as unknown as GameState, me, ctx)
       const opts = cardOpts(d.players[foe].discard as CardInstance[], 'discard', foe)
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'their discard pile is empty' }); return }
       const n = Math.min(effect.n, opts.length)
@@ -1103,7 +1246,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
     }
 
     case 'OPPONENT_DRAW': {
-      drawCards(d, opponentOf(me), effect.n, ev)
+      drawCards(d, foeOf(d as unknown as GameState, me, ctx), effect.n, ev)
       return
     }
 
@@ -1136,7 +1279,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       // through the outpost shield: the shield is worded against attacks and
       // against destruction targeting, and Mega Mech does neither.
       const opts: ChoiceOption[] = []
-      for (const pid of PLAYERS) {
+      for (const pid of d.seats) {
         for (const c of d.players[pid].inPlay) {
           if (isBase(c)) opts.push({ o: 'CARD', iid: c.iid, def: c.def, zone: 'inPlay', owner: pid })
         }
@@ -1152,7 +1295,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       // "Any base in play" -- both sides. Copying an enemy outpost is a real and
       // intended play, so the option list is not filtered to your own side.
       const opts: ChoiceOption[] = []
-      for (const pid of PLAYERS) {
+      for (const pid of d.seats) {
         for (const c of d.players[pid].inPlay) {
           if (c.iid === src) continue
           if (!isBase(c)) continue
@@ -1208,7 +1351,8 @@ function evalCondition(d: D, me: PlayerId, cond: Condition): boolean {
     case 'BASES_IN_PLAY_AT_LEAST':
       return d.players[me].inPlay.filter(isBase).length >= cond.n
     case 'OPPONENT_BASES_AT_LEAST':
-      return d.players[opponentOf(me)].inPlay.filter(isBase).length >= cond.n
+      return foesOf(d as unknown as GameState, me)
+        .some((f) => d.players[f].inPlay.filter(isBase).length >= cond.n)
     case 'FACTION_PLAYED_THIS_TURN':
       return d.players[me].factionPlayedThisTurn[cond.faction] >= cond.n
     case 'BASE_PLAYED_THIS_TURN':
@@ -1582,7 +1726,7 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
     }
 
     case 'STEAL_FROM_DISCARD': {
-      const foe = opponentOf(me)
+      const foe = foeOf(d as unknown as GameState, me)
       for (const o of selected) {
         if (o.o !== 'CARD') continue
         const inst = removeFromZone(d, foe, 'discard', o.iid)
@@ -1694,7 +1838,7 @@ export function settle(d: D, ev: GameEvent[]): void {
   let steps = 0
   for (;;) {
     if (++steps > MAX_RESOLUTION_STEPS) throw new Error('settle: resolution did not converge')
-    for (const pid of PLAYERS) recomputeAlly(d, pid, ev)
+    for (const pid of d.seats) recomputeAlly(d, pid, ev)
     checkWin(d, ev)
     if (d.phase === 'gameOver') return
 
@@ -1970,8 +2114,15 @@ function buyExplorer(d: D, me: PlayerId, ev: GameEvent[]): void {
   acquire(d, me, { iid: mintId(d, 12) as CardIid, def: EXPLORER }, EXPLORER_COST, 'discard', ev)
 }
 
-function endTurn(d: D, ev: GameEvent[]): void {
-  const me = d.activePlayer
+/**
+ * One seat's Discard and Draw Phases.
+ *
+ * Split out from endTurn because a Hydra team "shares their Main, Discard, and
+ * Draw Phases": every living teammate discards and redraws when the team's one
+ * turn ends, so this has to be callable per seat rather than only for whoever
+ * happens to hold `activePlayer`.
+ */
+function endTurnFor(d: D, me: PlayerId, ev: GameEvent[]): void {
   const p = d.players[me]
   ev.push({ e: 'TURN_END', player: me })
 
@@ -2072,10 +2223,37 @@ function endTurn(d: D, ev: GameEvent[]): void {
   // size however many were held.
   const target = bossHand > 0 ? bossHand : p.handSize
   if (!scriptBoss) drawCards(d, me, Math.max(0, target - p.hand.length), ev)
+}
 
-  d.activePlayer = opponentOf(me)
-  d.turn += 1
-  const next = d.players[d.activePlayer]
+/** One seat's start-of-turn reset. Per seat, for the same reason as above. */
+function startTurnFor(d: D, seat: PlayerId, ev: GameEvent[]): void {
+  const next = d.players[seat]
+  // "The first time the Boss makes 'target opponent discard a card' on its
+  // turn, randomly determine which player it targets. It will target the same
+  // player for the remainder of the turn" (Defy the Empire, challenge rules).
+  // Rolled once here rather than lazily on the first such ability, which lands
+  // in the same place and keeps the RNG out of the effect handlers. A table
+  // taking individual turns names its target by whose turn just ended instead.
+  const c = d.coop
+  if (c && seat === c.boss && sharedTurn(c.mode)) {
+    const live = livePlayers(c)
+    if (live.length > 0) {
+      let i: number
+      ;[i, d.rng] = nextInt(d.rng, live.length) as [number, typeof d.rng]
+      c.bossTarget = live[i] as PlayerId
+    }
+  }
+  // Blob Assault: "On its turn, the Boss plays the top card of the Blob Deck.
+  // When playing with more than one player, it then 'draws a card' for each
+  // player beyond the first." The played card is its ordinary one-card hand;
+  // the extra draws are these.
+  if (c && seat === c.boss && d.boss?.id === 'blob-assault') {
+    const extra = c.players.length - 1
+    if (extra > 0) {
+      pushEffects(d, Array.from({ length: extra }, () => ({ k: 'BOSS_BLOB_DRAW' as const })),
+        { controller: seat, source: null, slot: 'primary' })
+    }
+  }
   next.trade = 0
   next.combat = 0
   next.factionPlayedThisTurn = emptyFactionCounts()
@@ -2105,7 +2283,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
     // An ACTIVATED gambit waits to be asked; only the automatic ones pay here.
     const turnStart = def.activated ? [] : def.primary
     if (turnStart.length > 0) {
-      pushEffects(d, turnStart, { controller: d.activePlayer, source: g.iid, slot: 'primary' })
+      pushEffects(d, turnStart, { controller: seat, source: g.iid, slot: 'primary' })
     }
   }
   for (const c of next.inPlay) {
@@ -2122,10 +2300,58 @@ function endTurn(d: D, ev: GameEvent[]): void {
   // type, no special-cased combat.
   const sc = d.scenario
   if (sc) {
-    const to = d.activePlayer
-    if (sc.turnStartCombat[to] > 0) gain(d, to, 'combat', sc.turnStartCombat[to], ev)
-    if (sc.turnStartTrade[to] > 0) gain(d, to, 'trade', sc.turnStartTrade[to], ev)
+    const combat = sc.turnStartCombat[seat] ?? 0
+    const trade = sc.turnStartTrade[seat] ?? 0
+    if (combat > 0) gain(d, seat, 'combat', combat, ev)
+    if (trade > 0) gain(d, seat, 'trade', trade, ev)
   }
+}
+
+/**
+ * Whose turn it is next.
+ *
+ * A duel alternates. A co-op table alternates between the players and the Boss,
+ * and how the players' half is spent is what the three team modes disagree
+ * about: a Hydra team and a Pirates table take ONE shared turn together, while
+ * the Dimensional Horror's table takes individual turns with a Boss turn
+ * squeezed in after each of them -- aimed, per its card, at the player whose
+ * turn just ended.
+ */
+function advanceSeat(d: D): void {
+  const c = d.coop
+  const me = d.activePlayer
+  if (!c) { d.activePlayer = opponentOf(me); return }
+  const live = livePlayers(c)
+  if (me === c.boss) {
+    if (c.mode === 'individual') {
+      const at = c.bossTarget ? live.indexOf(c.bossTarget) : -1
+      d.activePlayer = (live[(at + 1) % live.length] ?? c.boss) as PlayerId
+      return
+    }
+    d.activePlayer = (live[0] ?? c.boss) as PlayerId
+    return
+  }
+  if (c.mode === 'individual') c.bossTarget = me
+  d.activePlayer = c.boss
+}
+
+/** The seats that share the turn now ending, in seat order. */
+function turnSeats(d: D, seat: PlayerId): readonly PlayerId[] {
+  const c = d.coop
+  if (c && sharedTurn(c.mode) && c.players.includes(seat)) {
+    const live = livePlayers(c)
+    return live.length > 0 ? live : [seat]
+  }
+  return [seat]
+}
+
+function endTurn(d: D, ev: GameEvent[]): void {
+  const ending = turnSeats(d, d.activePlayer)
+  for (const seat of ending) endTurnFor(d, seat, ev)
+
+  advanceSeat(d)
+  d.turn += 1
+  for (const seat of turnSeats(d, d.activePlayer)) startTurnFor(d, seat, ev)
 
   ev.push({ e: 'TURN_START', player: d.activePlayer, turn: d.turn })
 
@@ -2168,7 +2394,7 @@ const isStarter = (def: CardDefId): boolean => def === SCOUT || def === VIPER
 
 function bossSeat(d: D): PlayerId {
   // Solo: the player is p1 and the boss p2. The scenario's hero is the player.
-  return d.scenario ? opponentOf(d.scenario.hero) : 'p2'
+  return d.bossSeat ?? (d.scenario ? opponentOf(d.scenario.hero) : 'p2')
 }
 
 /** The card furthest from the trade deck: rulebook language for the last slot. */
@@ -2187,36 +2413,57 @@ function takeFarthest(d: D): CardInstance | null {
 }
 
 /**
- * Boss Attacks, verbatim from the rulebook: for each attack, make the first
- * possible attack from the list, spending the minimum combat needed, and repeat
- * until no combat remains.
+ * Boss Attacks, verbatim from the rulebook (page 24): for each attack, make the
+ * first possible attack from the list, spending the minimum combat needed, and
+ * repeat until no combat remains.
  *
- *   1. defeat the player outright if possible
+ *   1. defeat a player outright if possible -- the one with the HIGHEST
+ *      Authority that it can defeat
  *   2. the highest-defense outpost it can destroy (ties: highest cost)
  *   3. the highest-defense non-outpost base it can destroy (ties: highest cost)
- *   4. attack the player
+ *   4. attack the player with the LOWEST Authority
  *
- * Ties are broken by cost and then by position rather than at random: a boss
- * that consults the RNG would make the same replay diverge, and the engine's
- * whole persistence story rests on it not doing that.
+ * "If tied, it attacks one of them at random" -- and random here means the
+ * seeded stream inside the state, not Math.random, so the same replay still
+ * produces the same attacks.
+ *
+ * A side is a GROUP of seats, not a seat: a Hydra team shares one Authority
+ * score and one Outpost shield, so the boss aims at the team. In the other
+ * co-op modes and in a duel every group is a single player, and this collapses
+ * back to what it was.
  */
 function bossAttacks(d: D, ev: GameEvent[]): void {
   const me = bossSeat(d)
-  const foe = opponentOf(me)
   const boss = d.players[me]
   let guard = 0
 
+  /** Ties are broken from the seeded stream, exactly as the rulebook says. */
+  const atRandom = <T,>(xs: readonly T[]): T => {
+    if (xs.length === 1) return xs[0] as T
+    let i: number
+    ;[i, d.rng] = nextInt(d.rng, xs.length) as [number, typeof d.rng]
+    return xs[i] as T
+  }
+
   while (boss.combat > 0 && guard++ < 64) {
     const state = d as unknown as GameState
-    const open = canAttackFace(state, me)
+    const groups = foeGroups(state, me).filter((g) => g.length > 0)
+    const scoreOf = (g: readonly PlayerId[]): number =>
+      d.players[holder(d, g[0] as PlayerId)].authority
+    // A shielded side cannot be hit in the face at all, by the boss or anyone.
+    const open = groups.filter((g) => canAttackFace(state, me, g[0] as PlayerId))
 
-    // 1. A killing blow beats everything else.
-    if (open && d.players[foe].authority > 0 && boss.combat >= d.players[foe].authority) {
-      const n = d.players[foe].authority
+    // 1. A killing blow beats everything else, aimed at the biggest score it
+    //    can still finish off.
+    const killable = open.filter((g) => scoreOf(g) > 0 && boss.combat >= scoreOf(g))
+    if (killable.length > 0) {
+      const best = Math.max(...killable.map(scoreOf))
+      const g = atRandom(killable.filter((x) => scoreOf(x) === best))
+      const victim = g[0] as PlayerId
+      const n = scoreOf(g)
       boss.combat -= n
-      d.players[foe].authority -= n
-      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: foe, n })
-      ev.push({ e: 'AUTHORITY_LOST', player: foe, n })
+      loseAuthority(d, victim, n, ev)
+      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: victim, n })
       return
     }
 
@@ -2224,25 +2471,33 @@ function bossAttacks(d: D, ev: GameEvent[]): void {
       .map((c) => ({ c, def: cardDef(c.def).defense ?? 0, cost: cardDef(c.def).cost, out: isOutpost(c) }))
       .filter((t) => t.def <= boss.combat)
 
-    const pick = (outposts: boolean): typeof targets[number] | undefined =>
-      targets.filter((t) => t.out === outposts)
-        .sort((a, b) => (b.def - a.def) || (b.cost - a.cost))[0]
+    const pick = (outposts: boolean): typeof targets[number] | undefined => {
+      const pool = targets.filter((t) => t.out === outposts)
+      if (pool.length === 0) return undefined
+      const topDef = Math.max(...pool.map((t) => t.def))
+      const byDef = pool.filter((t) => t.def === topDef)
+      const topCost = Math.max(...byDef.map((t) => t.cost))
+      return atRandom(byDef.filter((t) => t.cost === topCost))
+    }
 
     // 2 and 3: outposts first, then plain bases.
     const target = pick(true) ?? pick(false)
     if (target) {
       boss.combat -= target.def
-      destroyBase(d, foe, target.c, 'combat', ev, me)
+      const owner = findInPlay(state, target.c.iid)?.owner
+      if (owner) destroyBase(d, owner, target.c, 'combat', ev, me)
       continue
     }
 
-    // 4. Whatever is left goes to the face, if the face is reachable.
-    if (open) {
+    // 4. Whatever is left goes to the smallest score still reachable.
+    if (open.length > 0) {
+      const worst = Math.min(...open.map(scoreOf))
+      const g = atRandom(open.filter((x) => scoreOf(x) === worst))
+      const victim = g[0] as PlayerId
       const n = boss.combat
       boss.combat = 0
-      d.players[foe].authority -= n
-      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: foe, n })
-      ev.push({ e: 'AUTHORITY_LOST', player: foe, n })
+      loseAuthority(d, victim, n, ev)
+      ev.push({ e: 'ATTACK_PLAYER', attacker: me, target: victim, n })
       return
     }
 
@@ -2329,19 +2584,25 @@ function nemesisStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
 
 /**
  * The Nemesis Beast's faction table, exactly as printed on the challenge card.
- * Every entry is "for each player", which at one player is once.
  *
  *   yellow -- Each player discards two cards.
  *   green  -- For each player, the Boss destroys target base or gains 3 combat.
  *   red    -- Each player puts a random card in their hand on top of their deck.
  *   blue   -- For each player, the Boss gains 5 authority.
+ *
+ * Every entry is per PLAYER, and the card back is explicit that the green one
+ * counts players rather than bases: "if in a three player game, one player had
+ * two bases in play, and the other players had none, the Boss would destroy
+ * both bases and gain 3 Combat." EACH_FOE is exactly that repetition, and at
+ * one player it collapses to what this always did.
  */
 function nemesisAbility(faction: Faction): Effect[] {
+  const each = (then: Effect[]): Effect[] => [{ k: 'EACH_FOE', then }]
   switch (faction) {
-    case 'star_empire': return [{ k: 'OPPONENT_DISCARD', n: 2 }]
-    case 'blob': return [{ k: 'DESTROY_BASE_OR_COMBAT', n: 3 }]
-    case 'machine_cult': return [{ k: 'TOPDECK_RANDOM_FROM_HAND', n: 1 }]
-    case 'trade_federation': return [{ k: 'GAIN_AUTHORITY', n: 5 }]
+    case 'star_empire': return each([{ k: 'OPPONENT_DISCARD', n: 2 }])
+    case 'blob': return each([{ k: 'DESTROY_BASE_OR_COMBAT', n: 3 }])
+    case 'machine_cult': return each([{ k: 'TOPDECK_RANDOM_FROM_HAND', n: 1 }])
+    case 'trade_federation': return each([{ k: 'GAIN_AUTHORITY', n: 5 }])
     default: return []
   }
 }
@@ -2463,18 +2724,30 @@ function longestTentacle(d: D): number {
  * by the ordinary boss attack that follows.
  */
 function pirateStep(d: D, ev: GameEvent[], ctx: EffectCtx): void {
-  const card = takeFarthest(d)
-  if (card) toScrapHeap(d, card, 'tradeRow', null, ev)
-  refillTradeRow(d, ev)
-
-  const revealed = d.tradeRow[farthestRowIndex(d)] ?? d.tradeRow.find((c) => c !== null)
-  if (!revealed) return
-  const def = cardDef(revealed.def)
+  // "For each player remaining in the game, scrap one card in the Trade Row
+  // furthest from the Trade Deck ... The faction and cost of the first card
+  // revealed determines what the Boss does to the first player. The second card
+  // revealed determines what the Boss does to the second player, and so on."
+  const victims = allFoesOf(d as unknown as GameState, bossSeat(d))
+  const revealed: (CardInstance | null)[] = []
+  for (let i = 0; i < victims.length; i++) {
+    const card = takeFarthest(d)
+    if (card) toScrapHeap(d, card, 'tradeRow', null, ev)
+    refillTradeRow(d, ev)
+    revealed.push(d.tradeRow[farthestRowIndex(d)] ?? d.tradeRow.find((c) => c !== null) ?? null)
+  }
   // "2x the cost of the highest-cost card" -- of the trade row, which is the
   // only set of cards the challenge has in front of it.
   const highest = Math.max(0, ...d.tradeRow.filter((c) => c !== null)
     .map((c) => cardDef((c as CardInstance).def).cost))
-  pushEffects(d, pirateAbility(def.faction, def.cost, highest), ctx)
+  // Reverse, so the LIFO stack still deals with the players in seat order.
+  for (let i = victims.length - 1; i >= 0; i--) {
+    const card = revealed[i]
+    const victim = victims[i] as PlayerId
+    if (!card) continue
+    const def = cardDef(card.def)
+    pushEffects(d, pirateAbility(def.faction, def.cost, highest), { ...ctx, target: victim })
+  }
 }
 
 /** The Order of Play for whichever boss is in the game. */
@@ -2524,8 +2797,8 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
 
     case 'ATTACK_PLAYER': {
       const p = d.players[me]
-      const target = opponentOf(me)
-      if (!canAttackFace(d as unknown as GameState, me)) {
+      const target = foeOf(d as unknown as GameState, me)
+      if (!canAttackFace(d as unknown as GameState, me, target)) {
         throw new IllegalActionError('opponent has an outpost in play')
       }
       if (action.amount < 1 || action.amount > p.combat) throw new IllegalActionError('invalid combat amount')
@@ -2534,9 +2807,8 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       // reduction lives here and not in the base-attack path.
       const shield = shieldOf(d, target)
       const dealt = Math.max(0, action.amount - shield)
-      d.players[target].authority -= dealt
+      loseAuthority(d, target, dealt, ev)
       ev.push({ e: 'ATTACK_PLAYER', attacker: me, target, n: dealt })
-      ev.push({ e: 'AUTHORITY_LOST', player: target, n: dealt })
       return
     }
 
@@ -2591,11 +2863,12 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       const targets = legalAttackTargets(d as unknown as GameState, me)
       const target = targets.find((c) => c.iid === action.base)
       if (!target) throw new IllegalActionError('not a legal base target')
-      const defense = defenseOf(d.players, opponentOf(me), cardDef(target.def).defense ?? 0)
+      const owner = findInPlay(d as unknown as GameState, target.iid)?.owner as PlayerId
+      const defense = defenseOf(d as unknown as GameState, owner, cardDef(target.def).defense ?? 0)
       if (p.combat < defense) throw new IllegalActionError('not enough combat')
       // Spend EXACTLY the defense value; the remainder stays in the pool.
       p.combat -= defense
-      destroyBase(d, opponentOf(me), target, 'combat', ev)
+      destroyBase(d, owner, target, 'combat', ev, me)
       return
     }
 
@@ -2660,6 +2933,25 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       return
     }
 
+    case 'TRANSFER': {
+      const c = d.coop
+      if (!c || c.mode === 'individual') {
+        throw new IllegalActionError('there is no pool to transfer into')
+      }
+      if (action.to === me || !c.players.includes(action.to)) {
+        throw new IllegalActionError('not a teammate')
+      }
+      if (c.eliminated.includes(action.to)) throw new IllegalActionError('that player is out')
+      const from = d.players[me]
+      if (action.n < 1 || action.n > from[action.what]) {
+        throw new IllegalActionError('not that much to give')
+      }
+      from[action.what] -= action.n
+      d.players[action.to][action.what] += action.n
+      ev.push({ e: 'TRANSFER', from: me, to: action.to, what: action.what, n: action.n })
+      return
+    }
+
     case 'END_TURN': {
       if (d.resolution.length > 0) throw new IllegalActionError('resolve the pending choice first')
       if (d.boss?.acting) throw new IllegalActionError('the boss is still acting')
@@ -2681,8 +2973,11 @@ export function reduce(state: GameState, cmd: Command): ReduceResult {
     if (d.phase === 'gameOver') throw new IllegalActionError('the game is over')
     // Input ownership, not turn ownership: a forced discard is answered by the
     // non-active player.
-    const expected = actorOf(d as unknown as GameState)
-    if (cmd.actor !== expected) throw new IllegalActionError(`it is ${expected}'s turn to act`)
+    // Several seats may be legal actors at once: a co-op team shares one turn.
+    const expected = actorsOf(d as unknown as GameState)
+    if (!expected.includes(cmd.actor)) {
+      throw new IllegalActionError(`it is ${expected.join('/')}'s turn to act`)
+    }
     applyAction(d, cmd, events)
     settle(d, events)
     d.version += 1

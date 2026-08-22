@@ -178,7 +178,10 @@ describe('scenario rules', () => {
   it('a standard game has no scenario and no objective', () => {
     const s = createGame({ matchId: 'm', seed: 'plain', firstPlayer: 'p1' })
     expect(s.scenario).toBeNull()
-    expect(s.basesDestroyed).toEqual({ p1: 0, p2: 0 })
+    // Only the seats in play; the state carries a slot for every seat the type
+    // allows, and a duel occupies two of them.
+    expect(s.seats).toEqual(['p1', 'p2'])
+    expect(redact(s, 'p1').basesDestroyed).toEqual({ p1: 0, p2: 0 })
     expect(redact(s, 'p1').scenario).toBeNull()
   })
 

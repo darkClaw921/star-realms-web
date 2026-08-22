@@ -4,7 +4,8 @@ import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
 import type { ScenarioSetup } from './scenario'
-import { asDefId, FACTIONS, opponentOf, PLAYERS } from './ids'
+import { asDefId, ALL_SEATS, FACTIONS, opponentOf } from './ids'
+import { newCoopState, type CoopState, type TeamMode } from './coop'
 import type { Faction } from './ids'
 import { nextHex, nextInt, seedRng, shuffle, type RngState } from './rng'
 import {
@@ -51,6 +52,12 @@ export interface MatchSetup {
   readonly commandDeck?: Partial<Record<PlayerId, string>> | undefined
   /** An Arena scenario: one rule changed for the whole game, for both players. */
   readonly variant?: VariantId | undefined
+  /**
+   * A co-operative Challenge: how many players sit against the Boss, and under
+   * which of the rulebook's three team rules. Absent, or one player, deals the
+   * ordinary two-seat game the rest of this file has always dealt.
+   */
+  readonly coop?: { readonly players: number; readonly mode: TeamMode } | undefined
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
@@ -115,17 +122,30 @@ export function createGame(setup: MatchSetup): GameState {
   let rng = seedRng(setup.seed)
   const sc = setup.scenario
 
+  // Who is at the table. A co-op Challenge seats its players first and the Boss
+  // last; everything else is the two seats it has always been.
+  const coopPlayers = setup.coop && setup.coop.players > 1 ? setup.coop.players : 0
+  const seats: PlayerId[] = coopPlayers
+    ? ALL_SEATS.slice(0, coopPlayers + 1) as PlayerId[]
+    : ['p1', 'p2']
+  const bossSeatId: PlayerId | null = setup.boss ? seats[seats.length - 1] as PlayerId : null
+  const coop: CoopState | null = coopPlayers && bossSeatId && setup.coop
+    ? newCoopState(seats.slice(0, coopPlayers), bossSeatId, setup.coop.mode)
+    : null
+  /** Human seats: everything but the boss. */
+  const humans: PlayerId[] = seats.filter((x) => x !== bossSeatId)
+
   // A Command Deck replaces the starting deck outright, so it is resolved before
   // anything is minted.
   const cmd: Partial<Record<PlayerId, CommandDeckSpec>> = {}
-  for (const pid of PLAYERS) {
+  for (const pid of seats) {
     const id = setup.commandDeck?.[pid]
     const spec = id ? COMMAND_DECKS.find((c) => c.id === id) : undefined
     if (spec) cmd[pid] = spec
   }
 
-  const decks: Record<PlayerId, CardInstance[]> = { p1: [], p2: [] }
-  for (const pid of PLAYERS) {
+  const decks: Record<PlayerId, CardInstance[]> = { p1: [], p2: [], p3: [], p4: [], p5: [] }
+  for (const pid of seats) {
     let cards: CardInstance[]
     const personal = cmd[pid]?.deck.map((x) => asDefId(x))
     // Two scenarios change the starting deck itself, and nothing else.
@@ -157,7 +177,7 @@ export function createGame(setup: MatchSetup): GameState {
   // Each Command Deck contributes exactly one card to the shared trade deck:
   // its eight-cost megaship. Both players' megaships go in, which is what makes
   // a mirror match still contain two of them.
-  for (const pid of PLAYERS) {
+  for (const pid of seats) {
     const ship = cmd[pid]?.megaship
     if (!ship) continue
     let one: CardInstance[]
@@ -177,14 +197,14 @@ export function createGame(setup: MatchSetup): GameState {
     const shift = setup.variant ? VARIANT_AUTHORITY[setup.variant] ?? 0 : 0
     return Math.max(1, base + shift)
   }
-  const players: Record<PlayerId, PlayerState> = {
-    p1: newPlayer(decks.p1, startingAuthority('p1')),
-    p2: newPlayer(decks.p2, startingAuthority('p2')),
-  }
+  // Every seat gets a PlayerState; only the ones in `seats` are dealt anything.
+  const players = Object.fromEntries(
+    ALL_SEATS.map((pid) => [pid, newPlayer(decks[pid], startingAuthority(pid))]),
+  ) as Record<PlayerId, PlayerState>
 
   // The commander sets the hand size, and its two gambits are dealt face up in
   // hand terms but face down like any other gambit: they start unrevealed.
-  for (const pid of PLAYERS) {
+  for (const pid of seats) {
     const c = cmd[pid]
     if (!c) continue
     const def = cardDef(asDefId(c.commander))
@@ -196,7 +216,7 @@ export function createGame(setup: MatchSetup): GameState {
   }
 
   // Cards that open in a discard pile (Blob Assault's face-up Spike Cluster).
-  for (const pid of PLAYERS) {
+  for (const pid of seats) {
     for (const def of sc?.startingDiscard?.[pid] ?? []) {
       let c: CardInstance
       ;[c, rng] = mint(rng, def)
@@ -207,7 +227,7 @@ export function createGame(setup: MatchSetup): GameState {
   // Bases a mission starts you (or the boss) with. They are already standing,
   // so playedThisTurn is false and their abilities are available immediately --
   // exactly like a base held over from a previous turn.
-  for (const pid of PLAYERS) {
+  for (const pid of seats) {
     for (const def of sc?.startingBases[pid] ?? []) {
       let c: CardInstance
       ;[c, rng] = mint(rng, def)
@@ -239,7 +259,7 @@ export function createGame(setup: MatchSetup): GameState {
   if (gambitCount > 0) {
     ;[unclaimedGambits, rng] = mintAll(rng, sideCards('gambit'))
     ;[unclaimedGambits, rng] = shuffle(rng, unclaimedGambits)
-    for (const pid of PLAYERS) {
+    for (const pid of humans) {
       for (let i = 0; i < gambitCount; i++) {
         const c = unclaimedGambits.shift()
         if (c) players[pid].gambits.push(c)
@@ -252,7 +272,7 @@ export function createGame(setup: MatchSetup): GameState {
     let pool: CardInstance[]
     ;[pool, rng] = mintAll(rng, sideCards('mission'))
     ;[pool, rng] = shuffle(rng, pool)
-    for (const pid of PLAYERS) {
+    for (const pid of humans) {
       for (let i = 0; i < missionCount; i++) {
         const c = pool.shift()
         if (c) players[pid].missions.push(c)
@@ -268,8 +288,8 @@ export function createGame(setup: MatchSetup): GameState {
   if (setup.variant) {
     if (setup.variant === 'entrenched-loyalties') {
       const pool = FACTIONS.filter((f) => f !== 'unaligned')
-      const pick: Record<PlayerId, Faction> = { p1: 'blob', p2: 'blob' }
-      for (const pid of PLAYERS) {
+      const pick: Partial<Record<PlayerId, Faction>> = {}
+      for (const pid of seats) {
         let i: number
         ;[i, rng] = nextInt(rng, pool.length)
         pick[pid] = pool[i] as Faction
@@ -304,7 +324,7 @@ export function createGame(setup: MatchSetup): GameState {
         const [card] = tradeDeck.splice(at, 1)
         if (card) players[seat].deck.push(card)
       })
-      for (const pid of PLAYERS) {
+      for (const pid of seats) {
         let d2: CardInstance[]
         ;[d2, rng] = shuffle(rng, players[pid].deck as CardInstance[])
         players[pid].deck = d2
@@ -315,7 +335,7 @@ export function createGame(setup: MatchSetup): GameState {
     // face up from the start.
     const face = VARIANT_CARD[setup.variant]
     if (face) {
-      for (const pid of PLAYERS) {
+      for (const pid of seats) {
         let c: CardInstance
         ;[c, rng] = mint(rng, face)
         players[pid].gambitsInPlay.push({
@@ -330,24 +350,47 @@ export function createGame(setup: MatchSetup): GameState {
     }
   }
 
+  // Nemesis Beast: "When playing with two or more players, for each player in
+  // the game, place one card from the top of the Trade Deck face down in front
+  // of the Boss." Its Combat each turn is how many cards are sitting there, so
+  // a four-player table faces a beast that opens at four.
+  // Copied rather than mutated: createGame must be a pure function of its
+  // setup, or dealing the same match twice would deal two different games.
+  const boss: BossState | null = setup.boss
+    ? { ...setup.boss, facedown: [...setup.boss.facedown] }
+    : null
+  if (boss?.id === 'nemesis-beast' && coopPlayers >= 2) {
+    for (let i = 0; i < coopPlayers; i++) {
+      const c = tradeDeck.shift()
+      if (c) boss.facedown.push({ iid: c.iid, def: c.def })
+    }
+  }
+
   const tradeRow: (CardInstance | null)[] = []
   for (let i = 0; i < TRADE_ROW_SIZE + extraRowSlots; i++) {
     tradeRow.push(tradeDeck.shift() ?? null)
   }
 
-  const second = setup.firstPlayer === 'p1' ? 'p2' : 'p1'
+  const second = coopPlayers ? (bossSeatId as PlayerId) : (setup.firstPlayer === 'p1' ? 'p2' : 'p1')
   // The first player's short opening hand is two fewer than their normal one,
   // which is what FIRST_TURN_HAND_SIZE is against the standard five -- so a
   // commander with a different hand size keeps the same handicap.
   const firstHand = Math.max(
     1, players[setup.firstPlayer].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE),
   )
-  for (let i = 0; i < firstHand; i++) {
-    const c = players[setup.firstPlayer].deck.shift()
-    if (c) players[setup.firstPlayer].hand.push(c)
+  // Challenge Notes, page 23: "When the players play first ... they get a
+  // three-card starting hand on their first turn of the game." All of them, not
+  // just one -- there is no second player to hand the long hand to.
+  const openers: PlayerId[] = coopPlayers ? humans : [setup.firstPlayer]
+  for (const pid of openers) {
+    const n = Math.max(1, players[pid].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE))
+    for (let i = 0; i < (coopPlayers ? n : firstHand); i++) {
+      const c = players[pid].deck.shift()
+      if (c) players[pid].hand.push(c)
+    }
   }
   // A deck boss opens with the hand its challenge card gives it, not five.
-  const bossSeat = setup.boss ? opponentOf(setup.firstPlayer) : null
+  const bossSeat = bossSeatId ?? (setup.boss ? opponentOf(setup.firstPlayer) : null)
   const secondHand = setup.boss && setup.boss.kind === 'deck' && second === bossSeat
     ? setup.boss.handSize
     : players[second].handSize
@@ -361,6 +404,9 @@ export function createGame(setup: MatchSetup): GameState {
     matchId: setup.matchId,
     version: 0,
     turn: 1,
+    seats,
+    bossSeat,
+    coop,
     activePlayer: setup.firstPlayer,
     phase: 'main',
     players,
@@ -377,8 +423,8 @@ export function createGame(setup: MatchSetup): GameState {
     rng,
     winner: null,
     scenario: sc?.rules ?? null,
-    basesDestroyed: { p1: 0, p2: 0 },
-    boss: setup.boss ?? null,
+    basesDestroyed: Object.fromEntries(ALL_SEATS.map((p) => [p, 0])) as Record<PlayerId, number>,
+    boss,
     variant,
     marketCounters: {},
   }

@@ -4,7 +4,13 @@ import { cardName } from '@/i18n/cards.ru'
 import { UI } from '@/i18n/ui'
 import type { LogLine } from './types'
 
-const DEFAULT_NAMES: Record<PlayerId, string> = { p1: UI.playerOne, p2: UI.playerTwo }
+/**
+ * A table can seat up to five, so names are partial: an unnamed seat falls back
+ * to its own id rather than making the map declare seats nobody is sitting in.
+ */
+export type SeatNames = Partial<Record<PlayerId, string>>
+
+const DEFAULT_NAMES: SeatNames = { p1: UI.playerOne, p2: UI.playerTwo }
 
 const RESOURCE: Record<'trade' | 'combat' | 'authority', string> = {
   trade: 'очк. торговли',
@@ -47,8 +53,8 @@ function cards(n: number): string {
 }
 
 /** Превращает поток событий движка в читаемый комментарий к партии. */
-export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT_NAMES): string | null {
-  const who = (p: PlayerId): string => names[p]
+export function describe(e: GameEvent, names: SeatNames = DEFAULT_NAMES): string | null {
+  const who = (p: PlayerId): string => names[p] ?? p
   const card = (d: Parameters<typeof cardDef>[0]): string => `«${cardName(d, cardDef(d).name)}»`
 
   switch (e.e) {
@@ -105,6 +111,9 @@ export function describe(e: GameEvent, names: Record<PlayerId, string> = DEFAULT
     case 'RESHUFFLE': return `${who(e.player)} замешивает сброс (${cards(e.n)})`
     case 'CHOICE_AUTO_RESOLVED': return `Выбор сделан автоматически — вариант был один`
     case 'FIZZLE': return `Без эффекта`
+    case 'ELIMINATED': return `${who(e.player)} выбывает из игры`
+    case 'TRANSFER':
+      return `${who(e.from)} передаёт ${who(e.to)} ${e.n} ${RESOURCE[e.what]}`
     case 'GAME_OVER': return `${who(e.winner)} побеждает`
   }
 }
@@ -113,7 +122,7 @@ let nextId = 1
 
 export function toLines(
   events: readonly GameEvent[],
-  seatNames?: Record<PlayerId, string>,
+  seatNames?: SeatNames,
 ): LogLine[] {
   const out: LogLine[] = []
   for (const e of events) {
@@ -123,7 +132,8 @@ export function toLines(
       id: nextId++,
       player: 'player' in e ? (e.player as PlayerId) : null,
       text,
-      emphasis: e.e === 'TURN_START' || e.e === 'GAME_OVER' || e.e === 'BASE_DESTROYED',
+      emphasis: e.e === 'TURN_START' || e.e === 'GAME_OVER' || e.e === 'BASE_DESTROYED'
+        || e.e === 'ELIMINATED',
     })
   }
   return out

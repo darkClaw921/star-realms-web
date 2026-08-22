@@ -1,8 +1,9 @@
 import { io, type Socket } from 'socket.io-client'
 import { enumerateLegalActions, type Action, type GameEvent, type PlayerId, type PlayerView } from '@sr/engine'
 import { ENGINE_VERSION } from '@sr/protocol'
+import { CHALLENGE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
-import { toLines } from './log'
+import { toLines, type SeatNames } from './log'
 import type { LogLine, MatchClient, MatchSnapshot } from './types'
 
 export interface RemoteInfo {
@@ -10,10 +11,19 @@ export interface RemoteInfo {
   readonly roomCode: string
   readonly seat: PlayerId
   readonly opponentConnected: boolean
+  /** Seats nobody has claimed yet. Non-zero means the table is still filling. */
+  readonly waitingFor: number
+}
+
+/** Opening a co-op table: the challenge, its difficulty, and the table size. */
+export interface CoopIntent {
+  readonly challenge: string
+  readonly level: 'beginner' | 'intermediate' | 'veteran' | 'expert'
+  readonly players: number
 }
 
 export type RemoteIntent =
-  | { kind: 'create' }
+  | { kind: 'create'; coop?: CoopIntent }
   | { kind: 'join'; roomCode: string }
   | { kind: 'rejoin'; matchId: string; token: string }
 
@@ -29,6 +39,8 @@ interface Update {
   state: PlayerView
   events: GameEvent[]
   opponentConnected: boolean
+  present?: Record<string, boolean>
+  waitingFor?: number
 }
 
 /**
@@ -54,7 +66,8 @@ export class RemoteMatchClient implements MatchClient {
       const i = opts.intent
       const event = i.kind === 'create' ? 'create' : i.kind === 'join' ? 'join' : 'rejoin'
       const payload = i.kind === 'join' ? { roomCode: i.roomCode }
-        : i.kind === 'rejoin' ? { matchId: i.matchId, token: i.token } : {}
+        : i.kind === 'rejoin' ? { matchId: i.matchId, token: i.token }
+        : i.coop ? { coop: i.coop } : {}
       this.socket.emit(event, payload, (res: unknown) => {
         const r = res as {
           error?: { message: string }
@@ -71,6 +84,7 @@ export class RemoteMatchClient implements MatchClient {
         opts.onInfo?.({
           matchId: r.matchId, roomCode: this.roomCode, seat: r.seat,
           opponentConnected: r.update?.opponentConnected ?? false,
+          waitingFor: r.update?.waitingFor ?? 0,
         })
         if (r.update) this.ingest(r.update)
       })
@@ -89,15 +103,21 @@ export class RemoteMatchClient implements MatchClient {
     this.opts.onInfo?.({
       matchId: u.state.matchId, roomCode: this.roomCode, seat: this.seat ?? 'p1',
       opponentConnected: u.opponentConnected,
+      waitingFor: u.waitingFor ?? 0,
     })
     this.emit()
   }
 
-  private seatNames(): Record<PlayerId, string> {
+  /**
+   * Names for the log and the HUD.
+   *
+   * At a co-op table the seats are you, your teammates by number, and the Boss
+   * -- there is no "opponent" to point at other than the Boss, and calling a
+   * teammate one would be actively misleading.
+   */
+  private seatNames(): SeatNames {
     const me = this.seat ?? 'p1'
-    return me === 'p1'
-      ? { p1: UI.you, p2: UI.opponent }
-      : { p1: UI.opponent, p2: UI.you }
+    return seatNamesFor(me, this.view)
   }
 
   private snapshot(): MatchSnapshot | null {
@@ -146,4 +166,28 @@ export class RemoteMatchClient implements MatchClient {
     this.subs.clear()
     this.socket.close()
   }
+}
+
+const CHALLENGE_NAME = (id: keyof typeof CHALLENGE_RU): string => CHALLENGE_RU[id].name
+
+/**
+ * Shared by the client and the page, so the board and the log agree on who is
+ * who. Falls back to the duel labels when there is no co-op table.
+ */
+export function seatNamesFor(me: PlayerId, view: PlayerView | null): SeatNames {
+  const names: SeatNames = { [me]: UI.you }
+  const coop = view?.coop
+  if (coop) {
+    let n = 1
+    for (const seat of coop.players) {
+      if (seat !== me) names[seat] = UI.seatOf(n)
+      n += 1
+    }
+    names[coop.boss] = view?.boss ? CHALLENGE_NAME(view.boss.id) : UI.opponent
+    return names
+  }
+  for (const seat of view?.seats ?? ['p1', 'p2'] as PlayerId[]) {
+    if (seat !== me) names[seat] = UI.opponent
+  }
+  return names
 }

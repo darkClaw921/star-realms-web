@@ -236,6 +236,27 @@ export const UI = {
   handDeckDiscard: (hand: number, deck: number, discard: number): string =>
     `Рука ${hand} · Колода ${deck} · Сброс ${discard}`,
   outpostShield: 'Защита аванпоста',
+  // ── Командное прохождение ──────────────────────────────────────────────
+  eliminated: 'выбыл',
+  allies: 'Команда',
+  giveTradeHint: 'Передать всю торговлю союзнику',
+  giveCombatHint: 'Передать весь бой союзнику',
+  teamWins: 'Команда побеждает',
+  bossWins: 'Босс побеждает',
+  coopHydra: 'Гидра: общий счёт влияния и общий ход',
+  coopPooled: 'Общий ход, влияние у каждого своё',
+  coopIndividual: 'Ходы по очереди; босс отвечает тому, чей ход закончился',
+  waitingForPlayers: (n: number): string =>
+    n === 1 ? 'Ждём ещё одного игрока' : `Ждём ещё ${n} игроков`,
+  coopTitle: 'Командное приключение',
+  gatherTeam: 'Собрать команду',
+  soloHint: 'Одиночное прохождение — играется прямо здесь',
+  capAt: (n: number): string => `на этом вызове максимум ${n}`,
+  coopSub: 'Соберите команду и пройдите вызов Frontiers вместе.',
+  players: 'Игроков',
+  teamMode: 'Правила команды',
+  shareCode: 'Код стола',
+  seatOf: (i: number): string => `Место ${i}`,
 
   // окно выбора
   waitingForOther: 'Ждём соперника',

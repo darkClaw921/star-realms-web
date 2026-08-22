@@ -45,4 +45,8 @@ export type GameEvent =
   | { e: 'RESHUFFLE'; player: PlayerId; n: number }
   | { e: 'CHOICE_AUTO_RESOLVED'; player: PlayerId; label: string }
   | { e: 'FIZZLE'; label: string }
+  /** Co-op: a player's own Authority hit zero and they are out of the game. */
+  | { e: 'ELIMINATED'; player: PlayerId }
+  /** Co-op: a teammate handed over part of their Trade or Combat pool. */
+  | { e: 'TRANSFER'; from: PlayerId; to: PlayerId; what: 'trade' | 'combat'; n: number }
   | { e: 'GAME_OVER'; winner: PlayerId }

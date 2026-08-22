@@ -79,7 +79,7 @@ export const VARIANT_RECRUIT_COST: Partial<Record<VariantId, number>> = {
 export interface VariantState {
   readonly id: VariantId
   /** Entrenched Loyalties: the faction each player buys a point cheaper. */
-  readonly faction?: Record<PlayerId, Faction>
+  readonly faction?: Partial<Record<PlayerId, Faction>>
 }
 
 /**

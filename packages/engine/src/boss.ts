@@ -1,4 +1,6 @@
 import type { CardDefId, CardInstance, Faction, PlayerId } from './ids'
+import { ALL_SEATS } from './ids'
+import { sharedTurn, type TeamMode } from './coop'
 import type { Objective, ScenarioSetup } from './scenario'
 import type { SetId } from './cards/types'
 
@@ -12,11 +14,12 @@ import type { SetId } from './cards/types'
  * come from the oversized Challenge Cards, read off the publisher's own scans
  * of the card faces and backs.
  *
- * Two deviations remain, both forced and both small:
+ * Co-op is here too. Every "per player" number scales with the table, the three
+ * team rules the rulebook prints (Hydra, Pirates' pooled turn, the Horror's
+ * individual turns) live in coop.ts, and the per-challenge multipliers are
+ * below, next to the challenge they belong to.
  *
- * Solo only. Every "per player" number is taken at one player, and the
- * multi-player clauses ("for each player beyond the first", Hydra teams) are
- * not implemented because there is no second player to implement them for.
+ * One deviation remains:
  *
  * Frontiers-only cards do not exist in this base-set build, so the four
  * challenges that call for a specific Frontiers deck (Blob Assault's ten-card
@@ -39,6 +42,33 @@ export type BossId =
  * Difficulty changes exactly one thing, per the rulebook: how many turns the
  * players take before the boss's first turn.
  */
+/**
+ * Which team rules each challenge is printed with, and how many players it
+ * takes. Both are read off the challenge's own pages in the rulebook: seven
+ * say "1-4 players solo/co-op challenge", Defy the Empire says "1-3".
+ */
+export const TEAM_MODE: Record<BossId, TeamMode> = {
+  'automatons': 'hydra',
+  'blob-assault': 'hydra',
+  'dimensional-horror': 'individual',
+  'madness-of-the-machine': 'hydra',
+  'nemesis-beast': 'hydra',
+  'pirates-of-the-dark-star': 'pooled',
+  'defy-the-empire': 'hydra',
+  'cost-of-freedom': 'hydra',
+}
+
+export const MAX_PLAYERS: Record<BossId, number> = {
+  'automatons': 4,
+  'blob-assault': 4,
+  'dimensional-horror': 4,
+  'madness-of-the-machine': 4,
+  'nemesis-beast': 4,
+  'pirates-of-the-dark-star': 4,
+  'defy-the-empire': 3,
+  'cost-of-freedom': 4,
+}
+
 export type ChallengeLevel = 'beginner' | 'intermediate' | 'veteran' | 'expert'
 
 /**
@@ -58,8 +88,18 @@ export const GRACE_TURNS: Record<ChallengeLevel, number> = {
   expert: 0,
 }
 
-export function skipsFor(level: ChallengeLevel): number {
-  return Math.max(0, GRACE_TURNS[level] - 1)
+/**
+ * Boss turns skipped, given the difficulty and the table.
+ *
+ * With a shared turn the team's three turns are three turns, so the boss simply
+ * sits out two of its own. The Dimensional Horror is different and says so on
+ * its own page: it "doesn't take a turn after each player's first and second
+ * turns", and with N players that is N boss turns per round -- so the same two
+ * rounds of grace cost it 2N turns.
+ */
+export function skipsFor(level: ChallengeLevel, players = 1, mode: TeamMode = 'hydra'): number {
+  const rounds = Math.max(0, GRACE_TURNS[level] - 1)
+  return sharedTurn(mode) ? rounds : rounds * players
 }
 
 export function headStartFor(level: ChallengeLevel): boolean {
@@ -103,16 +143,20 @@ export interface BossState {
 
 export function newBossState(
   id: BossId, kind: BossKind, level: ChallengeLevel, handSize = 0,
+  players = 1, mode: TeamMode = 'hydra',
 ): BossState {
   return {
     id,
     kind,
-    assimilation: 0,
+    // Automatons: "an Assimilation count of 0 (+4 for each additional player
+    // beyond the first). For example: when playing with 3 players, the
+    // Assimilation Count starts at 8."
+    assimilation: id === 'automatons' ? (players - 1) * 4 : 0,
     handSize,
     facedown: [],
     tentacles: { trade_federation: [], blob: [], star_empire: [], machine_cult: [], unaligned: [] },
     tentaclesEverFed: false,
-    graceTurns: skipsFor(level),
+    graceTurns: skipsFor(level, players, mode),
     headStart: headStartFor(level),
     mulliganUsed: false,
     acting: false,
@@ -127,13 +171,14 @@ export interface ChallengeSpec {
   readonly id: BossId
   readonly kind: BossKind
   /**
-   * Deck bosses only: cards drawn at the start of each of the boss's turns, at
-   * one player. Printed on each challenge card:
-   *   Blob Assault      -- plays the top card of its deck (so: one)
-   *   Madness / Freedom -- players plus one (so: two)
-   *   Defy the Empire   -- five, plus two per extra player (so: five)
+   * Deck bosses only: cards drawn at the start of each of the boss's turns, as
+   * a function of how many players are at the table. Printed on each challenge
+   * card:
+   *   Blob Assault      -- plays the top card of its deck (so: one, always)
+   *   Madness / Freedom -- players plus one
+   *   Defy the Empire   -- five, plus two per extra player
    */
-  readonly handSize?: number
+  readonly handSize?: (players: number) => number
   /** Boss authority for a solo game. Rulebook values, "per player" x1. */
   readonly bossAuthority: number
   readonly playerAuthority: number
@@ -234,7 +279,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
 
   // ── deck bosses: they hold a hand and play it ───────────────────────────
   {
-    id: 'blob-assault', kind: 'deck', handSize: 1,
+    id: 'blob-assault', kind: 'deck', handSize: () => 1,
     bossAuthority: 40, playerAuthority: 40,
     // "Remove all Blob cards from the Trade Deck. Put one Spike Cluster face up
     // in the Blob's Discard Pile. Then create a Blob deck with the following
@@ -245,7 +290,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF_FRONTIERS, ...EMPIRE_FRONTIERS, ...CULT_FRONTIERS],
   },
   {
-    id: 'madness-of-the-machine', kind: 'deck', handSize: 2,
+    id: 'madness-of-the-machine', kind: 'deck', handSize: (n) => n + 1,
     bossAuthority: 40, playerAuthority: 60,
     // "Remove all Machine Cult cards from the Trade Deck. Shuffle those cards,
     // 4 Scouts, and 4 Vipers together to make the Machine Cult deck." The
@@ -258,7 +303,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF_FRONTIERS, ...BLOB_FRONTIERS, ...EMPIRE_FRONTIERS],
   },
   {
-    id: 'defy-the-empire', kind: 'deck', handSize: 5,
+    id: 'defy-the-empire', kind: 'deck', handSize: (n) => 5 + 2 * (n - 1),
     bossAuthority: 40, playerAuthority: 50,
     // "Remove all Star Empire cards from the Trade Deck." The boss starts with
     // a standard personal deck and acquires from its own two Star Empire decks
@@ -269,7 +314,7 @@ export const CHALLENGES: readonly ChallengeSpec[] = [
     tradeDeckOnly: [...TF_FRONTIERS, ...BLOB_FRONTIERS, ...CULT_FRONTIERS],
   },
   {
-    id: 'cost-of-freedom', kind: 'deck', handSize: 2,
+    id: 'cost-of-freedom', kind: 'deck', handSize: (n) => n + 1,
     bossAuthority: 40, playerAuthority: 30,
     // "Remove all Trade Federation cards from the Trade Deck." Same treatment
     // as Defy the Empire: the Acquisition Deck and the Assets Ledger fold into
@@ -300,15 +345,46 @@ export const BOSS_SEAT: PlayerId = 'p2'
  * the challenge they belong to and nothing else has to know how a challenge is
  * assembled.
  */
-export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel): {
+export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel, players = 1): {
   scenario: ScenarioSetup
   boss: BossState
   /** Challenges are played on the Frontiers trade deck, as the set intends. */
   sets: readonly SetId[]
+  /** Co-op only: the table, for createGame. Absent at one player. */
+  coop?: { players: number; mode: TeamMode }
 } {
+  const n = Math.max(1, Math.min(players, MAX_PLAYERS[spec.id]))
+  const mode = TEAM_MODE[spec.id]
   const objective: Objective = spec.id === 'dimensional-horror'
     ? { k: 'DESTROY_TENTACLES' }
     : { k: 'AUTHORITY' }
+
+  // Seats: the players first, the boss last. At one player this is p1 and p2,
+  // which is exactly the solo layout this file started with.
+  const seats = ALL_SEATS.slice(0, n + 1) as PlayerId[]
+  const humans = seats.slice(0, n)
+  const boss = seats[n] as PlayerId
+
+  // "The Boss starts the game with X Authority per player."
+  const bossAuthority = spec.id === 'dimensional-horror'
+    // The Horror has no authority at all; it is killed tentacle by tentacle.
+    // A nominal pool keeps it from dying to a stray hit before then.
+    ? 999
+    : spec.bossAuthority * n
+  // A Hydra team has ONE score: "the team has a total Authority equal to the
+  // individual player Authority times the number of players." The other two
+  // modes give each player their own.
+  const authority: Partial<Record<PlayerId, number>> = { [boss]: bossAuthority }
+  for (const pid of humans) {
+    authority[pid] = mode === 'hydra' ? spec.playerAuthority * n : spec.playerAuthority
+  }
+
+  const starterDeck: Partial<Record<PlayerId, readonly CardDefId[]>> = {}
+  for (const pid of humans) starterDeck[pid] = playerDeckFor(spec)
+  // A script boss has no deck. Giving it an empty one is what makes "no hand,
+  // no deck, no discard pile" true rather than approximated.
+  if (spec.kind === 'script') starterDeck[boss] = []
+  if (spec.bossDeck) starterDeck[boss] = spec.bossDeck
 
   return {
     scenario: {
@@ -316,28 +392,18 @@ export function challengeSetup(spec: ChallengeSpec, level: ChallengeLevel): {
         id: spec.id,
         hero: CHALLENGER,
         objective,
-        turnStartCombat: { p1: 0, p2: 0 },
-        turnStartTrade: { p1: 0, p2: 0 },
+        turnStartCombat: {},
+        turnStartTrade: {},
       },
-      authority: {
-        p1: spec.playerAuthority,
-        // The Horror has no authority at all; it is killed tentacle by tentacle.
-        // A nominal pool keeps it from dying to a stray hit before then.
-        p2: spec.id === 'dimensional-horror' ? 999 : spec.bossAuthority,
-      },
-      starterDeck: {
-        p1: playerDeckFor(spec),
-        // A script boss has no deck. Giving it an empty one is what makes "no
-        // hand, no deck, no discard pile" true rather than approximated.
-        ...(spec.kind === 'script' ? { p2: [] } : {}),
-        ...(spec.bossDeck ? { p2: spec.bossDeck } : {}),
-      },
+      authority,
+      starterDeck,
       startingBases: {},
       tradeDeckOnly: spec.tradeDeckOnly ?? null,
-      ...(spec.bossDeckOrdered ? { unshuffled: [BOSS_SEAT] as const } : {}),
-      ...(spec.bossDiscard ? { startingDiscard: { p2: spec.bossDiscard } } : {}),
+      ...(spec.bossDeckOrdered ? { unshuffled: [boss] } : {}),
+      ...(spec.bossDiscard ? { startingDiscard: { [boss]: spec.bossDiscard } } : {}),
     },
-    boss: newBossState(spec.id, spec.kind, level, spec.handSize ?? 0),
+    boss: newBossState(spec.id, spec.kind, level, spec.handSize?.(n) ?? 0, n, mode),
     sets: ['frontiers'],
+    ...(n > 1 ? { coop: { players: n, mode } } : {}),
   }
 }

@@ -9,11 +9,12 @@ import { cardName } from '@/i18n/cards.ru'
 import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
 import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
+import type { SeatNames } from '@/match/log'
 import type { MatchSnapshot } from '@/match/types'
 import { Card } from './Card'
 import { ChoiceSheet } from './ChoiceSheet'
 import { SettingsPanel } from './SettingsPanel'
-import { OpponentHud, SelfHud } from './Hud'
+import { AllyStrip, OpponentHud, SelfHud } from './Hud'
 import { FACTION_VAR, Icon } from './Icons'
 
 const SLOT_LABEL: Record<
@@ -30,7 +31,7 @@ const nameOf = (def: Parameters<typeof cardDef>[0]): string => cardName(def, car
 
 export interface BoardProps {
   snapshot: MatchSnapshot
-  seatNames: Record<PlayerId, string>
+  seatNames: SeatNames
   onAction: (a: Action) => void
   onExit: () => void
   /** Hot-seat only: shown between turns so the device can change hands. */
@@ -86,9 +87,11 @@ export function Board({
     }
   }, [legal])
 
-  const myTurn = v.actor === v.viewer && v.phase === 'main'
-  const meName = seatNames[v.viewer]
-  const themName = seatNames[v.viewer === 'p1' ? 'p2' : 'p1']
+  // A co-op team shares its turn, so "my turn" is membership in the actor set
+  // rather than being the single actor.
+  const myTurn = v.actors.includes(v.viewer) && v.phase === 'main'
+  const meName = seatNames[v.viewer] ?? v.viewer
+  const themName = seatNames[v.opponentSeat] ?? UI.opponent
 
   if (passScreen) {
     return (
@@ -391,6 +394,18 @@ export function Board({
       </section>
 
       {/* ── my hand ──────────────────────────────────────────────────────── */}
+      {v.coop && v.allies.length > 0 && (
+        <AllyStrip
+          allies={v.allies}
+          names={seatNames}
+          myTrade={v.me.trade}
+          myCombat={v.me.combat}
+          canTransfer={myTurn && v.coop.mode !== 'individual' && !v.pendingChoice}
+          eliminated={v.coop.eliminated}
+          onTransfer={(to, what, n) => onAction({ t: 'TRANSFER', to, what, n })}
+        />
+      )}
+
       <section className="band band--hand">
         <SelfHud
           me={v.me}
@@ -456,11 +471,13 @@ export function Board({
           <div className="sheet" style={{ textAlign: 'center' }}>
             <p className="eyebrow">{UI.gameOver}</p>
             <h2 className="sheet__title" style={{ fontSize: 28, margin: '6px 0 14px' }}>
-              {v.boss
+              {v.coop
+                ? (v.winner === v.coop.boss ? UI.bossWins : UI.teamWins)
+                : v.boss
                 ? (v.winner === v.scenario?.hero ? UI.challengeWon : UI.challengeLost)
                 : v.scenario
                   ? (v.winner === v.scenario.hero ? UI.missionComplete : UI.missionFailed)
-                  : UI.wins(seatNames[v.winner as PlayerId])}
+                  : UI.wins(seatNames[v.winner as PlayerId] ?? String(v.winner))}
             </h2>
             <button type="button" className="btn btn--primary" onClick={onExit}>
               {v.boss ? UI.toChallenges : v.scenario ? UI.toCampaign : UI.toMenu}

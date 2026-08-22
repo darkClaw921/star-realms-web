@@ -212,6 +212,22 @@ export type Effect =
    * Resolves `then` once per player with THAT player as the controller, active
    * player first. Without it, every event would need its own two-sided handler.
    */
+  /**
+   * Resolve `then` once per living enemy player, aimed at each in turn.
+   *
+   * The Nemesis Beast's whole ability table is written this way ("Each player
+   * discards two cards", "For each player, the Boss gains ..."), and its card
+   * back spells out that the count follows the number of PLAYERS rather than
+   * the number of legal targets. Anything a boss CARD says about "target
+   * opponent" goes through the ordinary single target instead.
+   */
+  | { k: 'EACH_FOE'; then: readonly Effect[] }
+  /**
+   * Blob Assault's "draws a card", which for a boss with no hand means: put the
+   * lowest cost base from its discard pile into play, or gain 7 Combat if it
+   * has none. Its card front adds one of these per player beyond the first.
+   */
+  | { k: 'BOSS_BLOB_DRAW' }
   | { k: 'EACH_PLAYER'; then: readonly Effect[] }
   /** Events deal in losses, which are not negative gains: authority floors at 0. */
   | { k: 'LOSE_AUTHORITY'; n: number }

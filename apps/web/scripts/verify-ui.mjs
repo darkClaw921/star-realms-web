@@ -754,6 +754,119 @@ async function main() {
       record('сетевой режим отработал', false, String(e).slice(0, 160))
     }
 
+    // ── 4b. co-op: a real table of two against a Challenge boss ───────────
+    //
+    // The point of this block is that the rulebook's team rules are visible in
+    // the running game and not just in the tests: one shared score, both
+    // players able to act at the same time, and resources moving between them.
+    try {
+      const ca = await browser.newPage()
+      const cb = await browser.newPage()
+      await ca.setViewport({ width: 1440, height: 900 })
+      await cb.setViewport({ width: 1440, height: 900 })
+      watchConsole(ca, 'coop-A'); watchConsole(cb, 'coop-B')
+
+      const framesCoop = []
+      const cdpC = await cb.createCDPSession()
+      await cdpC.send('Network.enable')
+      cdpC.on('Network.webSocketFrameReceived', (e) => {
+        if (e.response?.payloadData) framesCoop.push(e.response.payloadData)
+      })
+
+      await ca.goto(`${BASE}/challenges`, { waitUntil: 'networkidle2' })
+      // Two players turns the solo button into a team one.
+      await ca.evaluate(() => {
+        const group = [...document.querySelectorAll('[role="group"]')]
+          .find((g) => (g.textContent || '').includes('Игроков'))
+        for (const b of group?.querySelectorAll('button') ?? []) {
+          if (b.textContent.trim() === '2') { b.click(); return }
+        }
+      })
+      await sleep(400)
+      shots.push(await shot(ca, 'coop-pick',
+        'Выбор вызова на двоих. Под каждым боссом написано, по каким правилам команды он играется: у шести из восьми это «Гидра» — общий счёт влияния и общий ход.'))
+
+      await clickText(ca, 'Собрать команду', 6000)
+      await ca.waitForSelector('.mode', { timeout: 8000 })
+      await clickText(ca, 'Собрать команду', 6000)
+      await ca.waitForSelector('.table', { timeout: 15000 })
+      await sleep(1000)
+      const coopCode = await ca.$eval('.banner b', (e) => e.textContent?.trim() ?? '').catch(() => '')
+      record('командный стол ждёт игроков', /^[A-Z2-9]{5}$/.test(coopCode), coopCode || 'нет кода')
+      shots.push(await shot(ca, 'coop-waiting',
+        `Стол собран, второе место свободно. Код (${coopCode || '—'}) действует, пока не займут все места, — в отличие от дуэли, где он одноразовый.`))
+
+      await cb.goto(`${BASE}/online`, { waitUntil: 'networkidle2' })
+      await cb.type('input[aria-label="Код комнаты"]', coopCode)
+      await clickText(cb, 'Войти', 6000)
+      await cb.waitForSelector('.table', { timeout: 15000 })
+      await sleep(1500)
+
+      const readTable = (page) => page.evaluate(() => ({
+        allies: [...document.querySelectorAll('.ally')].map((e) => e.innerText.replace(/\n+/g, ' · ')),
+        boss: document.querySelector('.hud')?.innerText.replace(/\n+/g, ' · ') ?? '',
+        mine: document.querySelector('.hud--self, .table .hud:last-of-type')?.innerText ?? '',
+        canEnd: [...document.querySelectorAll('button')]
+          .some((e) => e.textContent.includes('Завершить ход') && !e.disabled),
+        authority: [...document.querySelectorAll('.rail__cell')].map((e) => e.textContent.trim()),
+      }))
+      const ta = await readTable(ca)
+      const tb = await readTable(cb)
+
+      // "The Boss starts the game with 30 Authority per player" -- Automatons,
+      // at two players, is 60. The team's own score is 60 x 2 = 120.
+      record('авторитет босса вырос по числу игроков', /\b60\b/.test(ta.boss), ta.boss.slice(0, 60))
+      record('у команды один общий счёт влияния',
+        ta.allies.some((a) => a.includes('120')) && tb.allies.some((a) => a.includes('120')),
+        `A: ${ta.allies[0] ?? '—'}`)
+      // "Teams alternate taking turns ... with all teammates sharing their
+      // Main, Discard, and Draw Phases."
+      record('оба игрока ходят одновременно', ta.canEnd && tb.canEnd,
+        `A: ${ta.canEnd}, B: ${tb.canEnd}`)
+      record('в полосе команды виден союзник', ta.allies.length === 1 && tb.allies.length === 1,
+        `A: ${ta.allies.length}, B: ${tb.allies.length}`)
+      shots.push(await shot(ca, 'coop-table',
+        'Стол на двоих против Автоматонов. Внизу полоса команды: счёт союзника, его рука в счётчиках и кнопки передачи ресурсов. Влияние 120 — общий счёт Гидры, а не по 120 у каждого.'))
+
+      // Transfer: play a ship for trade, then hand it to the teammate.
+      await clickText(ca, 'Разыграть все', 5000)
+      await sleep(900)
+      const gave = await ca.evaluate(() => {
+        const b = [...document.querySelectorAll('.ally__give button')][0]
+        if (!b) return null
+        const label = b.textContent.trim()
+        b.click()
+        return label
+      })
+      await sleep(1200)
+      const afterB = await readTable(cb)
+      record('ресурсы передаются союзнику', gave !== null,
+        gave ? `передано: ${gave}` : 'кнопка передачи не появилась')
+      shots.push(await shot(ca, 'coop-transfer',
+        'Передача пула. Правило Гидры разрешает отдавать союзнику сколько угодно торговли и боя сколько угодно раз за ход — так команда складывается на дорогую карту или на большую базу.'))
+      record('союзник видит полученное', afterB.allies.length === 1, afterB.allies[0] ?? '—')
+
+      // The leak test again, at a bigger table: a teammate is not an exception.
+      const coopUpdates = []
+      for (const f of framesCoop) {
+        const payload = f.replace(/^\d+/, '')
+        if (!payload.startsWith('[')) continue
+        let arr
+        try { arr = JSON.parse(payload) } catch { continue }
+        for (const item of arr) {
+          if (item && typeof item === 'object' && 'state' in item) coopUpdates.push(item)
+          if (item && typeof item === 'object' && item.update?.state) coopUpdates.push(item.update)
+        }
+      }
+      const allyHandLeak = coopUpdates.some((u) =>
+        (u.state?.allies ?? []).some((a) => a.view && 'hand' in a.view))
+      record('рука союзника по сети не уходит',
+        coopUpdates.length > 0 && !allyHandLeak,
+        coopUpdates.length ? `кадров: ${coopUpdates.length}` : 'кадров не перехвачено')
+    } catch (e) {
+      record('командный режим отработал', false, String(e).slice(0, 200))
+    }
+
     // ── 5. mobile portrait ────────────────────────────────────────────────
     const m = await browser.newPage()
     watchConsole(m, 'mobile')

@@ -35,8 +35,8 @@ export interface ScenarioRules {
    * card: it is simply better funded every turn. Applied at TURN_START, so it
    * behaves like any other gain and is spent or lost by the same rules.
    */
-  readonly turnStartCombat: Record<PlayerId, number>
-  readonly turnStartTrade: Record<PlayerId, number>
+  readonly turnStartCombat: Partial<Record<PlayerId, number>>
+  readonly turnStartTrade: Partial<Record<PlayerId, number>>
 }
 
 /** The opening position. Applied once, by createGame, and then forgotten. */
@@ -62,6 +62,6 @@ export interface ScenarioSetup {
   readonly startingDiscard?: Partial<Record<PlayerId, readonly CardDefId[]>>
 }
 
-export function noScenarioCounters(): Record<PlayerId, number> {
+export function noScenarioCounters(): Partial<Record<PlayerId, number>> {
   return { p1: 0, p2: 0 }
 }

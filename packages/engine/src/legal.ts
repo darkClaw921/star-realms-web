@@ -1,7 +1,7 @@
 import type { Action } from './actions'
 import { TENTACLE_FACTIONS } from './boss'
 import { cardDef } from './cards/registry'
-import { costFor, defenseOf, objectiveMet } from './helpers'
+import { costFor, defenseAgainst, objectiveMet } from './helpers'
 import { splinterSet } from './reduce'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
@@ -23,7 +23,8 @@ import type { InPlayCardView, PlayerView } from './view'
  */
 export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer']): Action[] {
   if (v.phase === 'gameOver') return []
-  if (v.actor !== seat) return []
+  // A Hydra team shares its turn, so several seats may be legal actors at once.
+  if (!v.actors.includes(seat)) return []
 
   const out: Action[] = []
 
@@ -135,7 +136,6 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   }
   if (v.explorerPile > 0 && me.trade >= EXPLORER_COST) out.push({ t: 'BUY_EXPLORER' })
 
-  const foe = seat === 'p1' ? 'p2' : 'p1'
   // Outposts must fall before anything behind them can be touched.
   const shielded = v.opponent.inPlay.some((c) => cardDef(c.def).type === 'outpost')
   for (const c of v.opponent.inPlay) {
@@ -146,9 +146,7 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     if (shielded && def.type !== 'outpost') continue
     // Unity Warcraft shifts what a base actually costs to break, so the
     // affordability test goes through the same function the attack does.
-    const need = defenseOf(
-      { [seat]: me, [foe]: v.opponent } as never, foe, def.defense ?? 0,
-    )
+    const need = defenseAgainst(v.opponent.gambitsInPlay, me.gambitsInPlay, def.defense ?? 0)
     if (me.combat >= need) out.push({ t: 'ATTACK_BASE', base: c.iid })
   }
   if (!shielded) {
@@ -169,6 +167,19 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
             out.push({ t: 'ATTACK_TENTACLE', faction: f, card: c.iid })
           }
         }
+      }
+    }
+  }
+
+  // Teammates pool their Trade and Combat: "Players may, as many times as they
+  // like each turn, transfer any amount of their Trade and/or Combat to a
+  // teammate's pool."
+  const c = v.coop
+  if (c && c.mode !== 'individual') {
+    for (const mate of c.players) {
+      if (mate === seat || c.eliminated.includes(mate)) continue
+      for (const what of ['trade', 'combat'] as const) {
+        for (let n = 1; n <= me[what]; n++) out.push({ t: 'TRANSFER', to: mate, what, n })
       }
     }
   }

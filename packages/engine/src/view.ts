@@ -5,8 +5,12 @@ import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId } from './ids'
-import { opponentOf } from './ids'
-import { actorOf, currentChoice, type CardInstance, type GameState, type InPlayCard } from './state'
+import type { CoopState } from './coop'
+import { foeOf } from './helpers'
+import {
+  actorOf, actorsOf, currentChoice,
+  type CardInstance, type GameState, type InPlayCard,
+} from './state'
 
 /**
  * REDACTION.
@@ -124,8 +128,31 @@ export interface PlayerView {
   readonly viewer: PlayerId
   /** Whose input the game is waiting on. Not always `activePlayer`. */
   readonly actor: PlayerId
+  /**
+   * EVERYONE whose input the game will accept right now.
+   *
+   * One seat, except during a co-op team's shared turn, where the rulebook has
+   * all the teammates playing together with no printed order between them. The
+   * UI and the server both authorize against this list; `actor` is its first
+   * entry and stays for the many places that only ever need one.
+   */
+  readonly actors: readonly PlayerId[]
   readonly me: SelfView
+  /** The side this seat is fighting: in a co-op Challenge, always the Boss. */
   readonly opponent: OpponentView
+  /** Which seat that is. Named so the UI can label it without guessing. */
+  readonly opponentSeat: PlayerId
+  /**
+   * Teammates, in seat order. Exactly what an opponent would be shown -- a
+   * teammate's hand is not yours to see, even though the rulebook lets Raiders
+   * discuss strategy out loud, because the engine has no way to tell the table
+   * from the wire.
+   */
+  readonly allies: readonly { readonly seat: PlayerId; readonly view: OpponentView }[]
+  /** Co-op team rules in force, or null. Public. */
+  readonly coop: CoopState | null
+  /** Seats in the game, in turn order. */
+  readonly seats: readonly PlayerId[]
   readonly tradeRow: readonly (CardInstance | null)[]
   readonly tradeDeckCount: number
   readonly explorerPile: number
@@ -182,9 +209,28 @@ function redactChoice(c: PendingChoice, viewer: PlayerId): PendingChoiceView {
   }
 }
 
+/** The other side, as the physical game shows it: face-up zones and counts. */
+function viewOpponent(st: GameState['players'][PlayerId]): OpponentView {
+  return {
+    authority: st.authority,
+    handCount: st.hand.length,
+    gambitCount: st.gambits.length,
+    missionCount: st.missions.length,
+    gambitsInPlay: st.gambitsInPlay.map(viewInPlay),
+    missionsDone: [...st.missionsDone],
+    discard: st.discard.map((c) => ({ iid: c.iid, def: c.def })),
+    inPlay: st.inPlay.map(viewInPlay),
+    deckCount: st.deck.length,
+    trade: st.trade,
+    combat: st.combat,
+    allyUnlocked: [...st.allyUnlocked],
+    factionPlayedThisTurn: { ...st.factionPlayedThisTurn },
+  }
+}
+
 export function redact(s: GameState, viewer: PlayerId): PlayerView {
   const meState = s.players[viewer]
-  const oppId = opponentOf(viewer)
+  const oppId = foeOf(s, viewer)
   const oppState = s.players[oppId]
   const choice = currentChoice(s)
 
@@ -197,6 +243,9 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     phase: s.phase,
     viewer,
     actor: actorOf(s),
+    actors: [...actorsOf(s)],
+    seats: [...s.seats],
+    coop: s.coop ? { ...s.coop, eliminated: [...s.coop.eliminated] } : null,
     me: {
       authority: meState.authority,
       hand: meState.hand.map((c) => ({ iid: c.iid, def: c.def })),
@@ -219,21 +268,11 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       gainedThisTurn: { ...meState.gainedThisTurn },
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
     },
-    opponent: {
-      authority: oppState.authority,
-      handCount: oppState.hand.length,
-      gambitCount: oppState.gambits.length,
-      missionCount: oppState.missions.length,
-      gambitsInPlay: oppState.gambitsInPlay.map(viewInPlay),
-      missionsDone: [...oppState.missionsDone],
-      discard: oppState.discard.map((c) => ({ iid: c.iid, def: c.def })),
-      inPlay: oppState.inPlay.map(viewInPlay),
-      deckCount: oppState.deck.length,
-      trade: oppState.trade,
-      combat: oppState.combat,
-      allyUnlocked: [...oppState.allyUnlocked],
-      factionPlayedThisTurn: { ...oppState.factionPlayedThisTurn },
-    },
+    opponent: viewOpponent(oppState),
+    opponentSeat: oppId,
+    allies: s.seats
+      .filter((seat) => seat !== viewer && seat !== oppId)
+      .map((seat) => ({ seat, view: viewOpponent(s.players[seat]) })),
     tradeRow: s.tradeRow.map((c) => (c ? { iid: c.iid, def: c.def } : null)),
     tradeDeckCount: s.tradeDeck.length,
     explorerPile: s.explorerPile,
@@ -242,7 +281,9 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     pendingChoice: choice ? redactChoice(choice, viewer) : null,
     winner: s.winner,
     scenario: s.scenario,
-    basesDestroyed: { p1: s.basesDestroyed.p1, p2: s.basesDestroyed.p2 },
+    basesDestroyed: Object.fromEntries(
+      s.seats.map((seat) => [seat, s.basesDestroyed[seat]]),
+    ) as Record<PlayerId, number>,
     boss: s.boss,
     variant: s.variant ? { ...s.variant } : null,
     marketCounters: { ...s.marketCounters },

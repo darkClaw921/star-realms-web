@@ -116,4 +116,75 @@ export function OpponentHud({
   )
 }
 
+/**
+ * The teammates at a co-op table.
+ *
+ * Shown exactly as an opponent is -- authority, counts, what is on the table --
+ * because that is all the engine will tell you about another seat. The rulebook
+ * lets teammates talk and look at each other's hands across the table; a hand
+ * sent down the wire would be a hand leak, so the talking stays out of band.
+ *
+ * The two buttons are the Hydra pooling rule: "Players may, as many times as
+ * they like each turn, transfer any amount of their Trade and/or Combat to a
+ * teammate's pool." They hand over the whole pool, which is what the rule is
+ * almost always used for -- ganging up on one expensive card or one big base.
+ */
+export function AllyStrip({
+  allies, names, myTrade, myCombat, canTransfer, eliminated, onTransfer,
+}: {
+  allies: readonly { seat: PlayerId; view: OpponentView }[]
+  names: Partial<Record<PlayerId, string>>
+  myTrade: number
+  myCombat: number
+  canTransfer: boolean
+  eliminated: readonly PlayerId[]
+  onTransfer: (to: PlayerId, what: 'trade' | 'combat', n: number) => void
+}): React.JSX.Element | null {
+  if (allies.length === 0) return null
+  return (
+    <div className="allies">
+      {allies.map(({ seat, view }) => {
+        const out = eliminated.includes(seat)
+        return (
+          <div key={seat} className={`ally${out ? ' is-out' : ''}`}>
+            <span className="ally__name">{names[seat] ?? seat}</span>
+            <Rail
+              authority={view.authority}
+              trade={view.trade}
+              combat={view.combat}
+              shielded={view.inPlay.some((c) => cardDef(c.def).type === 'outpost')}
+            />
+            <span className="eyebrow">
+              {UI.handDeckDiscard(view.handCount, view.deckCount, view.discard.length)}
+            </span>
+            {out && <span className="ally__out">{UI.eliminated}</span>}
+            {!out && canTransfer && (myTrade > 0 || myCombat > 0) && (
+              <span className="ally__give">
+                {myTrade > 0 && (
+                  <button
+                    type="button" className="btn btn--sm"
+                    title={UI.giveTradeHint}
+                    onClick={() => onTransfer(seat, 'trade', myTrade)}
+                  >
+                    <Icon name="trade" /> →{myTrade}
+                  </button>
+                )}
+                {myCombat > 0 && (
+                  <button
+                    type="button" className="btn btn--sm"
+                    title={UI.giveCombatHint}
+                    onClick={() => onTransfer(seat, 'combat', myCombat)}
+                  >
+                    <Icon name="combat" /> →{myCombat}
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export type { PlayerId }

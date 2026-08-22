@@ -4,7 +4,8 @@ import type { VariantState } from './variants'
 import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
 import { FACTIONS } from './ids'
 import { opponentOf } from './ids'
-import type { GameState, InPlayCard, PlayerState } from './state'
+import { guardTeam, livePlayers } from './coop'
+import type { EffectCtx, GameState, InPlayCard, PlayerState } from './state'
 
 /** The definition whose ally/scrap/triggers this card currently uses. */
 export function effectiveDefId(c: Pick<InPlayCard, 'def' | 'copiedDef'>): CardDefId {
@@ -128,6 +129,76 @@ export function hasOutpost(p: Pick<PlayerState, 'inPlay'>): boolean {
 }
 
 /**
+ * Who this seat is fighting.
+ *
+ * In a duel, the other player. In a co-op Challenge every player's only enemy
+ * is the Boss, and the Boss's enemies are all the players at once -- which is
+ * exactly what the printed abilities say ("Each player discards two cards").
+ * Two challenges narrow the Boss down to one player, and both do it through
+ * `ctx.target`: the Horror hits only the player whose turn just ended, and the
+ * Pirates deal with the players one revealed card at a time.
+ */
+export function foesOf(
+  s: Pick<GameState, 'coop' | 'bossSeat'>, seat: PlayerId, ctx?: Pick<EffectCtx, 'target'>,
+): readonly PlayerId[] {
+  const c = s.coop
+  if (!c) return [opponentOf(seat)]
+  if (seat !== c.boss) return [c.boss]
+  // One player, not the table: see the note on guardTeam. `ctx.target` is the
+  // Pirates dealing with the players one at a time, and EACH_FOE setting it in
+  // turn for an ability that really does say "each player".
+  if (ctx?.target) return [ctx.target]
+  const live = livePlayers(c)
+  if (c.bossTarget && live.includes(c.bossTarget)) return [c.bossTarget]
+  return live.length > 0 ? [live[0] as PlayerId] : [c.players[0] as PlayerId]
+}
+
+/** Every living foe. What an ability that says "each player" reaches. */
+export function allFoesOf(
+  s: Pick<GameState, 'coop' | 'bossSeat'>, seat: PlayerId,
+): readonly PlayerId[] {
+  const c = s.coop
+  if (!c) return [opponentOf(seat)]
+  if (seat !== c.boss) return [c.boss]
+  return livePlayers(c)
+}
+
+/** The single foe, for the many effects that name one. */
+export function foeOf(
+  s: Pick<GameState, 'coop' | 'bossSeat'>, seat: PlayerId, ctx?: Pick<EffectCtx, 'target'>,
+): PlayerId {
+  return foesOf(s, seat, ctx)[0] as PlayerId
+}
+
+/**
+ * The defending groups an attacker faces, each group sharing one Authority
+ * score and one Outpost shield.
+ *
+ * A Hydra team is one group of several seats; everyone else is a group of one.
+ * Grouping rather than listing seats is what makes the shield rule fall out
+ * instead of being special-cased: a group is protected if ANY of its seats has
+ * an Outpost standing.
+ */
+export function foeGroups(s: GameState, attacker: PlayerId): readonly (readonly PlayerId[])[] {
+  // Every foe, not just the turn's named target: the Boss Attacks algorithm
+  // scans the whole table before it picks.
+  const foes = allFoesOf(s, attacker)
+  const seen: PlayerId[] = []
+  const out: (readonly PlayerId[])[] = []
+  for (const f of foes) {
+    if (seen.includes(f)) continue
+    const team = guardTeam(s.coop, f).filter((p) => foes.includes(p))
+    seen.push(...team)
+    out.push(team.length > 0 ? team : [f])
+  }
+  return out
+}
+
+function teamHasOutpost(s: GameState, team: readonly PlayerId[]): boolean {
+  return team.some((p) => hasOutpost(s.players[p]))
+}
+
+/**
  * Bases `chooser` may target with a free "destroy target base" effect.
  *
  * The outpost shield protects a player's non-outpost bases from being attacked
@@ -137,33 +208,50 @@ export function hasOutpost(p: Pick<PlayerState, 'inPlay'>): boolean {
  */
 export function legalDestroyTargets(s: GameState, chooser: PlayerId): InPlayCard[] {
   const out: InPlayCard[] = []
-  const opp = s.players[opponentOf(chooser)]
-  const oppShielded = hasOutpost(opp)
-  for (const c of opp.inPlay) {
-    if (!isBase(c)) continue
-    if (oppShielded && !isOutpost(c)) continue
-    out.push(c)
+  for (const team of foeGroups(s, chooser)) {
+    const shielded = teamHasOutpost(s, team)
+    for (const seat of team) {
+      for (const c of s.players[seat].inPlay) {
+        if (!isBase(c)) continue
+        if (shielded && !isOutpost(c)) continue
+        out.push(c)
+      }
+    }
   }
+  // Your own bases are always legal targets -- never a teammate's, which the
+  // shield above would not protect either way.
   for (const c of s.players[chooser].inPlay) {
     if (isBase(c)) out.push(c)
   }
   return out
 }
 
-/** Bases the attacker may spend combat on. Never their own. */
+/** Bases the attacker may spend combat on. Never their own, never a teammate's. */
 export function legalAttackTargets(s: GameState, attacker: PlayerId): InPlayCard[] {
-  const def = s.players[opponentOf(attacker)]
-  const shielded = hasOutpost(def)
-  return def.inPlay.filter((c) => isBase(c) && (!shielded || isOutpost(c)))
+  const out: InPlayCard[] = []
+  for (const team of foeGroups(s, attacker)) {
+    const shielded = teamHasOutpost(s, team)
+    for (const seat of team) {
+      for (const c of s.players[seat].inPlay) {
+        if (isBase(c) && (!shielded || isOutpost(c))) out.push(c)
+      }
+    }
+  }
+  return out
 }
 
-/** The opponent may only be hit directly once every outpost is gone. */
-export function canAttackFace(s: GameState, attacker: PlayerId): boolean {
-  return !hasOutpost(s.players[opponentOf(attacker)])
+/** A side may only be hit directly once every outpost shielding it is gone. */
+export function canAttackFace(s: GameState, attacker: PlayerId, victim?: PlayerId): boolean {
+  const groups = foeGroups(s, attacker)
+  const team = victim
+    ? groups.find((g) => g.includes(victim)) ?? [victim]
+    : groups[0]
+  if (!team) return false
+  return !teamHasOutpost(s, team)
 }
 
 export function findInPlay(s: GameState, iid: CardIid): { owner: PlayerId; card: InPlayCard } | null {
-  for (const pid of ['p1', 'p2'] as const) {
+  for (const pid of s.seats) {
     const card = s.players[pid].inPlay.find((c) => c.iid === iid)
     if (card) return { owner: pid, card }
   }
@@ -263,14 +351,33 @@ export function objectiveMet(p: ObjectiveContext, o: MissionObjective): boolean 
  * destroyable by an amount the UI said was not enough.
  */
 export function defenseOf(
-  players: Record<PlayerId, { gambitsInPlay: readonly { def: CardDefId }[] }>,
+  s: Pick<GameState, 'players' | 'coop' | 'bossSeat'>,
   owner: PlayerId,
   def: number,
 ): number {
-  const bonus = (pid: PlayerId): number => {
-    let n = 0
-    for (const g of players[pid].gambitsInPlay) n += cardDef(g.def).baseDefenseBonus ?? 0
-    return n
-  }
-  return Math.max(1, def + bonus(owner) - bonus(opponentOf(owner)))
+  const bonus = (pid: PlayerId): number => defenseBonus(s.players[pid].gambitsInPlay)
+  let against = 0
+  for (const f of foesOf(s as GameState, owner)) against = Math.max(against, bonus(f))
+  return Math.max(1, def + bonus(owner) - against)
+}
+
+export function defenseBonus(gambitsInPlay: readonly { def: CardDefId }[]): number {
+  let n = 0
+  for (const g of gambitsInPlay) n += cardDef(g.def).baseDefenseBonus ?? 0
+  return n
+}
+
+/**
+ * The same sum, computed from a VIEW rather than from state.
+ *
+ * Legality has to be decidable from the view alone, and "can I break this
+ * base" is a legality question -- so the number the UI offers and the number
+ * the reducer charges come from one place.
+ */
+export function defenseAgainst(
+  defenderGambits: readonly { def: CardDefId }[],
+  attackerGambits: readonly { def: CardDefId }[],
+  def: number,
+): number {
+  return Math.max(1, def + defenseBonus(defenderGambits) - defenseBonus(attackerGambits))
 }

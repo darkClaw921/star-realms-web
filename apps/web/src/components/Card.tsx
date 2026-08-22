@@ -70,6 +70,16 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
   const name = ru?.name ?? c.name
   const text = ru ?? c.text
   const [loaded, setLoaded] = useState(false)
+  /**
+   * A cached image finishes loading BEFORE React hydrates the markup, so its
+   * `load` event has already fired by the time an onLoad handler is attached
+   * and the fade-in never runs -- the art stays at opacity 0 and the card looks
+   * artless. Reading `complete` off the element as it mounts is the only way to
+   * catch that case, so this ref does it and onLoad covers the slow path.
+   */
+  const markLoaded = useCallback((el: HTMLImageElement | null) => {
+    if (el?.complete && el.naturalWidth > 0) setLoaded(true)
+  }, [])
   const entry = ART_MANIFEST[def]
   const art = entry ? `/cards/art/${def}-320.webp` : null
   const chips = [...chipsFor(c.primary).entries()].filter(([, n]) => n !== 0)
@@ -81,6 +91,7 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
         {art && (
           <img
             className={`card__art${loaded ? ' is-loaded' : ''}`}
+            ref={markLoaded}
             src={art}
             alt=""
             loading="lazy"

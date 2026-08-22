@@ -34,6 +34,13 @@ export type Action =
    * the wrong pile.
    */
   | { t: 'ATTACK_TENTACLE'; faction: Faction; card: CardIid }
+  /**
+   * Co-op: hand part of your Trade or Combat pool to a teammate. "Players may,
+   * as many times as they like each turn, transfer any amount of their Trade
+   * and/or Combat to a teammate's pool" -- the Hydra rule that lets a team
+   * gang up on one expensive card or one big base.
+   */
+  | { t: 'TRANSFER'; to: PlayerId; what: 'trade' | 'combat'; n: number }
   | { t: 'END_TURN' }
 
 /** An action plus who is attempting it. Built by the server, never by the client. */

@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import type { SeatNames } from '@/match/log'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   challengeById, challengeSetup, missionById,
@@ -105,7 +106,7 @@ function Play(): React.JSX.Element {
     return <main className="menu"><p className="eyebrow">{UI.dealing}</p></main>
   }
 
-  const seatNames: Record<PlayerId, string> =
+  const seatNames: SeatNames =
     mode === 'bot' ? { p1: UI.you, p2: UI.bot } : { p1: UI.playerOne, p2: UI.playerTwo }
 
   // Hot-seat only: gate the board when the device changes hands, so the incoming

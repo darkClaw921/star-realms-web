@@ -2,13 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CHALLENGES, type BossId, type ChallengeLevel } from '@sr/engine'
+import { CHALLENGES, MAX_PLAYERS, TEAM_MODE, type BossId, type ChallengeLevel } from '@sr/engine'
 import { FACTION_VAR } from '@/components/Icons'
 import { CHALLENGE_RU, LEVEL_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import { beatenChallenges, resetChallenges } from '@/campaign/progress'
 
 const LEVELS: readonly ChallengeLevel[] = ['beginner', 'intermediate', 'veteran', 'expert']
+
+/** Which of the rulebook's three team rules a challenge is printed with. */
+const TEAM_RU: Record<string, string> = {
+  hydra: UI.coopHydra,
+  pooled: UI.coopPooled,
+  individual: UI.coopIndividual,
+}
 
 /** Each boss gets the colour of the faction it fights with, or its own tone. */
 const BOSS_COLOR: Record<BossId, string> = {
@@ -26,6 +33,10 @@ export default function ChallengesPage(): React.JSX.Element {
   const router = useRouter()
   const [level, setLevel] = useState<ChallengeLevel>('veteran')
   const [beaten, setBeaten] = useState<Readonly<Record<string, true>>>({})
+  // How many people are playing. One is the solo game this page has always
+  // dealt; more opens a table online, because the whole board is dealt from the
+  // player count and the seats cannot be filled in afterwards.
+  const [players, setPlayers] = useState(1)
   useEffect(() => { setBeaten(beatenChallenges()) }, [])
 
   return (
@@ -53,6 +64,24 @@ export default function ChallengesPage(): React.JSX.Element {
             </button>
           ))}
           <span className="levels__hint">{LEVEL_RU[level].desc}</span>
+        </div>
+
+        <div className="levels" role="group" aria-label={UI.players}>
+          <span className="eyebrow">{UI.players}</span>
+          {[1, 2, 3, 4].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`btn btn--sm${n === players ? ' btn--primary' : ''}`}
+              onClick={() => setPlayers(n)}
+              aria-pressed={n === players}
+            >
+              {n}
+            </button>
+          ))}
+          <span className="levels__hint">
+            {players === 1 ? UI.soloHint : UI.coopSub}
+          </span>
         </div>
 
         <div className="boss-grid">
@@ -85,12 +114,21 @@ export default function ChallengesPage(): React.JSX.Element {
 
                 {t.ours && <p className="boss__ours"><span>{UI.ourReconstruction}</span> {t.ours}</p>}
 
+                {players > 1 && (
+                  <p className="boss__rules">
+                    <b>{TEAM_RU[TEAM_MODE[c.id]]}</b>
+                    {players > MAX_PLAYERS[c.id] && ` — ${UI.capAt(MAX_PLAYERS[c.id])}`}
+                  </p>
+                )}
+
                 <button
                   type="button"
                   className="btn btn--primary"
-                  onClick={() => router.push(`/play?mode=challenge&boss=${c.id}&level=${level}`)}
+                  onClick={() => router.push(players > 1
+                    ? `/online?coop=${c.id}&level=${level}&players=${Math.min(players, MAX_PLAYERS[c.id])}`
+                    : `/play?mode=challenge&boss=${c.id}&level=${level}`)}
                 >
-                  {UI.missionStart}
+                  {players > 1 ? UI.gatherTeam : UI.missionStart}
                 </button>
               </section>
             )

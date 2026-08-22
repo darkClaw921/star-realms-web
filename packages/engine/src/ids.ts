@@ -1,8 +1,34 @@
 /** Branded ids. The brand is erased at runtime -- these are all plain strings. */
 type Brand<T, B> = T & { readonly __brand: B }
 
-export type PlayerId = 'p1' | 'p2'
+/**
+ * A seat at the table.
+ *
+ * Five, because the widest thing this engine deals is a four-player co-op
+ * Challenge plus the Boss, and the Boss occupies an ordinary seat -- it holds
+ * authority, bases and (for the deck bosses) a hand and a deck, so giving it
+ * anything other than a PlayerState would mean writing every rule twice.
+ *
+ * A seat existing is not a seat being IN the game: `GameState.seats` is the
+ * authority on who is playing. Iterating seats rather than this list is what
+ * keeps a two-player game exactly two players.
+ */
+export type PlayerId = 'p1' | 'p2' | 'p3' | 'p4' | 'p5'
+export const ALL_SEATS: readonly PlayerId[] = ['p1', 'p2', 'p3', 'p4', 'p5']
+
+/**
+ * The two seats of an ordinary duel.
+ *
+ * Kept because a duel is still the common case and reads better as a constant;
+ * anything that has to work for a co-op table must iterate `state.seats`.
+ */
 export const PLAYERS: readonly PlayerId[] = ['p1', 'p2']
+
+/**
+ * The other seat OF A DUEL. Not defined for a table with more than two seats --
+ * there, who your foe is depends on the game (in co-op it is always the Boss),
+ * which is a question about state, so `foeOf(state, seat)` answers it instead.
+ */
 export function opponentOf(p: PlayerId): PlayerId {
   return p === 'p1' ? 'p2' : 'p1'
 }

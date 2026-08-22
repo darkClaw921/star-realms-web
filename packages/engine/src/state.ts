@@ -3,6 +3,8 @@ import type { AbilitySlot, AcquireDest, AcquireRedirect, Effect, EffectBranch } 
 import type { PendingChoice } from './choices'
 import type { RngState } from './rng'
 import type { BossState } from './boss'
+import type { CoopState } from './coop'
+import { sharedTurn } from './coop'
 import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
 
@@ -163,6 +165,16 @@ export interface EffectCtx {
   readonly controller: PlayerId
   readonly source: CardIid | null
   readonly slot: AbilitySlot
+  /**
+   * Aims "the opponent" at one seat instead of at everyone.
+   *
+   * Only the Boss needs it, and only in co-op: Pirates of the Dark Star reveals
+   * one card per player and does what that card says TO THAT PLAYER, and the
+   * Dimensional Horror affects only the player whose turn just ended. Plain
+   * data, like every other field here, so a suspended boss turn still
+   * round-trips through JSON.
+   */
+  readonly target?: PlayerId
 }
 
 /**
@@ -215,8 +227,22 @@ export interface GameState {
   /** Number of commands applied. Used for optimistic concurrency. */
   version: number
   turn: number
+  /**
+   * Seats in the game, in turn order, with the Boss last when there is one.
+   * Everything that means "for every player" iterates THIS, never the seat
+   * type -- a two-player duel must stay exactly two players.
+   */
+  seats: PlayerId[]
+  /** The Challenge boss's seat, or null in a game without one. */
+  bossSeat: PlayerId | null
+  /** Co-operative team rules in force, or null. Public. */
+  coop: CoopState | null
   activePlayer: PlayerId
   phase: 'main' | 'gameOver'
+  /**
+   * Every seat has a PlayerState, occupied or not. `seats` says which of them
+   * are playing; the rest are inert and are never dealt, drawn or shown.
+   */
   players: Record<PlayerId, PlayerState>
   /**
    * Public. Always exactly TRADE_ROW_SIZE entries; a bought slot becomes null
@@ -289,5 +315,25 @@ export function currentChoice(s: GameState): PendingChoice | null {
  * non-active player. Authorization must consult this, never `activePlayer`.
  */
 export function actorOf(s: GameState): PlayerId {
-  return currentChoice(s)?.actor ?? s.activePlayer
+  return actorsOf(s)[0] as PlayerId
+}
+
+/**
+ * Everyone allowed to act right now.
+ *
+ * Usually one seat. A Hydra team shares its Main, Discard and Draw Phases, so
+ * during the team's turn every living teammate may play, buy, activate and
+ * attack -- the rulebook has them acting together at the table, and there is no
+ * printed order between them. A pending choice always narrows this back to the
+ * one player who has to answer it.
+ */
+export function actorsOf(s: GameState): readonly PlayerId[] {
+  const choice = currentChoice(s)
+  if (choice) return [choice.actor]
+  const c = s.coop
+  if (c && sharedTurn(c.mode) && c.players.includes(s.activePlayer)) {
+    const live = c.players.filter((p) => !c.eliminated.includes(p))
+    return live.length > 0 ? live : [s.activePlayer]
+  }
+  return [s.activePlayer]
 }

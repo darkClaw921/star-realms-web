@@ -5,7 +5,7 @@ import {
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
-import { toLines } from './log'
+import { toLines, type SeatNames } from './log'
 import type { LogLine, MatchClient, MatchSnapshot } from './types'
 
 export interface LocalOptions {
@@ -66,7 +66,7 @@ export class LocalMatchClient implements MatchClient {
     this.maybeScheduleBot()
   }
 
-  private names(): Record<PlayerId, string> {
+  private names(): SeatNames {
     if (this.opts.mode === 'bot') {
       const human = this.opts.humanSeat ?? 'p1'
       return human === 'p1'

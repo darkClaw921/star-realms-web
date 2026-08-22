@@ -1282,3 +1282,53 @@ input[type='range'] {
   :root { --card-w-base: 116px; }
   .menu__grid { grid-template-columns: 1fr; }
 }
+
+/* ── co-op: the teammates strip ──────────────────────────────────────────────
+ *
+ * A shelf rather than a second board. A teammate's cards are theirs to play,
+ * so what you need from them is their score, how much they are holding, and
+ * whether they can still use the Trade or Combat you are about to hand over.
+ * It sits in the flow directly above your own hand rather than pinned to the
+ * viewport: pinned, it covered the cards you were about to give the resources
+ * to. It scrolls sideways at three teammates rather than stacking, so the strip
+ * never pushes the trade row off a phone screen. */
+.allies {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin: 0 0 -4px;
+  padding: 2px 2px 10px;
+}
+
+.ally {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.ally.is-out { opacity: 0.5; }
+
+.ally__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.ally__out {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--combat);
+}
+
+.ally__give { display: flex; gap: 6px; }
