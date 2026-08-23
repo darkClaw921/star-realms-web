@@ -57,6 +57,8 @@ export function Board({
   const [auto, setAuto] = useState<null | 'all' | 'ally'>(null)
   const autoSteps = useRef(0)
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Порядок карт в игре с прошлого пересчёта: на нём ряд стоит, пока ждёт ответа. */
+  const order = useRef<string[]>([])
 
   /** Index the legal set once so every control can ask "is this allowed?" cheaply. */
   const idx = useMemo(() => {
@@ -103,19 +105,50 @@ export function Board({
   // A co-op team shares its turn, so "my turn" is membership in the actor set
   // rather than being the single actor.
   const myTurn = v.actors.includes(v.viewer) && v.phase === 'main'
-  // Карты стоят в том порядке, в каком их выложили, и остаются там до конца
-  // хода.
+  // Карты с неиспользованным свойством стоят слева.
   //
-  // Раньше ряд пересортировывался: карты с неиспользованным свойством уходили
-  // влево, чтобы их не искать в сложенном веере. Цена оказалась выше пользы —
-  // применённое свойство отправляло карту в конец ряда, и стол переставлялся
-  // под рукой ровно в тот момент, когда игрок по нему кликает. У соперника было
-  // то же самое, только чаще: там порядок зависел от того, хватает ли боя снести
-  // базу, то есть менялся от каждой прибавки к счётчику.
+  // В сложенном ряду наружу торчат левые края, и искать среди отработавших ту,
+  // что ещё ждёт нажатия, не приходится.
   //
-  // Что карта ещё ждёт нажатия, видно по кнопке под ней; двигать ради этого
-  // саму карту не нужно.
-  const inPlayOrdered = v.me.inPlay
+  // Порядок ЛИПКИЙ: сортируется не заново разложенная зона, а тот ряд, который
+  // уже стоит на столе. Разница видна ровно в том случае, ради которого это и
+  // сделано — карта, потратившая последнее свойство, уезжает за последнюю ещё
+  // активную и дальше не двигается. Если активных больше нет, ехать некуда, и
+  // она остаётся на месте: пересортировка «по порядку разыгрывания» гоняла бы
+  // весь ряд туда-обратно на каждом нажатии.
+  //
+  // Переезд при этом не мгновенный: карта переползает на новое место (см.
+  // FanRow) — иначе стол дёргается под рукой, которая по нему только что
+  // кликнула.
+  const inPlayOrdered = useMemo(() => {
+    // Ряд, как он стоит сейчас. Карта, которой в нём не было, — только что
+    // выложенная, и её место в хвосте.
+    const rank = new Map(order.current.map((iid, i) => [iid, i]))
+    const asIs = [...v.me.inPlay].sort(
+      (a, b) => (rank.get(a.iid) ?? Infinity) - (rank.get(b.iid) ?? Infinity),
+    )
+    // Пока висит вопрос — и пока ход не наш — законных действий нет ВООБЩЕ, и
+    // пересчёт сказал бы, что ни одна карта ничего не ждёт. Ряд схлопывался бы,
+    // а ответ на вопрос возвращал бы его обратно: те самые прыжки после покупки
+    // карты, которая о чём-то спрашивает.
+    if (v.pendingChoice !== null || !myTurn) return asIs
+
+    // Утиль и сплинтер не считаются: они есть почти у каждой карты и никогда
+    // не «тратятся», так что карта с ними осталась бы слева навсегда. Да и
+    // ждёт такое свойство не нажатия, а решения расстаться с картой.
+    const open = (iid: string): number => {
+      const slots = idx.activate.get(iid)
+      if (!slots) return 1
+      for (const s of slots) if (s !== 'scrap' && s !== 'splinter') return 0
+      return 1
+    }
+    const sorted = [...asIs].sort((a, b) => open(a.iid) - open(b.iid))
+    order.current = sorted.map((c) => c.iid)
+    return sorted
+  }, [v.me.inPlay, idx.activate, v.pendingChoice, myTurn])
+  // У соперника порядок остаётся тем, в каком карты выложены. «Ждёт хода» там
+  // значит «хватает боя снести», то есть меняется от каждой прибавки к
+  // счётчику, — ряд переставлялся бы почти на каждое действие.
   const foeOrdered = v.opponent.inPlay
   // Базы и аванпосты уходят в свою колонку слева и ложатся стопкой, как на
   // столе: у базы напечатанная кромка — верхняя, поэтому наезд идёт сверху
@@ -163,11 +196,42 @@ export function Board({
 
   // Утилизация и сплинтер уничтожают карту, поэтому в пакет не входят: их
   // выбирают поимённо, а не «применить всё».
-  const AUTO_SLOTS: readonly string[] = ['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly']
+  const AUTO_SLOTS = ['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly'] as const
   const autoFits = (slot: string, mode: 'all' | 'ally'): boolean =>
-    mode === 'all' ? AUTO_SLOTS.includes(slot) : AUTO_SLOTS.includes(slot) && slot !== 'primary'
-  const nextAuto = (mode: 'all' | 'ally'): Action | undefined =>
-    legal.find((a) => a.t === 'ACTIVATE' && autoFits(a.slot, mode))
+    mode === 'all'
+      ? (AUTO_SLOTS as readonly string[]).includes(slot)
+      : (AUTO_SLOTS as readonly string[]).includes(slot) && slot !== 'primary'
+
+  /**
+   * Зона, как её видно: базы слева колонкой, корабли справа рядом.
+   *
+   * Очередь свойств идёт по ЭТОМУ порядку, а не по тому, в каком движок
+   * перечисляет законные действия: игрок смотрит на стол, а не на список.
+   */
+  const visualOrder = useMemo(() => [...myBases, ...myShips], [myBases, myShips])
+
+  /**
+   * Следующее свойство в очереди — с правого края.
+   *
+   * Справа налево, потому что отработавшая карта уезжает вправо: начав слева,
+   * очередь толкала бы перед собой уже применённые карты и переставляла ряд на
+   * каждом шаге. С правого края отработавшая остаётся там, где стояла, и стол
+   * стоит смирно до конца очереди.
+   */
+  const nextAuto = (mode: 'all' | 'ally'): Action | undefined => {
+    for (let i = visualOrder.length - 1; i >= 0; i--) {
+      const card = visualOrder[i]
+      if (!card) continue
+      const slots = idx.activate.get(card.iid)
+      if (!slots) continue
+      for (const slot of AUTO_SLOTS) {
+        if (autoFits(slot, mode) && slots.has(slot)) {
+          return { t: 'ACTIVATE', card: card.iid as CardIid, slot }
+        }
+      }
+    }
+    return undefined
+  }
 
   /**
    * Первое свойство применяется СРАЗУ, остальные — по очереди.

@@ -38,7 +38,12 @@ function branchLabel(label: string): string {
  */
 function FoldButton({ onFold }: { onFold: () => void }): React.JSX.Element {
   return (
-    <button type="button" className="linkish choice__fold" onClick={onFold} title={UI.foldPromptHint}>
+    <button
+      type="button"
+      className="btn btn--ghost choice__fold"
+      onClick={onFold}
+      title={UI.foldPromptHint}
+    >
       {UI.foldPrompt}
     </button>
   )
@@ -156,7 +161,6 @@ export function ChoiceSheet({
               ? UI.chooseExactly(choice.max)
               : UI.chooseRange(choice.min, choice.max)}
           </span>
-          <FoldButton onFold={() => setFolded(true)} />
         </div>
 
         {branches.length > 0 && (
@@ -176,6 +180,9 @@ export function ChoiceSheet({
                 </span>
               </button>
             ))}
+            <div className="actions actions--centre">
+              <FoldButton onFold={() => setFolded(true)} />
+            </div>
           </div>
         )}
 
@@ -187,6 +194,7 @@ export function ChoiceSheet({
             <button type="button" className="btn btn--ghost" onClick={() => resolve([])}>
               {UI.no}
             </button>
+            <FoldButton onFold={() => setFolded(true)} />
           </div>
         )}
 
@@ -206,12 +214,12 @@ export function ChoiceSheet({
                     </button>
                   )
                 }
-                // Чья карта — подписью под ней. Без неё «уничтожьте базу»
-                // предлагает свои и чужие вперемешку, ничем их не различая, и
-                // выбор своей выглядит как чужая ошибка.
-                const owner = o.owner === null ? null
-                  : o.owner === viewer ? UI.ownerMine
-                    : (seatNames[o.owner] ?? UI.opponent)
+                // Подписывается только чужая карта. Своя в подписи не
+                // нуждается — а вот чужая среди своих (или наоборот) без неё
+                // неотличима, и «уничтожьте базу» предлагал их вперемешку.
+                const owner = o.owner === null || o.owner === viewer
+                  ? null
+                  : (seatNames[o.owner] ?? UI.opponent)
                 return (
                   <div key={o.iid} className="choice__pick">
                     <Card
@@ -221,11 +229,7 @@ export function ChoiceSheet({
                       onClick={() => toggle(o)}
                       title={cardName(o.def, cardDef(o.def).name)}
                     />
-                    {owner && (
-                      <span className={`choice__owner${o.owner === viewer ? ' is-mine' : ''}`}>
-                        {owner}
-                      </span>
-                    )}
+                    {owner && <span className="choice__owner">{owner}</span>}
                   </div>
                 )
               })}
@@ -244,6 +248,7 @@ export function ChoiceSheet({
                   {UI.skip}
                 </button>
               )}
+              <FoldButton onFold={() => setFolded(true)} />
             </div>
           </>
         )}

@@ -83,6 +83,62 @@ function surf(el: HTMLElement, kids: readonly HTMLElement[]): void {
   })
 }
 
+/** Идущий переезд карты: второй замер обязан отменить первый, а не лечь поверх. */
+const gliding = new WeakMap<HTMLElement, Animation>()
+
+/** Место карты в раскладке ряда. */
+interface Seat { readonly x: number; readonly y: number }
+
+/**
+ * Переезд на новое место вместо прыжка.
+ *
+ * Ряд пересортировывается на ходу: применённое свойство уводит карту вправо, к
+ * отработавшим. Мгновенная перестановка происходит ровно под рукой, которая
+ * только что по этой карте кликнула, и читается как сбой — карты будто скачут
+ * сами по себе.
+ *
+ * Приём стандартный: узел уже стоит на новом месте, поэтому его сдвигают
+ * ОБРАТНО на старое и отпускают. Позиции запоминаются по data-iid, а не по
+ * индексу: индекс — это как раз то, что меняется.
+ *
+ * Мерится РАСКЛАДКА (offsetLeft/offsetTop), а не экранный прямоугольник, и это
+ * не мелочь. getBoundingClientRect складывается с текущим transform и с
+ * прокруткой: замер, попавший на середину переезда, принял бы промежуточный
+ * кадр за новое место карты — и следующий же рендер увёз бы её обратно. По той
+ * же причине прокрутка торгового ряда выглядела как перестановка всего ряда.
+ */
+function glide(el: HTMLElement, kids: readonly HTMLElement[], was: Map<string, Seat>): void {
+  const now = new Map<string, Seat>()
+  // Место считается ВНУТРИ ряда, а не на странице. Полосы стола ездят по
+  // вертикали от чего угодно — появившийся значок в счётчике, карта с текстом
+  // на строку длиннее, — и ряд, сместившийся целиком, не перестановка: иначе
+  // каждая покупка дёргала бы все карты сразу.
+  const origin = kids[0]?.offsetParent === el
+    ? { x: 0, y: 0 }
+    : { x: el.offsetLeft, y: el.offsetTop }
+  for (const k of kids) {
+    const iid = k.querySelector<HTMLElement>('[data-iid]')?.dataset.iid
+    if (!iid) continue
+    const seat: Seat = { x: k.offsetLeft - origin.x, y: k.offsetTop - origin.y }
+    now.set(iid, seat)
+    const old = was.get(iid)
+    if (!old || calm()) continue
+    const dx = old.x - seat.x
+    const dy = old.y - seat.y
+    // Порог: раскладка веера шевелит края на доли пикселя, и анимировать это
+    // значит держать ряд в постоянном движении.
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue
+    gliding.get(k)?.cancel()
+    const run = k.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+      { duration: 260, easing: 'cubic-bezier(.22,.7,.3,1)' },
+    )
+    gliding.set(k, run)
+  }
+  was.clear()
+  for (const [iid, seat] of now) was.set(iid, seat)
+}
+
 export function FanRow({
   className = '', children, style, axis = 'x',
 }: {
@@ -99,6 +155,8 @@ export function FanRow({
   const [open, setOpen] = useState<number | null>(null)
   /** К какой карте колонка уже подавалась: без этого прокрутка зациклится. */
   const rolledTo = useRef<number | null>(null)
+  /** Где карты стояли в прошлом кадре — по этому и считается их переезд. */
+  const seats = useRef(new Map<string, Seat>())
 
   const measure = useCallback(() => {
     const el = ref.current
@@ -174,6 +232,7 @@ export function FanRow({
       el.classList.remove('is-tight')
       el.style.removeProperty('--acts-top')
       surf(el, kids)
+      glide(el, kids, seats.current)
       return
     }
 
@@ -193,6 +252,10 @@ export function FanRow({
       el.classList.remove('is-tight')
       el.style.removeProperty('--acts-top')
     }
+
+    // Последним шагом, когда раскладка окончательная: до этого координаты ещё
+    // не те, на которых карта останется.
+    glide(el, kids, seats.current)
   }, [axis])
 
   useLayoutEffect(measure)
