@@ -1834,6 +1834,24 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
  * as ONE rule here rather than ad hoc per card: a mandatory choice with no legal
  * options fizzles instead of deadlocking.
  */
+/**
+ * Вырожденный выбор, который бьёт по своим.
+ *
+ * «Уничтожьте выбранную базу» обязательно, а своя база — законная цель, и
+ * когда у соперника баз нет, единственной целью оказывается собственная. Формально
+ * решать тут нечего, и раньше движок сносил её молча: игрок нажимал «все союзы»,
+ * а со стола пропадал его аванпост — без вопроса, без паузы, посреди очереди
+ * свойств.
+ *
+ * Правило от этого не меняется: база всё равно будет уничтожена, отказаться
+ * нельзя. Но выбор предъявляется, а значит очередь свойств останавливается и
+ * игрок видит, чем именно платит.
+ */
+function selfHarm(c: PendingChoice): boolean {
+  if (c.prompt !== 'DESTROY_BASE') return false
+  return c.options.every((o) => o.o === 'CARD' && o.owner === c.actor)
+}
+
 export function settle(d: D, ev: GameEvent[]): void {
   let steps = 0
   for (;;) {
@@ -1866,7 +1884,7 @@ export function settle(d: D, ev: GameEvent[]): void {
       resolveChoice(d, frame, [], ev)
       continue
     }
-    if (choice.options.length <= choice.min) {
+    if (choice.options.length <= choice.min && !selfHarm(choice)) {
       // No meaningful decision: resolve it silently but still narrate it.
       const frame = d.resolution.shift() as unknown as ChoiceFrame
       ev.push({ e: 'CHOICE_AUTO_RESOLVED', player: choice.actor, label: choice.label })
@@ -2345,12 +2363,48 @@ function turnSeats(d: D, seat: PlayerId): readonly PlayerId[] {
   return [seat]
 }
 
-function endTurn(d: D, ev: GameEvent[]): void {
+/**
+ * `skipped` — ход, которого не было: его некому доигрывать.
+ *
+ * Так закрывается пропуск по уровню сложности. Без этого босс на пропущенном
+ * ходу сбрасывал руку и добирал новую — в журнале это выглядело как его ход,
+ * то есть ровно то, чего пропуск и должен избежать.
+ */
+function endTurn(d: D, ev: GameEvent[], skipped = false): void {
   const ending = turnSeats(d, d.activePlayer)
-  for (const seat of ending) endTurnFor(d, seat, ev)
+  // Кто именно сейчас доигрывает: после advanceSeat это уже не узнать, а
+  // двойной первый ход босса решается ровно этим.
+  const bossEnding = d.boss?.kind === 'deck' && d.activePlayer === bossSeat(d)
+  if (!skipped) for (const seat of ending) endTurnFor(d, seat, ev)
 
   advanceSeat(d)
+  // Эксперт: первый ход босса считается за два. Босс со сценарием играет их
+  // одним ходом из двух BOSS_TURN, но колодный босс играет руку, а не список
+  // эффектов, — его второй ход выдаётся здесь, возвратом хода тому же месту.
+  if (bossEnding && d.boss?.headStart) {
+    d.boss.headStart = false
+    d.activePlayer = bossSeat(d)
+  }
   d.turn += 1
+
+  const b = d.boss
+  // Difficulty: the boss sits out its first turns entirely.
+  //
+  // Two things about where this sits. It belongs to the LEVEL, not to the kind
+  // of boss: living inside the script branch below meant the four deck bosses
+  // answered the player's opening turn even on Beginner, where the player is
+  // owed three turns first -- and nothing looked wrong at setup, because
+  // `graceTurns` was counted correctly and merely never read.
+  //
+  // And it comes BEFORE the turn starts, so a skipped turn really is skipped:
+  // the boss neither draws a hand nor announces a turn it does not take.
+  if (b && b.graceTurns > 0 && d.activePlayer === bossSeat(d)) {
+    b.graceTurns -= 1
+    ev.push({ e: 'TURN_SKIPPED', player: d.activePlayer, turn: d.turn })
+    endTurn(d, ev, true)
+    return
+  }
+
   for (const seat of turnSeats(d, d.activePlayer)) startTurnFor(d, seat, ev)
 
   ev.push({ e: 'TURN_START', player: d.activePlayer, turn: d.turn })
@@ -2363,14 +2417,7 @@ function endTurn(d: D, ev: GameEvent[]): void {
   // A script boss has no hand to play, so its whole turn is pushed onto the
   // resolution stack here. Anything in it that asks the player something simply
   // suspends until they answer -- the boss does not need a driver loop.
-  const b = d.boss
   if (b && b.kind === 'script' && d.activePlayer === bossSeat(d)) {
-    if (b.graceTurns > 0) {
-      // Difficulty: the boss sits out its first turns entirely.
-      b.graceTurns -= 1
-      endTurn(d, ev)
-      return
-    }
     const turns: Effect[] = b.headStart
       ? [{ k: 'BOSS_TURN' }, { k: 'BOSS_TURN' }]
       : [{ k: 'BOSS_TURN' }]

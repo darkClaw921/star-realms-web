@@ -59,6 +59,9 @@ export function describe(e: GameEvent, names: SeatNames = DEFAULT_NAMES): string
 
   switch (e.e) {
     case 'TURN_START': return `— Ход ${e.turn}: ${who(e.player)} —`
+    // Пропуск объявляется вслух: без строки в журнале уровень «новичок»
+    // выглядит как сбой очереди — ходы игрока идут подряд, а номера прыгают.
+    case 'TURN_SKIPPED': return `— Ход ${e.turn}: ${who(e.player)} пропускает —`
     case 'TURN_END': return null
     case 'TOPDECK':
       return `${who(e.player)} кладёт ${card(e.def)} на верх колоды`
@@ -132,8 +135,8 @@ export function toLines(
       id: nextId++,
       player: 'player' in e ? (e.player as PlayerId) : null,
       text,
-      emphasis: e.e === 'TURN_START' || e.e === 'GAME_OVER' || e.e === 'BASE_DESTROYED'
-        || e.e === 'ELIMINATED',
+      emphasis: e.e === 'TURN_START' || e.e === 'TURN_SKIPPED' || e.e === 'GAME_OVER'
+        || e.e === 'BASE_DESTROYED' || e.e === 'ELIMINATED',
     })
   }
   return out

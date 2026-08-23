@@ -8,6 +8,15 @@ import type { CardDefId, CardIid, Faction, PlayerId, Zone } from './ids'
 export type GameEvent =
   | { e: 'TURN_START'; player: PlayerId; turn: number }
   | { e: 'TURN_END'; player: PlayerId }
+  /**
+   * A turn the Boss was owed and did not take, from the difficulty's grace.
+   *
+   * Its own event rather than a TURN_START, because a log that narrates the
+   * skipped turn as the Boss's turn says the exact opposite of what happened:
+   * on Beginner the player is owed three turns in a row, and reading "Turn 2:
+   * Boss" between them is how a working grace period looks broken.
+   */
+  | { e: 'TURN_SKIPPED'; player: PlayerId; turn: number }
   | { e: 'PLAY_CARD'; player: PlayerId; iid: CardIid; def: CardDefId }
   | { e: 'ABILITY_USED'; player: PlayerId; iid: CardIid; def: CardDefId; slot: AbilitySlot }
   | { e: 'GAIN'; player: PlayerId; what: 'trade' | 'combat' | 'authority'; n: number }

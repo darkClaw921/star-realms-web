@@ -166,6 +166,66 @@ describe('difficulty levels', () => {
     expect(s3.boss?.facedown.length).toBeGreaterThan(0)
   })
 
+  /**
+   * The grace turns belong to the DIFFICULTY, not to the kind of boss.
+   *
+   * Skipping them lived inside the script-boss branch of END_TURN, so the four
+   * deck bosses answered the player's very first turn at every level -- on
+   * Beginner too, where the player is owed three turns before the boss moves at
+   * all. The bug is invisible from the setup: `graceTurns` was set correctly and
+   * simply never read.
+   */
+  it('a deck boss sits out its grace turns too', () => {
+    const s = start('defy-the-empire', 'beginner')
+    expect(s.boss?.graceTurns).toBe(2)
+
+    // Turn one ends: the boss owes two skips, so the player acts again.
+    const t2 = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(t2.activePlayer).toBe('p1')
+    expect(t2.boss?.graceTurns).toBe(1)
+
+    const t3 = reduce(t2, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(t3.activePlayer).toBe('p1')
+    expect(t3.boss?.graceTurns).toBe(0)
+
+    // Third turn over, grace spent: now it is the boss's move.
+    const t4 = reduce(t3, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(t4.activePlayer).toBe('p2')
+  })
+
+  it('a deck boss answers at once on veteran', () => {
+    const s = start('defy-the-empire', 'veteran')
+    expect(s.boss?.graceTurns).toBe(0)
+    expect(reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state.activePlayer).toBe('p2')
+  })
+
+  /**
+   * Same root as the grace turns: a deck boss's turn is played from its hand by
+   * a driver outside the engine, so the doubled first turn cannot be two
+   * BOSS_TURN effects the way it is for a script boss -- it has to be a second
+   * turn handed back to the same seat.
+   */
+  it('a deck boss takes its doubled first turn on expert', () => {
+    const s = start('defy-the-empire', 'expert')
+    expect(s.boss?.headStart).toBe(true)
+
+    const bossTurn = reduce(s, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(bossTurn.activePlayer).toBe('p2')
+
+    // The boss ends its turn and gets a second one, once.
+    const again = reduce(bossTurn, { actor: 'p2', action: { t: 'END_TURN' } }).state
+    expect(again.activePlayer).toBe('p2')
+    expect(again.boss?.headStart).toBe(false)
+
+    const back = reduce(again, { actor: 'p2', action: { t: 'END_TURN' } }).state
+    expect(back.activePlayer).toBe('p1')
+
+    // And never again: the next boss turn is a single one.
+    const next = reduce(back, { actor: 'p1', action: { t: 'END_TURN' } }).state
+    expect(next.activePlayer).toBe('p2')
+    expect(reduce(next, { actor: 'p2', action: { t: 'END_TURN' } }).state.activePlayer).toBe('p1')
+  })
+
   it('expert takes a double first turn', () => {
     const veteran = pass(start('nemesis-beast', 'veteran'), 1)
     const expert = pass(start('nemesis-beast', 'expert'), 1)
