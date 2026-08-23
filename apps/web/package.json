@@ -14,7 +14,8 @@
     "art-manifest": "node scripts/art-manifest.mjs",
     "predev": "npm run art-manifest",
     "prebuild": "npm run art-manifest",
-    "audit-lab": "node scripts/audit-lab.mjs"
+    "audit-lab": "node scripts/audit-lab.mjs",
+    "ui-report": "node scripts/ui-report.mjs"
   },
   "dependencies": {
     "@sr/engine": "*",
