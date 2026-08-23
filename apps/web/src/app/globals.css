@@ -898,6 +898,12 @@ button { font: inherit; color: inherit; }
   margin-top: calc(var(--row-gap-top) - var(--row-headroom));
   margin-bottom: -16px;
   scroll-snap-type: x proximity;
+  /* Снап прижимает первую карту к началу прокрутки и съедает боковое поле —
+   * ряд оказывается прокручен ровно на его ширину, и запас, оставленный для
+   * выросшей карты, исчезает. scroll-padding говорит снапу, где на самом деле
+   * начинается ряд. */
+  scroll-padding-left: var(--row-side);
+  scroll-padding-right: var(--row-side);
   scrollbar-width: thin;
 }
 .row--scroll > * { scroll-snap-align: start; }

@@ -1847,6 +1847,28 @@ async function main() {
             }
             return out
           })
+          // Снап не должен съедать боковое поле: он прижимает первую карту к
+          // началу прокрутки, ряд оказывается прокручен ровно на ширину поля,
+          // и запас для выросшей карты исчезает — а карта снова обрезается.
+          const snapped = await fan.evaluate(async () => {
+            const out = []
+            for (const [sel, label] of [['.band--market .row', 'рынок'], ['.band--hand .row', 'рука']]) {
+              const row = document.querySelector(sel)
+              const card = row?.querySelector('.card')
+              if (!card) continue
+              row.scrollLeft = 300
+              await new Promise((r) => setTimeout(r, 250))
+              row.scrollLeft = 0
+              await new Promise((r) => setTimeout(r, 450))
+              const gap = Math.round(card.getBoundingClientRect().left - row.getBoundingClientRect().left)
+              out.push(`${label}: ${gap}px`)
+              if (gap < 8) out.push(`${label}: ПОЛЕ СЪЕДЕНО`)
+            }
+            return out
+          })
+          record('боковое поле ряда переживает прокрутку',
+            !snapped.some((t) => t.includes('СЪЕДЕНО')), snapped.join(' · ') || 'рядов нет')
+
           record('карты не выезжают за левый край полосы',
             inside.length === 0, inside.join(' · ') || 'ряды лежат внутри полос')
 
