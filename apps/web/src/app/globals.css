@@ -858,7 +858,9 @@ button { font: inherit; color: inherit; }
   background:
     linear-gradient(180deg, rgba(30, 38, 56, 0.55) 0%, rgba(13, 16, 22, 0.9) 100%);
   border-color: var(--rule-hi);
-  overflow: auto;
+  /* Прокрутка живёт внутри, в самом ряду; здесь обрезка только срезала бы
+   * крайнюю карту, выросшую под курсором. */
+  overflow: visible;
 }
 
 .row {
@@ -879,11 +881,20 @@ button { font: inherit; color: inherit; }
 .row--scroll {
   --row-gap-top: 0px;
   --row-headroom: 30px;
+  /* Тот же приём и по бокам: карта под курсором растёт вширь, а край прокрутки
+   * срезал бы у крайних то, на сколько они выросли. Поле даёт им место,
+   * отрицательный отступ возвращает ряду прежнюю ширину. Полем ОБРЕЗКИ это
+   * не сделать: overflow-clip-margin есть только в Chrome. */
+  --row-side: 18px;
   overflow-x: auto;
   padding-top: var(--row-headroom);
   padding-bottom: 20px;
+  padding-left: var(--row-side);
+  padding-right: var(--row-side);
   margin-top: calc(var(--row-gap-top) - var(--row-headroom));
   margin-bottom: -16px;
+  margin-left: calc(-1 * var(--row-side));
+  margin-right: calc(-1 * var(--row-side));
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
@@ -2444,14 +2455,7 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
   pointer-events: none;
 }
 .play__bases > * { pointer-events: auto; }
-.play__ships {
-  flex: 1 1 auto;
-  min-width: 0;
-  /* Тот же запас, что у колонки баз: крайняя карта под курсором растёт вбок и
-   * упиралась в собственный край прокрутки. */
-  padding-left: 18px;
-  margin-left: -18px;
-}
+.play__ships { flex: 1 1 auto; min-width: 0; }
 /* В своей зоне у баз есть кнопки свойств, поэтому предел выше, чем у
  * соперника: под нижней базой должно остаться место на её кнопки. */
 .band--board .play__bases { max-height: calc(var(--card-w) * 1.7); }

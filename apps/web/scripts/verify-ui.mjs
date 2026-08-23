@@ -1802,6 +1802,41 @@ async function main() {
             card.style.removeProperty('--lift')
             return bad
           })
+          // Та же проверка для всех прокручиваемых рядов: рынок, рука, стол
+          // соперника. Крайняя карта растёт вбок, и край прокрутки срезал бы
+          // ей ровно то, на сколько она выросла.
+          const rows = await fan.evaluate(() => {
+            const probe = (sel, label) => {
+              const row = document.querySelector(sel)
+              const card = row?.querySelector('.card')
+              if (!card) return null
+              card.style.setProperty('--scale', '1.055')
+              card.style.setProperty('--lift', '-6px')
+              const c = card.getBoundingClientRect()
+              const bad = []
+              let el = card.parentElement
+              while (el && el !== document.body) {
+                const cs = getComputedStyle(el)
+                if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+                  const r = el.getBoundingClientRect()
+                  const cut = Math.max(Math.round(r.left - c.left), Math.round(c.right - r.right),
+                                       Math.round(r.top - c.top))
+                  if (cut > 0) bad.push(`${label}/${(el.className || el.tagName).slice(0, 20)}: ${cut}px`)
+                }
+                el = el.parentElement
+              }
+              card.style.removeProperty('--scale')
+              card.style.removeProperty('--lift')
+              return bad
+            }
+            return [
+              ...(probe('.band--market .row', 'рынок') ?? []),
+              ...(probe('.band--hand .row', 'рука') ?? []),
+            ]
+          })
+          record('крайние карты рынка и руки не срезаются',
+            rows.length === 0, rows.join(' · ') || 'ряды пропускают выросшую карту')
+
           record('никакой контейнер не режет выросшую карту',
             clipped.length === 0, clipped.join(' · ') || 'все контейнеры пропускают')
 
