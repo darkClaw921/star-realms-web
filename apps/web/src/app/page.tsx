@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { FACTION_VAR } from '@/components/Icons'
+import { ProfileCard } from '@/components/ProfileCard'
 import { LAB } from '@/i18n/lab.ru'
 import { UI } from '@/i18n/ui'
 
@@ -49,6 +50,10 @@ export default function Menu(): React.JSX.Element {
           <span className="lo">{UI.titleBottom}</span>
         </h1>
         <p className="menu__sub">{UI.lede}</p>
+
+        {/* Свой счёт — над выбором режима: игрок пришёл играть, и первое, что
+          * ему стоит увидеть, — чем кончился прошлый раз. */}
+        <ProfileCard />
 
         <div className="menu__grid">
           {MODES.map((m) => (

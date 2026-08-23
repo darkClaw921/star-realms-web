@@ -65,7 +65,10 @@ export function attachRealtime(httpServer: HttpServer): Server {
         // An unparseable payload is treated as a plain duel rather than an
         // error: the older client sends nothing at all.
         const parsed = createSchema.safeParse(payload ?? {})
-        const { match, seat, token } = createMatch(parsed.success ? parsed.data.coop : undefined)
+        const { match, seat, token } = createMatch(
+          parsed.success ? parsed.data.coop : undefined,
+          parsed.success ? parsed.data.player : undefined,
+        )
         bind(socket, match, seat)
         ack?.({
           matchId: match.id, roomCode: match.roomCode, seat, token,
@@ -76,8 +79,8 @@ export function attachRealtime(httpServer: HttpServer): Server {
 
     socket.on('join', (payload: unknown, ack?: (r: unknown) => void) => {
       try {
-        const { roomCode } = joinSchema.parse(payload)
-        const { match, seat, token } = joinByCode(roomCode)
+        const { roomCode, player } = joinSchema.parse(payload)
+        const { match, seat, token } = joinByCode(roomCode, player)
         bind(socket, match, seat)
         ack?.({
           matchId: match.id, roomCode: match.roomCode, seat, token,

@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { cardDef, type Action, type ChoiceOption, type PendingChoiceView } from '@sr/engine'
+import {
+  cardDef, type Action, type ChoiceOption, type PendingChoiceView, type PlayerId,
+} from '@sr/engine'
 import { BRANCH_RU, cardName, FACTION_RU } from '@/i18n/cards.ru'
 import { promptTitle, UI } from '@/i18n/ui'
+import type { SeatNames } from '@/match/log'
 import { Card } from './Card'
 import { CardText } from './cardText'
 
@@ -26,15 +29,64 @@ function branchLabel(label: string): string {
   return FACTION_RU[label as keyof typeof FACTION_RU] ?? BRANCH_RU[label] ?? label
 }
 
+/**
+ * Убрать вопрос с глаз.
+ *
+ * Ссылкой, а не кнопкой рядом с «Подтвердить»: свернуть — не ответ, и ставить
+ * это действие в один ряд с ответами значит предлагать его как третий вариант
+ * ответа.
+ */
+function FoldButton({ onFold }: { onFold: () => void }): React.JSX.Element {
+  return (
+    <button type="button" className="linkish choice__fold" onClick={onFold} title={UI.foldPromptHint}>
+      {UI.foldPrompt}
+    </button>
+  )
+}
+
 export function ChoiceSheet({
-  choice, onResolve,
+  choice, onResolve, viewer, seatNames,
 }: {
   choice: PendingChoiceView
   onResolve: (a: Action) => void
+  /** Чьими глазами смотрим: от этого зависит, чья карта «ваша». */
+  viewer: PlayerId
+  seatNames: SeatNames
 }): React.JSX.Element | null {
   const [picked, setPicked] = useState<ChoiceOption[]>([])
+  /**
+   * Вопрос свёрнут, стол виден.
+   *
+   * Сбрасывается вместе с выбором: свернули один вопрос — следующий всё равно
+   * приходит открытым, иначе игрок пропустил бы его и не понял, чего игра ждёт.
+   */
+  const [folded, setFolded] = useState(false)
 
-  useEffect(() => { setPicked([]) }, [choice.id])
+  useEffect(() => { setPicked([]); setFolded(false) }, [choice.id])
+
+  // Esc складывает и раскладывает вопрос: то же движение, что и кнопкой, но
+  // без прицеливания мышью посреди хода.
+  useEffect(() => {
+    const key = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setFolded((f) => !f)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
+
+  if (folded) {
+    return (
+      <button
+        type="button"
+        className="choicebar"
+        onClick={() => setFolded(false)}
+        title={promptTitle(choice, null)}
+      >
+        <span className="choicebar__dot" aria-hidden="true" />
+        {UI.unfoldPrompt}
+      </button>
+    )
+  }
 
   if (!choice.options) {
     return (
@@ -44,6 +96,7 @@ export function ChoiceSheet({
             <span className="sheet__title">{UI.waitingForOther}</span>
             <span className="sheet__hint">{promptTitle(choice, null)}</span>
           </div>
+          <FoldButton onFold={() => setFolded(true)} />
         </div>
       </div>
     )
@@ -103,6 +156,7 @@ export function ChoiceSheet({
               ? UI.chooseExactly(choice.max)
               : UI.chooseRange(choice.min, choice.max)}
           </span>
+          <FoldButton onFold={() => setFolded(true)} />
         </div>
 
         {branches.length > 0 && (
@@ -152,15 +206,27 @@ export function ChoiceSheet({
                     </button>
                   )
                 }
+                // Чья карта — подписью под ней. Без неё «уничтожьте базу»
+                // предлагает свои и чужие вперемешку, ничем их не различая, и
+                // выбор своей выглядит как чужая ошибка.
+                const owner = o.owner === null ? null
+                  : o.owner === viewer ? UI.ownerMine
+                    : (seatNames[o.owner] ?? UI.opponent)
                 return (
-                  <Card
-                    key={o.iid}
-                    def={o.def}
-                    selected={picked.some((x) => same(x, o))}
-                    playable
-                    onClick={() => toggle(o)}
-                    title={cardName(o.def, cardDef(o.def).name)}
-                  />
+                  <div key={o.iid} className="choice__pick">
+                    <Card
+                      def={o.def}
+                      selected={picked.some((x) => same(x, o))}
+                      playable
+                      onClick={() => toggle(o)}
+                      title={cardName(o.def, cardDef(o.def).name)}
+                    />
+                    {owner && (
+                      <span className={`choice__owner${o.owner === viewer ? ' is-mine' : ''}`}>
+                        {owner}
+                      </span>
+                    )}
+                  </div>
                 )
               })}
             </div>

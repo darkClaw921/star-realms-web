@@ -6,8 +6,10 @@ import {
   enumerateLegalActions, redact, redactEvent, reduce,
   type Action, type ChallengeLevel, type GameEvent, type GameState, type PlayerId,
 } from '@sr/engine'
-import { ROOM_CODE_ALPHABET, type WireError } from '@sr/protocol'
+import { ROOM_CODE_ALPHABET, type PlayerRef, type WireError } from '@sr/protocol'
 import { chooseAction } from '@/bot/bot'
+import { summarise } from '@/profile/summary'
+import { recordMatch } from './profiles'
 
 const DATA_DIR = process.env.SR_DATA_DIR ?? join(process.cwd(), '..', '..', 'data', 'matches')
 /** Per-process: matches live in memory, so tokens need not outlive the process. */
@@ -40,6 +42,16 @@ export interface Match {
   readonly seenCmdIds: Map<string, number>
   createdAt: number
   joined: PlayerId[]
+  /**
+   * Whose scoreboard each seat plays for, where its player brought one.
+   *
+   * Never consulted for authorization -- a seat's right to act comes from its
+   * socket binding and from nothing else. This is only the address the finished
+   * game is filed under.
+   */
+  readonly profiles: Partial<Record<PlayerId, PlayerRef>>
+  /** Set once, when the result has been filed: a match is recorded exactly once. */
+  recorded: boolean
 }
 
 export class MatchError extends Error {
@@ -88,7 +100,9 @@ export function verifyToken(token: string): { matchId: string; seat: PlayerId } 
  * the team's shared score, the boss's hand size and the Assimilation Count all
  * scale with it, so the table size is chosen here and not renegotiated later.
  */
-export function createMatch(coop?: CoopOptions): { match: Match; seat: PlayerId; token: string } {
+export function createMatch(
+  coop?: CoopOptions, player?: PlayerRef,
+): { match: Match; seat: PlayerId; token: string } {
   const matchId = id()
   let code = roomCode()
   while (byCode.has(code)) code = roomCode()
@@ -125,6 +139,8 @@ export function createMatch(coop?: CoopOptions): { match: Match; seat: PlayerId;
     seenCmdIds: new Map(),
     createdAt: Date.now(),
     joined: ['p1'],
+    profiles: player ? { p1: player } : {},
+    recorded: false,
   }
   matches.set(matchId, match)
   byCode.set(code, matchId)
@@ -132,7 +148,9 @@ export function createMatch(coop?: CoopOptions): { match: Match; seat: PlayerId;
   return { match, seat: 'p1', token: seats.p1.token }
 }
 
-export function joinByCode(code: string): { match: Match; seat: PlayerId; token: string } {
+export function joinByCode(
+  code: string, player?: PlayerRef,
+): { match: Match; seat: PlayerId; token: string } {
   const matchId = byCode.get(code.toUpperCase())
   if (!matchId) throw new MatchError({ code: 'NOT_FOUND', message: 'No match with that code.' })
   const match = matches.get(matchId)
@@ -142,6 +160,7 @@ export function joinByCode(code: string): { match: Match; seat: PlayerId; token:
     throw new MatchError({ code: 'FULL', message: 'Every seat at that table is taken.' })
   }
   match.joined.push(seat)
+  if (player) match.profiles[seat] = player
   // The code is a join ticket, not an auth token, and it expires the moment the
   // last seat is filled rather than on the first use -- a co-op table needs to
   // hand the same code to three people.
@@ -198,7 +217,40 @@ export function applyCommand(
   match.commands.push({ seat, action })
   match.seenCmdIds.set(cmdId, state.version)
   void persistCommand(match, seat, action)
-  return { version: state.version, events: [...events, ...driveBoss(match)] }
+  const all = [...events, ...driveBoss(match)]
+  // После хода босса, а не до: его ход тоже может закончить партию, и запись,
+  // сделанная раньше, приписала бы игроку победу в ещё не проигранной игре.
+  void recordOutcome(match)
+  return { version: state.version, events: all }
+}
+
+/**
+ * Записать доигранную партию в профили тех, кто её играл.
+ *
+ * Итог берётся с доски сервера, а не со слов клиента: онлайн — единственный
+ * режим, где проигравший мог бы объявить себя победителем, и единственный, где
+ * этого делать не надо, потому что сервер и так всё видел.
+ *
+ * Ошибки записи глотаются, как и у журнала матчей: недоступный диск не повод
+ * ломать партию, которая уже сыграна.
+ */
+async function recordOutcome(m: Match): Promise<void> {
+  if (m.recorded || m.state.phase !== 'gameOver') return
+  m.recorded = true
+  const at = Date.now()
+  const durationMs = at - m.createdAt
+  for (const seat of m.humanSeats) {
+    const who = m.profiles[seat]
+    if (!who) continue
+    // Соперник для строки в истории — имя того, кто сидел напротив, а не место.
+    const foe = m.humanSeats.find((s) => s !== seat)
+    const foeName = (foe && m.profiles[foe]?.name) || (m.bossSeat ? 'Босс' : 'Соперник')
+    const result = summarise(m.state, seat, { mode: 'online', opponent: foeName, durationMs, at })
+    if (!result) continue
+    try {
+      await recordMatch(who.id, who.name ?? '', result)
+    } catch { /* см. выше */ }
+  }
 }
 
 /**

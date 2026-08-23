@@ -5,6 +5,7 @@ import { cardDef, type CardDefId, type GameEvent, type PlayerId } from '@sr/engi
 import type { MatchSnapshot } from '@/match/types'
 import { armAudio, SFX } from './audio'
 import { rain, clearFlight } from './flight'
+import { clearGhosts, ghost, traceCard } from './ghost'
 import { anim, burst, clearFx, popText, ring, screenFlash } from './particles'
 
 const BLOB = '#5fd08a'
@@ -45,6 +46,9 @@ export function FxLayer({
 }): null {
   const byIid = useRef(new Map<string, Point>())
   const byDef = useRef(new Map<string, Point>())
+  // Слепки карт прошлого хода: карта, ушедшая в утиль, должна доиграть
+  // растворение, а её узла на столе к этому моменту уже нет.
+  const traces = useRef(new Map<string, HTMLElement>())
   // -1, а не 0: нулевой tick — это раздача, у неё событий нет, но реестр
   // позиций с неё нужен, иначе первый же взрыв не найдёт, где стояла карта.
   const seen = useRef(-1)
@@ -62,7 +66,7 @@ export function FxLayer({
     }
   }, [])
 
-  useEffect(() => () => { clearFx(); clearFlight() }, [])
+  useEffect(() => () => { clearFx(); clearFlight(); clearGhosts() }, [])
 
   useLayoutEffect(() => {
     const fresh = snapshot.tick !== seen.current
@@ -73,21 +77,28 @@ export function FxLayer({
     // Реестры на этот момент хранят прошлый кадр — именно он и нужен для
     // карт, которых на столе уже нет. Обновляются они ниже, после эффектов.
     if (enabled && fresh && !first) {
-      run(snapshot.events, snapshot.view.viewer, byIid.current, byDef.current)
+      run(snapshot.events, snapshot.view.viewer, byIid.current, byDef.current, traces.current)
     }
     // Снимок позиций — на каждый рендер: строка карт прокручивается и
     // переливается, и вчерашние координаты годятся только для исчезнувших карт.
-    snap(byIid.current, byDef.current)
+    // Слепки — только на новом ходу: копировать десяток карт на каждый наклон
+    // под курсором незачем, внутри хода их разметка не меняется.
+    snap(byIid.current, byDef.current, fresh ? traces.current : null)
   })
 
   return null
 }
 
 /** Снимок позиций текущего кадра: карта на столе живёт до следующей команды. */
-function snap(iids: Map<string, Point>, defs: Map<string, Point>): void {
+function snap(
+  iids: Map<string, Point>, defs: Map<string, Point>,
+  traces: Map<string, HTMLElement> | null,
+): void {
+  traces?.clear()
   for (const el of document.querySelectorAll<HTMLElement>('[data-iid]')) {
     const p = centreOf(el)
     if (p.w > 0) iids.set(el.dataset.iid!, p)
+    if (p.w > 0) traces?.set(el.dataset.iid!, traceCard(el))
   }
   // Купленная карта не имеет iid в событии — только определение, поэтому ряд
   // запоминается отдельно и по def.
@@ -122,6 +133,7 @@ function colorOf(def: CardDefId): string {
 function run(
   events: readonly GameEvent[], viewer: PlayerId,
   iids: Map<string, Point>, defs: Map<string, Point>,
+  traces: Map<string, HTMLElement>,
 ): void {
   // Событие GAIN не называет карту, которая его дала: движок сообщает «плюс
   // три торговли», и всё. Но приходит оно сразу за розыгрышем или включённым
@@ -261,7 +273,12 @@ function run(
         SFX.scrap()
         const p = anchorIid(e.iid, iids)
         const el = e.iid ? document.querySelector(`[data-iid="${CSS.escape(e.iid)}"]`) : null
+        // Живой узел остаётся, только когда карту утилизировали не из зоны, а
+        // из ряда, который её ещё держит; в обычном случае её уже нет, и
+        // растворяется слепок прошлого кадра — там же, где карта стояла.
+        const trace = e.iid ? traces.get(e.iid) : undefined
         if (el) anim(el, 'fx-dissolve', 0.7, 'ease-in')
+        else if (trace && p) ghost(trace, p, 'fx-dissolve', 0.7)
         if (p) {
           burst({
             x: p.x, y: p.y, n: 26, dir: -Math.PI / 2, spread: 1.2, speed: 70,

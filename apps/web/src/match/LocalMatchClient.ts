@@ -6,6 +6,8 @@ import {
 } from '@sr/engine'
 import { chooseAction, type Difficulty } from '@/bot/bot'
 import { UI } from '@/i18n/ui'
+import { summarise } from '@/profile/summary'
+import type { MatchResult, PlayMode } from '@/profile/types'
 import { toLines, type SeatNames } from './log'
 import type { LogLine, MatchClient, MatchSnapshot } from './types'
 
@@ -92,6 +94,19 @@ export class LocalMatchClient implements MatchClient {
   private get viewer(): PlayerId {
     if (this.opts.mode === 'bot') return this.opts.humanSeat ?? 'p1'
     return actorOf(this.state)
+  }
+
+  /**
+   * Итог доигранной партии для статистики, или null, пока она идёт.
+   *
+   * Живёт здесь, а не на экране, потому что считается по состоянию, а экран
+   * его не видит — и правильно не видит: вид редактируется, и партия за одним
+   * экраном показывает то одну сторону стола, то другую.
+   */
+  outcome(seat: PlayerId, meta: {
+    mode: PlayMode; opponent: string; durationMs: number; at: number
+  }): MatchResult | null {
+    return summarise(this.state, seat, meta)
   }
 
   snapshot(): MatchSnapshot {

@@ -103,22 +103,20 @@ export function Board({
   // A co-op team shares its turn, so "my turn" is membership in the actor set
   // rather than being the single actor.
   const myTurn = v.actors.includes(v.viewer) && v.phase === 'main'
-  // Карты, у которых осталось непримененное свойство, идут первыми: в
-  // сложенном ряду левые видны целиком, и искать среди отработавших то, что
-  // ещё ждёт нажатия, не приходится. Сортировка устойчива, поэтому порядок
-  // разыгрывания внутри каждой группы сохраняется.
-  const inPlayOrdered = useMemo(() => {
-    const open = (iid: string): number => ((idx.activate.get(iid)?.size ?? 0) > 0 ? 0 : 1)
-    return [...v.me.inPlay].sort((a, b) => open(a.iid) - open(b.iid))
-  }, [v.me.inPlay, idx.activate])
-  // У соперника «ждёт хода» значит другое: базу можно снести прямо сейчас.
-  // Она и должна лежать слева, а не искаться в сложенном ряду.
-  const foeOrdered = useMemo(
-    () => [...v.opponent.inPlay].sort(
-      (a, b) => Number(idx.attack.has(b.iid)) - Number(idx.attack.has(a.iid)),
-    ),
-    [v.opponent.inPlay, idx.attack],
-  )
+  // Карты стоят в том порядке, в каком их выложили, и остаются там до конца
+  // хода.
+  //
+  // Раньше ряд пересортировывался: карты с неиспользованным свойством уходили
+  // влево, чтобы их не искать в сложенном веере. Цена оказалась выше пользы —
+  // применённое свойство отправляло карту в конец ряда, и стол переставлялся
+  // под рукой ровно в тот момент, когда игрок по нему кликает. У соперника было
+  // то же самое, только чаще: там порядок зависел от того, хватает ли боя снести
+  // базу, то есть менялся от каждой прибавки к счётчику.
+  //
+  // Что карта ещё ждёт нажатия, видно по кнопке под ней; двигать ради этого
+  // саму карту не нужно.
+  const inPlayOrdered = v.me.inPlay
+  const foeOrdered = v.opponent.inPlay
   // Базы и аванпосты уходят в свою колонку слева и ложатся стопкой, как на
   // столе: у базы напечатанная кромка — верхняя, поэтому наезд идёт сверху
   // вниз, а не вбок. Корабли остаются рядом справа. Тип берётся по видимой
@@ -654,7 +652,12 @@ export function Board({
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
 
       {v.pendingChoice && !settingsOpen && (
-        <ChoiceSheet choice={v.pendingChoice} onResolve={onAction} />
+        <ChoiceSheet
+          choice={v.pendingChoice}
+          onResolve={onAction}
+          viewer={v.viewer}
+          seatNames={seatNames}
+        />
       )}
 
       {v.phase === 'gameOver' && (

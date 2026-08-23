@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SeatNames } from '@/match/log'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -14,6 +14,11 @@ import { LocalMatchClient } from '@/match/LocalMatchClient'
 import type { VariantId } from '@sr/engine'
 import { useMatch } from '@/match/useMatch'
 import { markBeaten, markChallengeBeaten } from '@/campaign/progress'
+import { MISSION_RU } from '@/i18n/campaign.ru'
+import { CHALLENGE_RU } from '@/i18n/challenges.ru'
+import { BOT_RU } from '@/i18n/profile.ru'
+import { reportMatch } from '@/profile/identity'
+import type { PlayMode } from '@/profile/types'
 import { readSettings } from '@/settings/useSettings'
 
 function Play(): React.JSX.Element {
@@ -56,6 +61,17 @@ function Play(): React.JSX.Element {
     () => Math.floor(Math.random() * 2 ** 52).toString(16).padStart(16, '0'),
     [],
   )
+
+  // Под каким именем партия ляжет в статистику. Кампания и испытание — не
+  // «игра с ботом»: соперник там сценарный, и мешать их в один счёт значило бы
+  // считать прохождение обычной партией.
+  const playMode: PlayMode = mission ? 'campaign'
+    : challenge ? 'challenge'
+      : mode === 'hotseat' ? 'hotseat' : 'bot'
+  const opponentName = mission ? MISSION_RU[mission.id]?.name ?? mission.id
+    : challenge ? CHALLENGE_RU[challenge.spec.id]?.name ?? challenge.spec.id
+      : mode === 'hotseat' ? UI.playerTwo
+        : BOT_RU[difficulty] ?? UI.bot
 
   const factory = useCallback(
     () => new LocalMatchClient({
@@ -101,6 +117,22 @@ function Play(): React.JSX.Element {
     if (mission && won === 'p1') markBeaten(mission.id)
     if (challenge && won === 'p1') markChallengeBeaten(challenge.spec.id)
   }, [mission, challenge, won])
+
+  // Партия начинается с раздачи, а не с открытия страницы: секунды до первого
+  // хода — не игра.
+  const startedAt = useMemo(() => Date.now(), [seed])
+  const reported = useRef(false)
+  useEffect(() => {
+    if (!won || reported.current || !client) return
+    // Ровно один раз за партию: снимок с победителем приходит ещё не раз —
+    // на каждую перерисовку экрана победы.
+    reported.current = true
+    const at = Date.now()
+    const result = client.outcome('p1', {
+      mode: playMode, opponent: opponentName, durationMs: at - startedAt, at,
+    })
+    if (result) void reportMatch(result)
+  }, [won, client, playMode, opponentName, startedAt])
 
   if (!snapshot) {
     return <main className="menu"><p className="eyebrow">{UI.dealing}</p></main>

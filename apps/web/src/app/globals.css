@@ -591,6 +591,11 @@ button { font: inherit; color: inherit; }
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 14px rgba(0, 0, 0, 0.7);
   border-bottom: 0.7cqi solid var(--fc);
   padding-bottom: 1.5cqi;
+  /* Названия вроде «Перерабатывающий двор» шире карты одним словом: без
+   * переносов hidden срезал у него хвост, и карта подписывалась «Перерабатыва».
+   * Страница по-русски, поэтому перенос идёт по слогам. */
+  hyphens: auto;
+  overflow-wrap: break-word;
   overflow: hidden;
 }
 .card.is-base .card__name { font-size: 5.8cqi; border-bottom-width: 0.5cqi; }
@@ -1247,8 +1252,66 @@ button { font: inherit; color: inherit; }
 }
 
 .choice__hint { font-size: 12px; color: var(--ink-dim); }
+.choice__fold { font-size: 12px; margin-top: 2px; }
+
+/* ── свёрнутый вопрос ───────────────────────────────────────────────────────
+ *
+ * Всё, что остаётся от полноэкранного вопроса, пока игрок смотрит стол. Стоит
+ * в правом нижнем углу — единственном месте, где под ним ничего нет: сверху
+ * зона соперника и торговый ряд, снизу по центру рука, а ради этой кнопки
+ * игрок и сворачивал вопрос, чтобы всё это увидеть.
+ *
+ * Пульсирующая точка — не украшение: свёрнутый вопрос всё ещё держит ход, и
+ * неподвижная кнопка в углу читается как часть интерфейса, а не как «игра ждёт
+ * вас». */
+.choicebar {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 9px 13px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--rule-hi);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  animation: preview-in 160ms ease both;
+}
+.choicebar:hover { border-color: var(--authority); }
+.choicebar__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--authority);
+  animation: choicebar-pulse 1.6s ease-in-out infinite;
+}
+@keyframes choicebar-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--authority) 70%, transparent); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .choicebar__dot { animation: none; }
+}
 
 .choice__cards { justify-content: center; }
+/* Карта и подпись под ней — один столбик: подпись принадлежит карте, а не ряду. */
+.choice__pick { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.choice__owner {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* Своя карта среди целей — предупреждение, а не пометка: цвет тот же, каким
+ * в игре обозначается урон. */
+.choice__owner.is-mine { color: var(--combat); }
 
 .actions--centre { justify-content: center; }
 
@@ -1835,10 +1898,17 @@ input[type='range'] {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 24px;
-  line-height: 1;
+  line-height: 1.05;
   text-transform: uppercase;
   margin: 0;
   color: var(--fc);
+  /* «Межпространственный ужас» длиннее своей колонки одним словом. Без
+   * min-width заголовок не даёт flex-строке сжаться и выезжает за карточку, а
+   * без переносов ему просто негде разорваться: страница по-русски, поэтому
+   * перенос идёт по слогам, и лишь если словарь молчит — по любому месту. */
+  min-width: 0;
+  hyphens: auto;
+  overflow-wrap: break-word;
 }
 .boss__done {
   font-family: var(--font-display);
@@ -1985,7 +2055,13 @@ input[type='range'] {
   place-items: center;
   padding: 28px;
 }
-.menu__inner { width: min(760px, 100%); }
+.menu__inner {
+  width: min(760px, 100%);
+  /* Ячейка сетки по умолчанию не уже своего содержимого: без этого широкая
+   * таблица статистики растягивала не свою прокрутку, а всю страницу. */
+  min-width: 0;
+  max-width: 100%;
+}
 .menu__title {
   font-family: var(--font-display);
   font-weight: 700;
@@ -2019,6 +2095,184 @@ input[type='range'] {
 }
 .mode__desc { font-size: 13px; color: var(--ink-dim); line-height: 1.45; }
 .menu__foot { margin-top: 26px; font-size: 12px; color: var(--ink-faint); line-height: 1.6; }
+/* Страница статистики шире меню: таблица из шести колонок в 760px не живёт. */
+.menu__inner--wide { width: min(1040px, 100%); }
+.menu__title--sm { font-size: clamp(30px, 5vw, 44px); margin-bottom: 18px; }
+
+/* ── профиль ────────────────────────────────────────────────────────────────
+ *
+ * Карточка в меню и сводка на своей странице делят счётчики (.stat) и таблицы
+ * (.tbl): это одни и те же числа в двух подробностях, и разъехавшееся
+ * оформление читалось бы как разные данные. */
+.profile {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+/* Место под карточку, пока она грузится: без него плитки режимов прыгают вниз
+ * ровно в тот момент, когда игрок целится в одну из них. */
+.profile--ghost { min-height: 116px; opacity: 0; }
+.profile__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.profile__name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--rule-hi);
+}
+.profile__name:hover { border-bottom-color: var(--authority); }
+.profile__who {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 14px;
+}
+.profile__rename { display: flex; gap: 6px; align-items: center; }
+.profile__input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--void);
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r-md);
+  padding: 5px 8px;
+  width: 160px;
+}
+.profile__empty { color: var(--ink-dim); font-size: 13px; margin: 0; }
+.profile__stats {
+  display: grid;
+  /* Колонка шире самой длинной подписи («средняя длительность» в два слова):
+   * при 92px «БЫСТРЕЙШАЯ» не помещалась, а `1fr` не сжимает колонку ниже её
+   * содержимого — сетка раздвигала страницу вместо того, чтобы перенести
+   * слово. */
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+}
+.profile__stats--wide { margin-bottom: 8px; }
+.stat {
+  background: var(--void);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: 9px 10px;
+  /* Ячейка сетки не должна распираться своим содержимым: узкий экран сначала
+   * переносит слово и только потом просит места. */
+  min-width: 0;
+}
+.stat__value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.stat__value--win { color: var(--ok); }
+.stat__value--loss { color: var(--combat); }
+.stat__label {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+  /* Подпись длиннее плитки бывает и в одно слово; разрыв где угодно здесь
+   * допустим — это набранная капителью пометка, а не текст для чтения. */
+  overflow-wrap: anywhere;
+}
+
+/* Доля побед полосой: число рядом отвечает «сколько», полоса — «насколько». */
+.profile__modes { display: grid; gap: 8px; margin-top: 12px; }
+.modebar__top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-bottom: 4px;
+}
+.modebar__count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.modebar__track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rule);
+  overflow: hidden;
+}
+.modebar__fill { height: 100%; background: var(--ok); }
+
+.profile__section { margin-top: 26px; }
+.profile__h2 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 8px;
+}
+.profile__hint { font-size: 12px; color: var(--ink-faint); margin: 0 0 8px; }
+
+/* Прокручивается ОБЁРТКА, а не сама таблица: `display: block` на таблице
+ * лишает её табличной раскладки, и колонки перестают равняться по всей
+ * ширине — на широком экране таблица собиралась в узкий столбик у левого края.
+ * Шесть колонок на телефоне при этом всё равно не влезают, поэтому ездит
+ * обёртка, а вёрстка таблицы остаётся табличной. */
+.tblwrap {
+  overflow-x: auto;
+  /* Тени у кромок — единственный признак, что таблица едет вбок: обрезанный
+   * столбец на телефоне иначе неотличим от текста, вылезшего за экран.
+   * `scroll` прибивает их к рамке, а `local` — к содержимому, поэтому тень
+   * гаснет ровно тогда, когда прокручивать больше нечего. */
+  background:
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.55), transparent) 0 / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.55), transparent) 100% / 14px 100% no-repeat scroll,
+    linear-gradient(90deg, var(--void), transparent) 0 / 14px 100% no-repeat local,
+    linear-gradient(-90deg, var(--void), transparent) 100% / 14px 100% no-repeat local;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tbl th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.tbl td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-dim);
+}
+.tbl td:first-child { color: var(--ink); }
+.tbl .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tbl .is-win { color: var(--ok); }
+.tbl .is-loss { color: var(--combat); }
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: baseline;
+}
 
 /* ── banner ─────────────────────────────────────────────────────────────── */
 .banner {
@@ -2138,6 +2392,25 @@ input[type='range'] {
   will-change: transform, opacity;
 }
 
+/* ── призрак ушедшей карты ──────────────────────────────────────────────────
+ *
+ * Утилизированная карта растворяется уже копией: к моменту эффекта живого узла
+ * на столе нет. Слой стоит ниже полёта ресурсов и выше канвы — искры утиля
+ * должны лететь ПОВЕРХ растворяющейся карты, иначе она их закрывает. */
+.fx-ghosts {
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  pointer-events: none;
+}
+.fx-ghost {
+  position: absolute;
+  /* Слот меряет своих потомков в cqi, поэтому призрак остаётся слотом: ширина
+   * приходит переменной, а размер контейнера считается от неё, как на столе. */
+  width: var(--card-w);
+}
+.fx-ghost .card-slot { width: var(--card-w); }
+
 /* Щелчок цели на каждую прилетевшую единицу. */
 .rail__cell.is-tick,
 .card-slot.is-tick,
@@ -2225,7 +2498,7 @@ input[type='range'] {
 /* Просьба системы «поменьше движения» относится и к эффектам: канвас с
  * летящими осколками — ровно то, от чего эта настройка защищает. */
 @media (prefers-reduced-motion: reduce) {
-  .fx-canvas, .fx-pop, .fx-flash, .fx-flight { display: none; }
+  .fx-canvas, .fx-pop, .fx-flash, .fx-flight, .fx-ghosts { display: none; }
 }
 
 /* ── полигон ────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { enumerateLegalActions, type Action, type GameEvent, type PlayerId, type
 import { ENGINE_VERSION } from '@sr/protocol'
 import { CHALLENGE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
+import { playerRef } from '@/profile/identity'
 import { toLines, type SeatNames } from './log'
 import type { LogLine, MatchClient, MatchSnapshot } from './types'
 
@@ -67,9 +68,12 @@ export class RemoteMatchClient implements MatchClient {
     this.socket.on('connect', () => {
       const i = opts.intent
       const event = i.kind === 'create' ? 'create' : i.kind === 'join' ? 'join' : 'rejoin'
-      const payload = i.kind === 'join' ? { roomCode: i.roomCode }
+      // Профиль называется при первом входе за стол: возвращение по токену
+      // садится на уже занятое место, за которым профиль записан.
+      const me = playerRef()
+      const payload = i.kind === 'join' ? { roomCode: i.roomCode, player: me }
         : i.kind === 'rejoin' ? { matchId: i.matchId, token: i.token }
-        : i.coop ? { coop: i.coop } : {}
+        : i.coop ? { coop: i.coop, player: me } : { player: me }
       this.socket.emit(event, payload, (res: unknown) => {
         const r = res as {
           error?: { message: string }
