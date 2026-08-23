@@ -526,7 +526,10 @@ export function Board({
 
       {/* ── my board ─────────────────────────────────────────────────────── */}
       <section className="band band--board">
-        <div className="zone" style={{ minHeight: 0, overflow: 'auto' }}>
+        {/* clip с полем, а не auto: зона по-прежнему не растит полосу, но
+          * поднятой карте оставлено место выйти за край — иначе её срезало
+          * ровно на те несколько пикселей, на которые она выросла. */}
+        <div className="zone zone--play">
           <div className="zone__head">
             <span className="eyebrow">{UI.inPlay}</span>
             {/* Пакетные кнопки появляются только когда есть что применять:

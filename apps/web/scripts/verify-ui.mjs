@@ -1777,6 +1777,51 @@ async function main() {
             grown.left <= 0 && grown.right <= 0 && grown.top <= 0,
             `слева ${-grown.left}px, справа ${-grown.right}px, сверху ${-grown.top}px запаса`)
 
+          // И ни один предок не режет её дальше: зона и полоса стола обрезают
+          // содержимое, и обе обязаны пропустить наружу выросшую карту.
+          const clipped = await fan.evaluate(() => {
+            const col = document.querySelector('.band--board .play__bases')
+            const card = col.children[Math.min(3, col.children.length - 1)].querySelector('.card')
+            card.style.setProperty('--scale', '1.055')
+            card.style.setProperty('--lift', '-6px')
+            const c = card.getBoundingClientRect()
+            const bad = []
+            let el = card.parentElement
+            while (el && el !== document.body) {
+              const cs = getComputedStyle(el)
+              if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+                const r = el.getBoundingClientRect()
+                const m = parseFloat(cs.overflowClipMargin) || 0
+                const cut = Math.max(Math.round(r.left + (cs.overflowX === 'clip' ? -m : 0) - c.left),
+                                     Math.round(c.right - (r.right + (cs.overflowX === 'clip' ? m : 0))))
+                if (cut > 0) bad.push(`${(el.className || el.tagName).slice(0, 24)}: ${cut}px`)
+              }
+              el = el.parentElement
+            }
+            card.style.removeProperty('--scale')
+            card.style.removeProperty('--lift')
+            return bad
+          })
+          record('никакой контейнер не режет выросшую карту',
+            clipped.length === 0, clipped.join(' · ') || 'все контейнеры пропускают')
+
+          // Крайний корабль растёт влево и упирался в собственный край
+          // прокрутки — со стороны это читалось как «обрезан колонкой баз».
+          const edge = await fan.evaluate(() => {
+            const row = document.querySelector('.band--board .play__ships')
+            const card = row?.querySelector('.card')
+            if (!card) return null
+            card.style.setProperty('--scale', '1.055')
+            const c = card.getBoundingClientRect()
+            const r = row.getBoundingClientRect()
+            card.style.removeProperty('--scale')
+            return Math.round(r.left - c.left)
+          })
+          if (edge !== null) {
+            record('крайний корабль не срезается краем своего ряда',
+              edge <= 0, `${-edge}px запаса слева`)
+          }
+
           // Колонка стала шире карты ради этого запаса — и не должна ловить
           // нажатия, адресованные соседнему ряду кораблей.
           const near = await fan.evaluate(() => {

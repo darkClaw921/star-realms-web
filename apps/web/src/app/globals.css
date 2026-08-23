@@ -889,6 +889,12 @@ button { font: inherit; color: inherit; }
 }
 .row--scroll > * { scroll-snap-align: start; }
 
+.zone--play {
+  min-height: 0;
+  /* Ни зона, ни полоса вокруг неё больше не обрезают: см. .band--board. */
+  overflow: visible;
+}
+
 .zone {
   min-width: 0;
   display: flex;
@@ -933,7 +939,18 @@ button { font: inherit; color: inherit; }
    * картам — их смотрят постоянно, а журнал читают изредка. */
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  overflow: hidden;
+  /* Полоса ничего не обрезает.
+   *
+   * Обрезка была нужна, чтобы содержимое не растило стол, но и колонка баз, и
+   * ряд кораблей давно держат себя сами — у первой предел высоты и своя
+   * прокрутка, у второго прокрутка по горизонтали. Осталось от обрезки одно:
+   * она срезала карту, выросшую под курсором, на те несколько пикселей, на
+   * которые та выросла.
+   *
+   * Поле обрезки (overflow-clip-margin) эту задачу решает только в Chrome:
+   * Safari его не знает и режет по краю. Поэтому здесь не «clip с полем», а
+   * честное отсутствие обрезки. */
+  overflow: visible;
 }
 @media (max-width: 860px) {
   /* On a phone the four bands genuinely do not fit in one viewport height, and
@@ -2427,7 +2444,14 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
   pointer-events: none;
 }
 .play__bases > * { pointer-events: auto; }
-.play__ships { flex: 1 1 auto; min-width: 0; }
+.play__ships {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Тот же запас, что у колонки баз: крайняя карта под курсором растёт вбок и
+   * упиралась в собственный край прокрутки. */
+  padding-left: 18px;
+  margin-left: -18px;
+}
 /* В своей зоне у баз есть кнопки свойств, поэтому предел выше, чем у
  * соперника: под нижней базой должно остаться место на её кнопки. */
 .band--board .play__bases { max-height: calc(var(--card-w) * 1.7); }
@@ -2451,9 +2475,9 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
  * карты. Верхний край растворяется маской — так видно, что выше есть ещё. */
 .row--stack.is-scroll {
   overflow-y: auto;
-  /* Вбок обрезать нечего, кроме тени и подъёма карты, — им оставлен запас. */
-  overflow-x: clip;
-  overflow-clip-margin: 20px;
+  /* Вбок обрезать нечего, кроме тени и подъёма карты: место им дают поля
+   * колонки, а не поле обрезки — последнего Safari не знает вовсе. */
+  overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: none;
   mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 100%);
