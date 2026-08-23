@@ -1834,6 +1834,22 @@ async function main() {
               ...(probe('.band--hand .row', 'рука') ?? []),
             ]
           })
+          // И при этом ряд не вываливается наружу: поле даёт место росту
+          // ВНУТРИ ряда, а не выносит карты за край полосы.
+          const inside = await fan.evaluate(() => {
+            const out = []
+            for (const [sel, label] of [['.band--market', 'рынок'], ['.band--hand', 'рука']]) {
+              const band = document.querySelector(sel)
+              const card = band?.querySelector('.row .card')
+              if (!card) continue
+              const gap = Math.round(card.getBoundingClientRect().left - band.getBoundingClientRect().left)
+              if (gap < 0) out.push(`${label}: карта на ${-gap}px левее полосы`)
+            }
+            return out
+          })
+          record('карты не выезжают за левый край полосы',
+            inside.length === 0, inside.join(' · ') || 'ряды лежат внутри полос')
+
           record('крайние карты рынка и руки не срезаются',
             rows.length === 0, rows.join(' · ') || 'ряды пропускают выросшую карту')
 

@@ -882,10 +882,14 @@ button { font: inherit; color: inherit; }
   --row-gap-top: 0px;
   --row-headroom: 30px;
   /* Тот же приём и по бокам: карта под курсором растёт вширь, а край прокрутки
-   * срезал бы у крайних то, на сколько они выросли. Поле даёт им место,
-   * отрицательный отступ возвращает ряду прежнюю ширину. Полем ОБРЕЗКИ это
-   * не сделать: overflow-clip-margin есть только в Chrome. */
-  --row-side: 18px;
+   * срезал бы у крайних то, на сколько они выросли. Поле даёт им место внутри
+   * ряда. Полем ОБРЕЗКИ это не сделать: overflow-clip-margin есть только в
+   * Chrome.
+   *
+   * Отрицательного отступа здесь, в отличие от вертикали, нет намеренно: он
+   * выносил бы карты за левый край полосы, и в торговом ряду они выезжали
+   * наружу. Ряд просто начинается на ширину поля правее. */
+  --row-side: 14px;
   overflow-x: auto;
   padding-top: var(--row-headroom);
   padding-bottom: 20px;
@@ -893,8 +897,6 @@ button { font: inherit; color: inherit; }
   padding-right: var(--row-side);
   margin-top: calc(var(--row-gap-top) - var(--row-headroom));
   margin-bottom: -16px;
-  margin-left: calc(-1 * var(--row-side));
-  margin-right: calc(-1 * var(--row-side));
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
