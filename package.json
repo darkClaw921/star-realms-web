@@ -22,6 +22,7 @@
     "verify": "npm run verify -w @sr/web",
     "report": "npm run report -w @sr/web",
     "card-sheet": "npm run card-sheet -w @sr/web",
+    "shots": "npm run shots -w @sr/web",
     "art-manifest": "npm run art-manifest -w @sr/web",
     "pretypecheck": "npm run art-manifest",
     "prelint": "npm run art-manifest",
