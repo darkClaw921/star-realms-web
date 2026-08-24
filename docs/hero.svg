@@ -1,0 +1,438 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 1200 470" width="1200" height="470" role="img"
+     aria-labelledby="heroTitle heroDesc">
+  <title id="heroTitle">Звёздные империи — дека-билдер в браузере</title>
+  <desc id="heroDesc">Торговый ряд из пяти карт: одна покупается и уезжает в колоду игрока,
+    её место занимает следующая. Внизу — своя зона, где две карты одной фракции загораются
+    союзом и отправляют залп в авторитет соперника. Слева — название, стек технологий и счёт
+    карт, наборов, боссов и тестов.</desc>
+
+  <defs>
+    <style>
+      .f    { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+      .t1   { font-size: 44px; font-weight: 800; letter-spacing: -0.4px; }
+      .t2   { font-size: 16px; }
+      .eb   { font-size: 12.5px; font-weight: 600; letter-spacing: 3.2px; }
+      .chip { font-size: 12.5px; font-weight: 600; }
+      .num  { font-size: 27px; font-weight: 800; }
+      .lbl  { font-size: 10.5px; font-weight: 600; letter-spacing: 1.6px; }
+      .cn   { font-size: 8.6px; font-weight: 700; letter-spacing: 0.5px; }
+      .ct   { font-size: 7.4px; }
+      .cost { font-size: 9.5px; font-weight: 800; }
+      .hud  { font-size: 15px; font-weight: 800; }
+      .hudl { font-size: 8.5px; font-weight: 600; letter-spacing: 1.8px; }
+      .zone { font-size: 8.5px; font-weight: 600; letter-spacing: 2.2px; }
+    </style>
+
+    <!-- Небо стола: тот же почти чёрный низкой насыщенности, что и в игре. -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07090d"/>
+      <stop offset="0.55" stop-color="#0d1016"/>
+      <stop offset="1" stop-color="#06080c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#58cfe0"/>
+      <stop offset="1" stop-color="#6fb7f0"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#1b2130"/>
+      <stop offset="1" stop-color="#0d1016"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6fb7f0" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#6fb7f0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff7a6b" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ff7a6b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="galaxy" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff6e4" stop-opacity="0.34"/>
+      <stop offset="0.35" stop-color="#c4b2ff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#c4b2ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#02040a" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#02040a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meteor" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.3" stop-color="#aed0ff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#aed0ff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Два звёздных поля разного шага: вместе они не складываются в узор. -->
+    <pattern id="starsFar" width="90" height="90" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="18" r="0.9" fill="#e2eeff" opacity="0.55"/>
+      <circle cx="58" cy="41" r="0.7" fill="#e2eeff" opacity="0.4"/>
+      <circle cx="76" cy="9"  r="0.9" fill="#e2eeff" opacity="0.5"/>
+      <circle cx="31" cy="72" r="0.7" fill="#e2eeff" opacity="0.35"/>
+      <circle cx="84" cy="66" r="0.8" fill="#e2eeff" opacity="0.45"/>
+    </pattern>
+    <pattern id="starsNear" width="150" height="150" patternUnits="userSpaceOnUse">
+      <circle cx="24" cy="36" r="1.5" fill="#ffffff" opacity="0.8"/>
+      <circle cx="118" cy="22" r="1.3" fill="#aed0ff" opacity="0.7"/>
+      <circle cx="70" cy="116" r="1.4" fill="#ffecd0" opacity="0.65"/>
+      <circle cx="136" cy="96" r="1.2" fill="#ffffff" opacity="0.6"/>
+    </pattern>
+
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft2" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Карта торгового ряда: рамка, иллюстрация и плашка с текстом. -->
+    <g id="card">
+      <rect x="0" y="0" width="86" height="120" rx="7" fill="url(#plate)" stroke="#38425a"/>
+      <rect x="4" y="4" width="78" height="66" rx="5" fill="#0a0e15"/>
+      <path d="M8,62 L26,44 L38,54 L54,34 L78,60 L78,66 L8,66 Z" fill="currentColor" opacity="0.42"/>
+      <circle cx="63" cy="24" r="7" fill="currentColor" opacity="0.30"/>
+      <rect x="4" y="74" width="78" height="42" rx="5" fill="#04060a" opacity="0.36"/>
+      <rect x="9" y="80" width="52" height="3.2" rx="1.6" fill="#98a3b6" opacity="0.55"/>
+      <rect x="9" y="88" width="66" height="3.2" rx="1.6" fill="#98a3b6" opacity="0.4"/>
+      <rect x="9" y="96" width="40" height="3.2" rx="1.6" fill="#98a3b6" opacity="0.3"/>
+      <path d="M9,105 h64" stroke="#38425a" stroke-width="0.8"/>
+      <rect x="9" y="108" width="26" height="3.2" rx="1.6" fill="currentColor" opacity="0.7"/>
+    </g>
+
+    <!-- Значок торговли: шестиугольник, как на карте. -->
+    <g id="tradeMark">
+      <path d="M0,-6 L5.2,-3 L5.2,3 L0,6 L-5.2,3 L-5.2,-3 Z" fill="#f0b429"/>
+    </g>
+    <!-- Значок боя: звезда. -->
+    <g id="combatMark">
+      <path d="M0,-6.4 L1.8,-2 L6.4,-1.6 L2.9,1.5 L4,6 L0,3.5 L-4,6 L-2.9,1.5 L-6.4,-1.6 L-1.8,-2 Z"
+            fill="#f4593c"/>
+    </g>
+  </defs>
+
+  <!-- ── НЕБО ─────────────────────────────────────────────────────────────── -->
+  <rect width="1200" height="470" fill="url(#bg)"/>
+  <!-- Поля плывут в разные стороны и с разной скоростью: это и есть параллакс. -->
+  <g>
+    <rect x="-90" y="-90" width="1380" height="650" fill="url(#starsFar)">
+      <animateTransform attributeName="transform" type="translate"
+                        values="0 0; 90 -90" dur="60s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="-150" y="-150" width="1500" height="770" fill="url(#starsNear)" opacity="0.75">
+      <animateTransform attributeName="transform" type="translate"
+                        values="0 0; -150 150" dur="42s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <ellipse cx="960" cy="150" rx="430" ry="300" fill="url(#glowA)"/>
+  <ellipse cx="150" cy="380" rx="360" ry="240" fill="url(#glowB)"/>
+  <!-- Скопление галактик: то же, что дрейфует за столом в самой игре. -->
+  <g transform="translate(1055 92) rotate(-24)">
+    <ellipse rx="120" ry="34" fill="url(#galaxy)"/>
+  </g>
+  <g transform="translate(120 96) rotate(16)">
+    <ellipse rx="76" ry="20" fill="url(#galaxy)" opacity="0.7"/>
+  </g>
+
+  <!-- Метеор: пролёт занимает малую долю цикла, поэтому он редкий гость. -->
+  <g>
+    <g transform="translate(-120 -40)">
+      <rect x="-150" y="-1" width="150" height="2" rx="1" fill="url(#meteor)" transform="rotate(19)"/>
+      <animateTransform attributeName="transform" type="translate"
+                        values="-120 -40; 1180 410" keyTimes="0;1"
+                        dur="13s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;0.9;0;0" keyTimes="0;0.02;0.05;0.1;0.13;1"
+               dur="13s" repeatCount="indefinite"/>
+    </g>
+  </g>
+
+  <rect x="0.5" y="0.5" width="1199" height="469" rx="16" fill="none" stroke="#262d3d"/>
+
+  <!-- ── ЛЕВАЯ КОЛОНКА ────────────────────────────────────────────────────── -->
+  <g class="f">
+    <circle cx="78" cy="85" r="4" fill="#58cfe0">
+      <animate attributeName="opacity" values="1;0.25;1" dur="2.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="78" cy="85" r="4" fill="none" stroke="#58cfe0" stroke-width="1.5">
+      <animate attributeName="r" values="4;13" dur="2.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0" dur="2.4s" repeatCount="indefinite"/>
+    </circle>
+    <text class="eb" x="96" y="89" fill="#58cfe0">ДЕКА-БИЛДЕР В БРАУЗЕРЕ</text>
+
+    <text class="t1" x="72" y="150" fill="#eef2f7">ЗВЁЗДНЫЕ<tspan fill="url(#accent)"> ИМПЕРИИ</tspan></text>
+
+    <text class="t2" x="72" y="190" fill="#98a3b6">Собирай колоду прямо в бою: покупай корабли</text>
+    <text class="t2" x="72" y="213" fill="#98a3b6">из торгового ряда, связывай их союзами фракций</text>
+    <text class="t2" x="72" y="236" fill="#98a3b6">и сбивай авторитет соперника с 50 до нуля.</text>
+
+    <g>
+      <g transform="translate(72 264)">
+        <rect width="92" height="27" rx="13.5" fill="#141822" stroke="#38425a"/>
+        <text class="chip" x="46" y="18" fill="#98a3b6" text-anchor="middle">TypeScript</text>
+      </g>
+      <g transform="translate(172 264)">
+        <rect width="88" height="27" rx="13.5" fill="#141822" stroke="#38425a"/>
+        <text class="chip" x="44" y="18" fill="#98a3b6" text-anchor="middle">Next.js 16</text>
+      </g>
+      <g transform="translate(268 264)">
+        <rect width="86" height="27" rx="13.5" fill="#141822" stroke="#38425a"/>
+        <text class="chip" x="43" y="18" fill="#98a3b6" text-anchor="middle">Socket.IO</text>
+      </g>
+      <g transform="translate(362 264)">
+        <rect width="116" height="27" rx="13.5" fill="#141822" stroke="#38425a"/>
+        <text class="chip" x="58" y="18" fill="#98a3b6" text-anchor="middle">Чистый движок</text>
+      </g>
+    </g>
+
+    <g>
+      <text class="num" x="72"  y="338" fill="#58cfe0">390</text>
+      <text class="lbl" x="72"  y="356" fill="#5d6779">КАРТ</text>
+      <text class="num" x="176" y="338" fill="#5fd08a">23</text>
+      <text class="lbl" x="176" y="356" fill="#5d6779">НАБОРА</text>
+      <text class="num" x="290" y="338" fill="#f2c24b">8</text>
+      <text class="lbl" x="290" y="356" fill="#5d6779">БОССОВ</text>
+      <text class="num" x="394" y="338" fill="#ff7a6b">317</text>
+      <text class="lbl" x="394" y="356" fill="#5d6779">ТЕСТОВ</text>
+    </g>
+
+    <!-- Режимы: те же пять, что на главной. -->
+    <g transform="translate(72 392)">
+      <g>
+        <rect width="88" height="24" rx="6" fill="#141822" stroke="#262d3d"/>
+        <text class="chip" x="44" y="16" fill="#5fd08a" text-anchor="middle">против бота</text>
+      </g>
+      <g transform="translate(96 0)">
+        <rect width="126" height="24" rx="6" fill="#141822" stroke="#262d3d"/>
+        <text class="chip" x="63" y="16" fill="#6fb7f0" text-anchor="middle">за одним экраном</text>
+      </g>
+      <g transform="translate(230 0)">
+        <rect width="78" height="24" rx="6" fill="#141822" stroke="#262d3d"/>
+        <text class="chip" x="39" y="16" fill="#ff7a6b" text-anchor="middle">кампания</text>
+      </g>
+      <g transform="translate(316 0)">
+        <rect width="100" height="24" rx="6" fill="#141822" stroke="#262d3d"/>
+        <text class="chip" x="50" y="16" fill="#f2c24b" text-anchor="middle">приключения</text>
+      </g>
+      <g transform="translate(424 0)">
+        <rect width="96" height="24" rx="6" fill="#141822" stroke="#262d3d"/>
+        <text class="chip" x="48" y="16" fill="#58cfe0" text-anchor="middle">игра по сети</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ── СТОЛ ─────────────────────────────────────────────────────────────── -->
+  <ellipse cx="885" cy="428" rx="280" ry="30" fill="url(#shadow)"/>
+
+  <g class="f" transform="translate(600 34)">
+    <!-- HUD соперника: авторитет тает от залпа, а не просто мигает. -->
+    <g transform="translate(24 0)">
+      <rect width="536" height="30" rx="8" fill="#141822" stroke="#262d3d"/>
+      <text class="hudl" x="16" y="19" fill="#5d6779">СОПЕРНИК</text>
+      <g transform="translate(96 15)">
+        <circle r="9" fill="#0d1016" stroke="#58cfe0" stroke-width="1.2"/>
+        <text class="hud" x="18" y="5" fill="#58cfe0">
+          <tspan>50</tspan>
+          <animate attributeName="opacity" values="1;1;0;0;0;1" keyTimes="0;0.42;0.44;0.9;0.98;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+        <text class="hud" x="18" y="5" fill="#58cfe0" opacity="0">
+          <tspan>44</tspan>
+          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.44;0.46;0.9;0.98;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+      </g>
+      <!-- Вспышка урона по счётчику. -->
+      <circle cx="96" cy="15" r="9" fill="none" stroke="#f4593c" stroke-width="2" opacity="0">
+        <animate attributeName="r" values="9;9;22;22" keyTimes="0;0.42;0.5;1" dur="12s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0;0.9;0;0" keyTimes="0;0.42;0.44;0.52;1"
+                 dur="12s" repeatCount="indefinite"/>
+      </circle>
+      <text class="hudl" x="440" y="19" fill="#5d6779">РУКА 5 · КОЛОДА 7</text>
+    </g>
+
+    <!-- Торговый ряд -->
+    <text class="zone" x="24" y="56" fill="#5d6779">ТОРГОВЫЙ РЯД</text>
+    <g transform="translate(24 64)">
+      <rect width="536" height="146" rx="10" fill="#0d1016" fill-opacity="0.72" stroke="#262d3d"/>
+
+      <!-- Четыре карты стоят на месте. -->
+      <g transform="translate(120 13)" color="#5fd08a"><use href="#card" xlink:href="#card"/>
+        <text class="cost" x="12" y="17" fill="#f0b429">4</text>
+      </g>
+      <g transform="translate(214 13)" color="#f2c24b"><use href="#card" xlink:href="#card"/>
+        <text class="cost" x="12" y="17" fill="#f0b429">3</text>
+      </g>
+      <g transform="translate(308 13)" color="#ff7a6b"><use href="#card" xlink:href="#card"/>
+        <text class="cost" x="12" y="17" fill="#f0b429">6</text>
+      </g>
+      <g transform="translate(402 13)" color="#9aa6b4"><use href="#card" xlink:href="#card"/>
+        <text class="cost" x="12" y="17" fill="#f0b429">2</text>
+      </g>
+
+      <!-- Первый слот: карта покупается, уезжает в колоду, слот занимает следующая. -->
+      <g transform="translate(26 13)">
+        <g color="#6fb7f0">
+          <use href="#card" xlink:href="#card"/>
+          <text class="cost" x="12" y="17" fill="#f0b429">5</text>
+          <rect x="-3" y="-3" width="92" height="126" rx="9" fill="none" stroke="#f0b429" stroke-width="2" opacity="0">
+            <animate attributeName="opacity" values="0;0;0.95;0.95;0;0" keyTimes="0;0.06;0.12;0.2;0.24;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </rect>
+          <animateTransform attributeName="transform" type="translate"
+                            values="0 0; 0 0; 0 0; 150 230; 150 230; 0 0"
+                            keyTimes="0;0.12;0.2;0.34;0.98;1"
+                            dur="12s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;1;1;0;0;1"
+                   keyTimes="0;0.2;0.3;0.34;0.98;1" dur="12s" repeatCount="indefinite"/>
+        </g>
+        <!-- Следующая из колоды встаёт на освободившееся место. -->
+        <g color="#5fd08a" opacity="0">
+          <use href="#card" xlink:href="#card"/>
+          <text class="cost" x="12" y="17" fill="#f0b429">1</text>
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.34;0.4;0.96;1"
+                   dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="translate"
+                            values="0 -16; 0 -16; 0 0; 0 0" keyTimes="0;0.34;0.4;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+      </g>
+
+      <!-- Плата за карту: значки торговли летят из счётчика в купленную карту. -->
+      <g>
+        <g transform="translate(70 200)">
+          <use href="#tradeMark" xlink:href="#tradeMark" opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1;0.13;0.16;0.19;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </use>
+          <animateTransform attributeName="transform" type="translate"
+                            values="70 200; 70 200; 70 60; 70 60" keyTimes="0;0.1;0.19;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+        <g transform="translate(70 200)">
+          <use href="#tradeMark" xlink:href="#tradeMark" opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.12;0.15;0.18;0.21;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </use>
+          <animateTransform attributeName="transform" type="translate"
+                            values="84 200; 84 200; 84 66; 84 66" keyTimes="0;0.12;0.21;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- Своя зона: две карты одной фракции открывают союз и бьют. -->
+    <text class="zone" x="24" y="238" fill="#5d6779">В ИГРЕ</text>
+    <g transform="translate(24 246)">
+      <rect width="536" height="146" rx="10" fill="#0d1016" fill-opacity="0.72" stroke="#262d3d"/>
+
+      <g transform="translate(26 13)" color="#5fd08a">
+        <use href="#card" xlink:href="#card"/>
+        <rect x="-3" y="-3" width="92" height="126" rx="9" fill="none" stroke="#5fd08a" stroke-width="2" opacity="0">
+          <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.46;0.5;0.6;0.66;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+      <g transform="translate(120 13)" color="#5fd08a">
+        <use href="#card" xlink:href="#card"/>
+        <rect x="-3" y="-3" width="92" height="126" rx="9" fill="none" stroke="#5fd08a" stroke-width="2" opacity="0">
+          <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.46;0.5;0.6;0.66;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+      <!-- Связь союза: две карты одной фракции держат друг друга. -->
+      <path d="M69,73 H120" stroke="#5fd08a" stroke-width="2" stroke-dasharray="4 4" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.46;0.5;0.6;0.66;1"
+                 dur="12s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-dashoffset" values="16;0" dur="1s" repeatCount="indefinite"/>
+      </path>
+      <text class="cn" x="70" y="146" fill="#5fd08a" opacity="0" text-anchor="middle">СОЮЗ
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.46;0.5;0.6;0.66;1"
+                 dur="12s" repeatCount="indefinite"/>
+      </text>
+
+      <g transform="translate(214 13)" color="#6fb7f0"><use href="#card" xlink:href="#card"/></g>
+      <g transform="translate(308 13)" color="#f2c24b"><use href="#card" xlink:href="#card"/></g>
+
+      <!-- Залп: сколько боя — столько значков, ровно как на столе. -->
+      <g>
+        <g>
+          <use href="#combatMark" xlink:href="#combatMark" opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6;0.63;0.72;0.75;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </use>
+          <animateTransform attributeName="transform" type="translate"
+                            values="70 60; 70 60; 96 -220; 96 -220" keyTimes="0;0.6;0.75;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+        <g>
+          <use href="#combatMark" xlink:href="#combatMark" opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.63;0.66;0.75;0.78;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </use>
+          <animateTransform attributeName="transform" type="translate"
+                            values="120 60; 120 60; 96 -220; 96 -220" keyTimes="0;0.63;0.78;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+        <g>
+          <use href="#combatMark" xlink:href="#combatMark" opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.69;0.78;0.81;1"
+                     dur="12s" repeatCount="indefinite"/>
+          </use>
+          <animateTransform attributeName="transform" type="translate"
+                            values="214 60; 214 60; 96 -220; 96 -220" keyTimes="0;0.66;0.81;1"
+                            dur="12s" repeatCount="indefinite"/>
+        </g>
+      </g>
+
+      <!-- Своя рука: карта уходит из руки в зону. -->
+      <g transform="translate(402 13)" color="#ff7a6b" opacity="0">
+        <use href="#card" xlink:href="#card"/>
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.82;0.86;0.97;1"
+                 dur="12s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="translate"
+                          values="402 60; 402 60; 402 13; 402 13" keyTimes="0;0.82;0.88;1"
+                          dur="12s" repeatCount="indefinite"/>
+      </g>
+    </g>
+
+    <!-- Свой HUD: торговля и бой — счётчики, которыми платят и бьют. -->
+    <g transform="translate(24 400)">
+      <rect width="536" height="30" rx="8" fill="#141822" stroke="#262d3d"/>
+      <text class="hudl" x="16" y="19" fill="#5d6779">ВЫ</text>
+      <g transform="translate(70 15)">
+        <circle r="9" fill="#0d1016" stroke="#58cfe0" stroke-width="1.2"/>
+        <text class="hud" x="18" y="5" fill="#58cfe0">50</text>
+      </g>
+      <g transform="translate(146 15)">
+        <use href="#tradeMark" xlink:href="#tradeMark"/>
+        <text class="hud" x="14" y="5" fill="#f0b429">
+          <tspan>5</tspan>
+          <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.12;0.14;0.34;0.36;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+        <text class="hud" x="14" y="5" fill="#f0b429" opacity="0">
+          <tspan>0</tspan>
+          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.14;0.16;0.34;0.36;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+      </g>
+      <g transform="translate(212 15)">
+        <use href="#combatMark" xlink:href="#combatMark"/>
+        <text class="hud" x="14" y="5" fill="#f4593c">
+          <tspan>6</tspan>
+          <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.6;0.62;0.86;0.88;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+        <text class="hud" x="14" y="5" fill="#f4593c" opacity="0">
+          <tspan>0</tspan>
+          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.62;0.64;0.86;0.88;1"
+                   dur="12s" repeatCount="indefinite"/>
+        </text>
+      </g>
+      <text class="hudl" x="330" y="19" fill="#5d6779">СБРОС 3 · УТИЛЬ 1</text>
+      <g transform="translate(470 15)">
+        <rect x="0" y="-9" width="52" height="18" rx="9" fill="#0d1016" stroke="#38425a"/>
+        <text class="hudl" x="26" y="4" fill="#98a3b6" text-anchor="middle">ХОД 4</text>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -21,6 +21,7 @@
     "typecheck": "tsc -b --pretty packages/engine packages/protocol apps/web",
     "verify": "npm run verify -w @sr/web",
     "report": "npm run report -w @sr/web",
+    "card-sheet": "npm run card-sheet -w @sr/web",
     "art-manifest": "npm run art-manifest -w @sr/web",
     "pretypecheck": "npm run art-manifest",
     "prelint": "npm run art-manifest",
