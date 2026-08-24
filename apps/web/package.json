@@ -15,7 +15,8 @@
     "predev": "npm run art-manifest",
     "prebuild": "npm run art-manifest",
     "audit-lab": "node scripts/audit-lab.mjs",
-    "ui-report": "node scripts/ui-report.mjs"
+    "ui-report": "node scripts/ui-report.mjs",
+    "card-sheet": "tsx scripts/card-sheet.ts"
   },
   "dependencies": {
     "@sr/engine": "*",
