@@ -76,6 +76,9 @@ function Play(): React.JSX.Element {
   const factory = useCallback(
     () => new LocalMatchClient({
       seed, firstPlayer: 'p1', mode, humanSeat: 'p1', difficulty,
+      // Не из `dealt`: темп — не часть раздачи, и менять его посреди партии
+      // законно. Поэтому настройка читается на каждую паузу заново.
+      pace: () => readSettings().botSpeed,
       scenario: mission?.setup ?? challenge?.scenario,
       boss: challenge?.boss,
       // A challenge or a mission fixes its own card pool, so the player's set

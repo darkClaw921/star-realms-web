@@ -118,7 +118,11 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
 
       <span className="card__body">
         <span className="card__top">
-          {c.role !== 'starter' && (
+          {/* Цена — только у того, что действительно покупают. Стартовые карты,
+            * гамбиты, миссии, командиры, командные колоды и события печатаются
+            * без цены, и «0» в углу читается как «взять бесплатно» — то есть
+            * как предложение, которого нет. */}
+          {(c.role === 'trade_deck' || c.role === 'explorer') && c.type !== 'event' && (
             /* `cost` overrides the printed number where the board changes it --
              * High Alert discounts. Showing the printed price would offer a
              * card at 7 and then charge 5, or worse, look unaffordable. */
@@ -249,15 +253,27 @@ export function cardLabel(def: CardDefId): string {
   ].filter(Boolean).join('. ')
 }
 
+/**
+ * Лежит ли карта на боку.
+ *
+ * Ориентация всюду следует напечатанной: база в торговом ряду и в руке лежит
+ * так же, как на столе. Список, а не «всё, что не корабль»: герои и события
+ * печатаются стоя, и правило «не корабль — значит на боку» молча положило бы
+ * их набок. Технологии High Alert, наоборот, печатаются поперёк — как базы.
+ *
+ * Одна функция на все места, где карта рисуется: пока их было две, увеличенная
+ * карта и карта на столе показывали одну и ту же технологию по-разному.
+ */
+export function isLandscape(def: CardDefId): boolean {
+  const t = cardDef(def).type
+  return t === 'base' || t === 'outpost' || t === 'tech'
+}
+
 export function Card({
   def, onClick, playable, selected, dimmed, title, quiet, cost, iid,
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
-  // Orientation follows the printed card everywhere: a base lies landscape in
-  // the trade row and in hand exactly as it does on the table. Heroes and
-  // Events are printed portrait, so this is a whitelist rather than "not a
-  // ship" -- which would silently turn every Hero on its side.
-  const isBase = c.type === 'base' || c.type === 'outpost'
+  const isBase = isLandscape(def)
   const cls = [
     'card',
     isBase ? 'is-base' : '',

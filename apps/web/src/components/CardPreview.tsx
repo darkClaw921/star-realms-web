@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cardDef, type CardDefId } from '@sr/engine'
 import { UI } from '@/i18n/ui'
-import { CardFrame } from './Card'
+import { CardFrame, isLandscape } from './Card'
 import { FACTION_VAR } from './Icons'
 import { useTilt } from './useTilt'
 
@@ -30,7 +30,9 @@ export function CardPreview({
   const slotRef = useRef<HTMLDivElement>(null)
   const tilt = useTilt({ target: cardRef, frame: slotRef })
   const c = cardDef(def)
-  const isBase = c.type !== 'ship'
+  // Та же функция, что и на столе: увеличенная карта обязана лежать так же,
+  // как её маленькая версия.
+  const isBase = isLandscape(def)
 
   useEffect(() => setMounted(true), [])
 

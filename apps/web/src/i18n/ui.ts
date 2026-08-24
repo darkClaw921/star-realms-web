@@ -342,6 +342,24 @@ export const UI = {
   effectsName: 'Вспышки на столе',
   effectsDesc: 'Осколки, свечение союза, тряска при уроне и залп победы.',
   effectsHint: '',
+  botSpeedGroup: 'Темп хода бота',
+  botSpeedGroupHint: 'Действует сразу и только на ЧУЖОЙ ход: своим вы ' +
+    'распоряжаетесь сами, ждать приходится бота.',
+  botSpeedName: 'Скорость',
+  botSpeedHint: 'Во сколько раз быстрее обычного бот думает и проигрывает свои ' +
+    'вспышки: пауза перед ходом, перелёты значков, взрывы и переезды карт.',
+  botSpeedValue: (v: number): string => (v === 1 ? 'обычная' : `×${v}`),
+  /** Подпись над вскрытой картой события: её никто не разыгрывал. */
+  /** Вкладки стола: постоянные карты, которым не место в стопке баз. */
+  techName: 'Технологии',
+  heroesName: 'Герои',
+  commanderName: 'Командир',
+  commanderStats: (hand: number, authority: number): string =>
+    `Рука ${hand} · старт ${authority}`,
+  commanderTheirs: (who: string): string => `Командир: ${who}`,
+  eventRevealed: 'Событие',
+  eventClose: 'Понятно',
+  eventMore: (n: number): string => `Ещё ${n} ${n === 1 ? 'событие' : n < 5 ? 'события' : 'событий'} следом`,
   preview: 'Предпросмотр',
   done: 'Готово',
   resetSettings: 'Сбросить',

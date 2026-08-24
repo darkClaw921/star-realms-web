@@ -15,6 +15,13 @@ export interface MatchSnapshot {
   /** True while a bot is deciding, so the UI can show it is thinking. */
   readonly botThinking: boolean
   /**
+   * Последнюю пачку событий произвёл бот.
+   *
+   * Нужно ровно эффектам: чужой ход игрок только смотрит, и его показывают в
+   * том темпе, который игрок выбрал. Онлайн бота нет — там всегда false.
+   */
+  readonly botActed: boolean
+  /**
    * Видимые события ПОСЛЕДНЕЙ команды — для звука и вспышек.
    *
    * Тот же редактированный поток, из которого собирается журнал: эффект

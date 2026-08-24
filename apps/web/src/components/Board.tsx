@@ -11,7 +11,9 @@ import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import type { SeatNames } from '@/match/log'
 import type { MatchSnapshot } from '@/match/types'
+import { EventFlash } from './EventFlash'
 import { FxLayer } from '@/fx/FxLayer'
+import { setTempo } from '@/fx/tempo'
 import { FanRow } from './FanRow'
 import { LogPanel } from './LogPanel'
 import { useSettings } from '@/settings/useSettings'
@@ -50,6 +52,14 @@ export function Board({
   const { view: v, legal, log, botThinking } = snapshot
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { settings } = useSettings()
+  // Темп показа: чужой ход идёт во столько раз быстрее, во сколько попросили в
+  // настройках, свой — как обычно.
+  //
+  // Ставится в РЕНДЕРЕ, а не в эффекте: переезд карт ряды меряют в своих
+  // layout-эффектах, а те выполняются раньше родительских — из эффекта доски
+  // темп доехал бы до рядов на ход позже.
+  const rate = snapshot.botActed ? settings.botSpeed : 1
+  setTempo(rate)
   // «Применить всё» шлёт действия ПО ОДНОМУ и перечитывает список законных
   // после каждого: союз может открыться посреди цепочки, а свойство —
   // задать вопрос. Пакетного действия в движке нет намеренно, и придумывать
@@ -159,10 +169,49 @@ export function Board({
       cardDef(c.copiedDef ?? c.def).type !== 'ship',
     [],
   )
-  const myBases = useMemo(() => inPlayOrdered.filter(isBase), [inPlayOrdered, isBase])
+  /**
+   * Технология — не база.
+   *
+   * High Alert кладёт её в игру навсегда, атаковать её нельзя, и свойство у неё
+   * одно и то же каждый ход. В стопке баз она занимала место тем, по чему
+   * решение принимают: своя колонка — это ряд щитов, которые надо пересчитать
+   * перед ударом, и постоянная карта посреди них сбивает счёт. Поэтому свои
+   * технологии уезжают в боковую вкладку, а чужие — в ряд кораблей, чтобы
+   * колонка баз соперника показывала ровно то, что можно снести.
+   */
+  const isTech = useCallback(
+    (c: (typeof v.me.inPlay)[number]): boolean =>
+      cardDef(c.copiedDef ?? c.def).type === 'tech',
+    [],
+  )
+  /**
+   * Герой — тоже не база.
+   *
+   * Он стоит в игре, пока его не потратят, атаковать его нельзя, а вся его
+   * способность — в утиле: нажали один раз, и карта ушла. Ровно как
+   * технология, он занимал место в стопке щитов, по которой считают удар.
+   */
+  const isHero = useCallback(
+    (c: (typeof v.me.inPlay)[number]): boolean =>
+      cardDef(c.copiedDef ?? c.def).type === 'hero',
+    [],
+  )
+  /** Постоянные карты, которым не место в стопке баз. */
+  const aside = useCallback(
+    (c: (typeof v.me.inPlay)[number]): boolean => isTech(c) || isHero(c), [isTech, isHero],
+  )
+  const myTech = useMemo(() => inPlayOrdered.filter(isTech), [inPlayOrdered, isTech])
+  const myHeroes = useMemo(() => inPlayOrdered.filter(isHero), [inPlayOrdered, isHero])
+  const myBases = useMemo(
+    () => inPlayOrdered.filter((c) => isBase(c) && !aside(c)), [inPlayOrdered, isBase, aside],
+  )
   const myShips = useMemo(() => inPlayOrdered.filter((c) => !isBase(c)), [inPlayOrdered, isBase])
-  const foeBases = useMemo(() => foeOrdered.filter(isBase), [foeOrdered, isBase])
-  const foeShips = useMemo(() => foeOrdered.filter((c) => !isBase(c)), [foeOrdered, isBase])
+  const foeBases = useMemo(
+    () => foeOrdered.filter((c) => isBase(c) && !aside(c)), [foeOrdered, isBase, aside],
+  )
+  const foeShips = useMemo(
+    () => foeOrdered.filter((c) => !isBase(c) || aside(c)), [foeOrdered, isBase, aside],
+  )
   // Карта в своей зоне рисуется одинаково, где бы она ни лежала: базы стоят
   // стопкой слева, корабли рядом справа, но кнопки свойств у них те же самые.
   const myInPlayCard = (c: (typeof v.me.inPlay)[number]): React.JSX.Element => {
@@ -191,6 +240,10 @@ export function Board({
 
   const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
+  const hasTech = myTech.length > 0
+  const hasHeroes = myHeroes.length > 0
+  const hasCommander = v.me.commander !== null
+  const hasRail = hasGambits || hasMissions || hasTech || hasHeroes || hasCommander
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
 
@@ -208,7 +261,12 @@ export function Board({
    * Очередь свойств идёт по ЭТОМУ порядку, а не по тому, в каком движок
    * перечисляет законные действия: игрок смотрит на стол, а не на список.
    */
-  const visualOrder = useMemo(() => [...myBases, ...myShips], [myBases, myShips])
+  const visualOrder = useMemo(
+    // Технологии первыми: на экране они левее всего — своей вкладкой у самого
+    // края, — и очередь идёт по тому, что видно, а не по внутреннему списку.
+    () => [...myTech, ...myHeroes, ...myBases, ...myShips],
+    [myTech, myHeroes, myBases, myShips],
+  )
 
   /**
    * Следующее свойство в очереди — с правого края.
@@ -305,7 +363,10 @@ export function Board({
   }
 
   return (
-    <div className={`table${hasGambits || hasMissions ? ' has-rail' : ''}`}>
+    // Полоса вкладок стоит СЛЕВА ОТ стола, а не поверх него: отступ обязан
+    // появляться от любой вкладки, а не только от гамбитов с миссиями — иначе
+    // технологии и герои накрывают собой карты крайней колонки.
+    <div className={`table${hasRail ? ' has-rail' : ''}`}>
       {/* ── opponent ─────────────────────────────────────────────────────── */}
       <section className="band">
         <OpponentHud
@@ -519,7 +580,7 @@ export function Board({
       </section>
 
       {/* ── gambits and missions, docked to the left edge ────────────────── */}
-      {(hasGambits || hasMissions) && (
+      {hasRail && (
         <SideRail>
           {hasGambits && (
             <SidePlate
@@ -583,6 +644,57 @@ export function Board({
               )}
             </SidePlate>
           )}
+          {/* Технологии. Свойство у них включается кнопкой каждый ход, поэтому
+            * внутри плашки они рисуются так же, как карты на столе, а точка на
+            * вкладке горит, пока есть что применить. */}
+          {hasTech && (
+            <SidePlate
+              label={UI.techName}
+              count={myTech.length}
+              alert={myTech.some((c) => (idx.activate.get(c.iid)?.size ?? 0) > 0)}
+            >
+              {myTech.map(myInPlayCard)}
+            </SidePlate>
+          )}
+
+          {/* Герои. Свойство у героя одно и оно же его конец: нажали утиль —
+            * карта ушла. Поэтому точка на вкладке горит ровно до тех пор, пока
+            * герой не потрачен. */}
+          {hasHeroes && (
+            <SidePlate
+              label={UI.heroesName}
+              count={myHeroes.length}
+              alert={myHeroes.some((c) => (idx.activate.get(c.iid)?.size ?? 0) > 0)}
+            >
+              {myHeroes.map(myInPlayCard)}
+            </SidePlate>
+          )}
+
+          {/* Командир. Ничего не делает и никуда не ходит — он задаёт размер
+            * руки и стартовый авторитет, — но до сих пор его нельзя было
+            * увидеть вовсе: карта лежала только в состоянии партии. */}
+          {hasCommander && v.me.commander && (
+            <SidePlate label={UI.commanderName} count={1} alert={false}>
+              <div className="zone">
+                <Card def={v.me.commander} title={nameOf(v.me.commander)} />
+                <span className="eyebrow">
+                  {UI.commanderStats(
+                    cardDef(v.me.commander).commander?.handSize ?? 5,
+                    cardDef(v.me.commander).commander?.authority ?? 50,
+                  )}
+                </span>
+              </div>
+              {/* Чужой командир тоже публичен: его размер руки объясняет, почему
+                * соперник добирает не пять карт. */}
+              {v.opponent.commander && (
+                <div className="zone">
+                  <Card def={v.opponent.commander} title={nameOf(v.opponent.commander)} />
+                  <span className="eyebrow">{UI.commanderTheirs(themName)}</span>
+                </div>
+              )}
+            </SidePlate>
+          )}
+
         </SideRail>
       )}
 
@@ -711,7 +823,12 @@ export function Board({
 
       {/* Слой эффектов ничего не рисует в разметку: он слушает события
         * последней команды и запускает звук и вспышки по элементам стола. */}
-      <FxLayer snapshot={snapshot} enabled={settings.effects} />
+      <FxLayer snapshot={snapshot} enabled={settings.effects} rate={rate} />
+
+      {/* Вскрытое событие. Не часть слоя эффектов: это не вспышка, а
+        * сообщение — его показывают и при выключенных эффектах, потому что
+        * иначе о случившемся не узнать. */}
+      <EventFlash snapshot={snapshot} />
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
 

@@ -51,6 +51,13 @@
   --r-md: 6px;
   --r-lg: 10px;
   --gap: 10px;
+  /* Вес тёмной вуали под текстом свойства. Переменной, а не числом по месту:
+   * подбирается она на глаз и сразу на всех картах, а правится иначе в трёх
+   * градиентных стопах. */
+  --card-plate-tint: 0.36;
+  /* Ширина стола. Полоса вкладок держится его левого края, поэтому число
+   * обязано быть общим: разойдясь, они разъедутся на широком мониторе. */
+  --table-max: 1340px;
 
   --font-display: 'Fira Sans Condensed', 'Helvetica Neue', sans-serif;
   --font-body: 'IBM Plex Sans', system-ui, sans-serif;
@@ -96,7 +103,19 @@ html, body {
  * Three star fields at different tile sizes, drifting at different speeds:
  * that is what parallax is here, and it is also what keeps the tiling from
  * reading as a pattern -- the periods (260/420/700px) share no small common
- * multiple, so the repeat never lines up on screen. */
+ * multiple, so the repeat never lines up on screen.
+ *
+ * Двигается небо ТОЛЬКО через transform, и это не стилевое предпочтение.
+ * Анимация background-position заставляет браузер перерисовывать полный экран
+ * градиентов каждый кадр — а поле звёзд ползёт со скоростью меньше пикселя в
+ * секунду, поэтому позиция подолгу держится на одном целом пикселе и потом
+ * прыгает на следующий. Отсюда и рывки: не «мало кадров», а движение,
+ * округлённое до пикселя. transform считает композитор, в субпикселях и без
+ * перерисовки, — то же самое движение становится ровным.
+ *
+ * Плата за это — запас по краям: слой, сдвинутый на тайл, обязан этот тайл
+ * иметь снаружи экрана, иначе из-под него выедет пустая полоса. Отсюда
+ * отрицательный inset ровно в размер тайла. */
 body {
   background:
     radial-gradient(1200px 700px at 50% -10%, #121a2a 0%, transparent 65%),
@@ -115,7 +134,7 @@ body {
 body::before {
   content: '';
   position: fixed;
-  inset: 0;
+  inset: -260px;
   z-index: -1;
   pointer-events: none;
   /* `circle Npx` with a hard stop, not `1px 1px`: a one-pixel ellipse fades
@@ -131,7 +150,8 @@ body::before {
     radial-gradient(circle 0.9px at 44px 112px, rgba(226, 238, 255, 0.45) 0 60%, transparent 100%),
     radial-gradient(circle 1px at 214px 128px, rgba(226, 238, 255, 0.55) 0 60%, transparent 100%);
   background-size: 260px 260px;
-  animation: sky-drift-far 420s linear infinite;
+  animation: sky-drift-far 300s linear infinite;
+  will-change: transform;
 }
 
 /* Two nearer fields and their glow. A second pseudo-element rather than more
@@ -140,7 +160,7 @@ body::before {
 body::after {
   content: '';
   position: fixed;
-  inset: 0;
+  inset: -440px;
   z-index: -1;
   pointer-events: none;
   background:
@@ -158,16 +178,168 @@ body::after {
     radial-gradient(circle 20px at 60px 330px, rgba(160, 200, 255, 0.12), transparent),
     radial-gradient(circle 20px at 372px 148px, rgba(255, 220, 180, 0.10), transparent);
   background-size: 440px 440px;
-  animation: sky-drift-near 260s linear infinite;
+  animation: sky-drift-near 190s linear infinite;
+  will-change: transform;
 }
 
-/* The galactic arm and the vignette. Not part of either star layer: it must
- * not drift -- a moving band would read as fog rolling past the window. */
+/* Небо поверх звёздных полей: скопления галактик, пролетающие звёзды и
+ * неподвижная пелена. Контейнер сам ничего не рисует и обрезает содержимое —
+ * метеор улетает далеко за правый край, и без обрезки он растянул бы страницу
+ * по горизонтали. */
 .sky {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  overflow: hidden;
+}
+
+/* ── скопления галактик ──────────────────────────────────────────────────────
+ *
+ * Далёкое поле: несколько спиралей, каждая — пятно света с двумя рукавами.
+ * Рисуются градиентами, а не картинкой, по той же причине, что и звёзды: в
+ * репозитории нет изображений, а главное — небо не должно спорить с картами.
+ * Поэтому спирали крупные, но очень бледные: их видно как свечение, а прочесть
+ * форму можно, только если специально приглядеться.
+ *
+ * Дрейф — маятником, а не по кругу: путь короткий (десятки пикселей за
+ * четверть часа), и зациклить его можно либо возвратом, либо прыжком в начало.
+ * Прыжок на таком слое заметен, возврат — нет. */
+.sky__deep {
+  position: absolute;
+  inset: 0;
+  animation: sky-deep-drift 900s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.galaxy {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  /* Ядро, гало и два рукава. Рукава — конический градиент: две светлые дуги
+   * друг напротив друга, всё остальное прозрачно. */
+  background:
+    radial-gradient(closest-side,
+      rgba(255, 246, 228, 0.42) 0%,
+      rgba(196, 178, 255, 0.16) 34%,
+      transparent 72%),
+    conic-gradient(from 0deg,
+      transparent 0 6%,
+      rgba(150, 190, 255, 0.13) 15%,
+      transparent 27% 56%,
+      rgba(206, 168, 255, 0.11) 65%,
+      transparent 77%);
+  /* Размытие вместо прорисовки: без него конический градиент читается как
+   * нарезанный сектор, а не как рукав. */
+  filter: blur(7px);
+  opacity: 0.55;
+}
+
+/* Наклон и сплющивание — у каждой свои: галактика, повёрнутая к нам ребром,
+ * и галактика плашмя не должны выглядеть одной и той же наклейкой. */
+.galaxy--a {
+  top: 9%; left: 7%;
+  width: 340px; height: 340px;
+  transform: rotate(-22deg) scaleY(0.44);
+}
+.galaxy--b {
+  top: 62%; left: 76%;
+  width: 420px; height: 420px;
+  transform: rotate(34deg) scaleY(0.32);
+  opacity: 0.42;
+}
+.galaxy--c {
+  top: 74%; left: 14%;
+  width: 200px; height: 200px;
+  transform: rotate(8deg) scaleY(0.6);
+  opacity: 0.34;
+}
+/* Одна — почти плашмя и у самой кромки: она и читается как «скопление», а не
+ * как одинокое пятно. */
+.galaxy--d {
+  top: 4%; left: 62%;
+  width: 260px; height: 260px;
+  transform: rotate(-64deg) scaleY(0.26);
+  opacity: 0.3;
+}
+
+@keyframes sky-deep-drift {
+  from { transform: translate3d(-26px, 14px, 0); }
+  to { transform: translate3d(26px, -14px, 0); }
+}
+
+/* ── пролетающие звёзды ──────────────────────────────────────────────────────
+ *
+ * Метеор летит за краткий миг, а ждать его приходится долго — и это главное в
+ * настройке: небо, по которому непрерывно чиркают полосы, превращается в
+ * заставку и тянет взгляд со стола. Поэтому сам пролёт занимает считаные
+ * проценты цикла, а остальное время элемент невидим и неподвижен.
+ *
+ * Периоды взяты взаимно непохожими (13/19/29/37 с): у кратных длин метеоры
+ * рано или поздно начали бы вылетать парами. Отрицательные задержки — это уже
+ * не «когда начать», а «на какой фазе застать»: ими первые пролёты разведены
+ * по секундам (3, 7, 11, 16), иначе после загрузки четыре метеора стартуют
+ * почти разом, и первое, что видит игрок, — залп.
+ *
+ * Два вложенных элемента, а не один: хвост повёрнут по направлению полёта и
+ * поворот держится постоянным, а переносом занята анимация. Один transform не
+ * может быть одновременно постоянным и анимируемым. */
+.sky__meteors {
+  position: absolute;
+  inset: 0;
+}
+
+.meteor {
+  position: absolute;
+  display: block;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  animation: meteor-fly linear infinite;
+  will-change: transform, opacity;
+}
+
+.meteor::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 190px;
+  height: 2px;
+  border-radius: 2px;
+  /* Хвост тянется НАЗАД от головы: яркая точка спереди, свечение позади. */
+  background: linear-gradient(270deg,
+    rgba(255, 255, 255, 0.95),
+    rgba(174, 208, 255, 0.5) 26%,
+    transparent 100%);
+  transform: rotate(var(--ang, 19deg));
+  transform-origin: 100% 50%;
+}
+
+/* Все летят в одну сторону — вниз и вправо, как и положено рою: разлёт во все
+ * стороны читался бы как салют. Разнятся только угол, скорость и то, откуда
+ * начали. */
+.meteor--1 { top: -4%; left: -14%; --ang: 19deg; animation-duration: 13s; animation-delay: -10s; }
+.meteor--2 { top: 12%; left: 4%; --ang: 24deg; animation-duration: 19s; animation-delay: -12s; }
+.meteor--3 { top: -8%; left: 28%; --ang: 15deg; animation-duration: 29s; animation-delay: -18s; }
+.meteor--4 { top: 26%; left: -6%; --ang: 27deg; animation-duration: 37s; animation-delay: -21s; }
+
+/* Смещение по вертикали согласовано с углом хвоста: 34vw вниз на 96vw вправо —
+ * это те самые ~19°. Иначе метеор летел бы боком к собственному следу. */
+@keyframes meteor-fly {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  1% { opacity: 0; }
+  3% { opacity: 1; }
+  9% { opacity: 0.9; }
+  11% { transform: translate3d(96vw, 34vw, 0); opacity: 0; }
+  100% { transform: translate3d(96vw, 34vw, 0); opacity: 0; }
+}
+
+/* The galactic arm and the vignette. Not part of either star layer: it must
+ * not drift -- a moving band would read as fog rolling past the window. */
+.sky__veil {
+  position: absolute;
+  inset: 0;
   background:
     linear-gradient(112deg,
       transparent 32%,
@@ -182,12 +354,15 @@ body::after {
     radial-gradient(150% 105% at 50% 50%, transparent 55%, rgba(3, 5, 8, 0.5) 100%);
 }
 
-/* Whole tiles, so the loop is seamless: 260 and 440 are the tile sizes above. */
+/* Whole tiles, so the loop is seamless: 260 and 440 are the tile sizes above.
+ * Целый тайл — единственная величина, на которую можно сдвинуть повторяющийся
+ * узор незаметно: в конце цикла картинка совпадает сама с собой, и перезапуск
+ * анимации не виден. */
 @keyframes sky-drift-far {
-  to { background-position: 260px -260px; }
+  to { transform: translate3d(260px, -260px, 0); }
 }
 @keyframes sky-drift-near {
-  to { background-position: -440px 440px; }
+  to { transform: translate3d(-440px, 440px, 0); }
 }
 
 button { font: inherit; color: inherit; }
@@ -357,11 +532,13 @@ button { font: inherit; color: inherit; }
 .card__veil {
   position: absolute;
   inset: 0;
+  /* Низ ослаблен: под ним теперь стоит размывающая плашка, и прежняя плотность
+   * складывалась с ней в глухой чёрный. */
   background: linear-gradient(to bottom,
     rgba(4, 6, 10, 0.74) 0%,
-    rgba(4, 6, 10, 0.14) 28%,
-    rgba(4, 6, 10, 0.44) 58%,
-    rgba(4, 6, 10, 0.72) 82%);
+    rgba(4, 6, 10, 0.12) 28%,
+    rgba(4, 6, 10, 0.28) 58%,
+    rgba(4, 6, 10, 0.42) 82%);
 }
 
 /* A watermark inside the art layer, UNDER the veil -- never above the text.
@@ -408,9 +585,22 @@ button { font: inherit; color: inherit; }
  * keyboard focus, and lights a dot when there is something to do inside. */
 .table.has-rail { padding-left: calc(var(--gap) + 46px); }
 
+/*
+ * Полоса вкладок стоит СЛЕВА ОТ стола, а не поверх него: `has-rail` отдаёт ей
+ * свои 46 пикселей, и ни одна карта под корешки не попадает.
+ *
+ * fixed, а не absolute: стол выше окна почти всегда, и полоса, привязанная к
+ * его середине, на низком экране оказывалась ниже кромки — вкладки приходилось
+ * искать прокруткой. Отсчёт от середины окна с тем же ограничением ширины, что
+ * и у стола: на широком мониторе стол центрирован, и полоса обязана держаться
+ * его левого края, а не края экрана.
+ */
 .rail-side {
-  position: absolute;
-  left: var(--gap);
+  /* Левый край полосы. Переменной, потому что от него же отсчитывается
+   * разворот: два независимых выражения разъехались бы при первой же правке. */
+  --rail-left: max(var(--gap), calc(50vw - var(--table-max) / 2 + var(--gap)));
+  position: fixed;
+  left: var(--rail-left);
   top: 50%;
   transform: translateY(-50%);
   z-index: 14;
@@ -419,7 +609,18 @@ button { font: inherit; color: inherit; }
   gap: 8px;
 }
 
-.plate { position: relative; }
+/* Низкое окно: пять вкладок в полный рост в него не помещаются, поэтому
+ * корешки поджимаются — но остаются читаемыми, ужимается только воздух. */
+@media (max-height: 860px) {
+  .rail-side { gap: 5px; }
+  .plate__tab { padding: 9px 0; gap: 6px; }
+  .plate__label { font-size: 10px; letter-spacing: 0.1em; }
+}
+
+/* Точка отсчёта для разворота — вся полоса, а не отдельная плашка: полоса
+ * центрирована по окну, поэтому разворот, привязанный к ней, всегда оказывается
+ * в экране, тогда как привязанный к верхней вкладке уезжал за кромку. */
+.plate { position: static; }
 
 .plate__tab {
   display: flex;
@@ -466,7 +667,21 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--authority) 25%, transparent);
 }
 
+/*
+ * Разворот вкладки.
+ *
+ * Центрируется по ОКНУ, а не по своей вкладке: вкладки стоят столбиком, верхняя
+ * — высоко, и разворот, привязанный к ней, уезжал за верхнюю кромку экрана тем
+ * сильнее, чем крупнее в нём карты. По центру окна он помещается всегда, пока
+ * его высота не больше max-height, а дальше прокручивается сам.
+ */
 .plate__flyout {
+  /* absolute от полосы, а не fixed от окна.
+   *
+   * У полосы свой transform (она центрируется им), а элемент с transform
+   * становится точкой отсчёта для fixed-потомков — «фиксированный» разворот
+   * отсчитывал свой отступ от неё же и уезжал вправо ровно на её собственный
+   * отступ: на широком мониторе это полтысячи пикселей от вкладки. */
   position: absolute;
   left: calc(100% + 6px);
   top: 50%;
@@ -490,8 +705,8 @@ button { font: inherit; color: inherit; }
 .plate__cards {
   display: flex;
   gap: var(--gap);
-  max-width: min(70vw, 900px);
-  max-height: 72dvh;
+  max-width: min(80vw, 1080px);
+  max-height: 78dvh;
   overflow: auto;
   overscroll-behavior: contain;
   padding: 10px 12px;
@@ -499,7 +714,14 @@ button { font: inherit; color: inherit; }
   border-radius: var(--r-lg);
   background: linear-gradient(180deg, var(--panel-hi) 0%, var(--panel) 100%);
   box-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.9);
-  --card-w: calc(var(--card-w-base) * var(--card-scale) * 0.85);
+  /* Крупнее, чем на столе, а не мельче.
+   *
+   * Разворот открывают, чтобы ПРОЧИТАТЬ карту: гамбит видят раз за партию,
+   * миссию — чтобы понять, чего ей не хватает, технологию — чтобы вспомнить,
+   * за сколько она срабатывает. Уменьшать здесь было ровно наоборот смыслу
+   * жеста; места же у разворота вдоволь — он всплывает над столом и при нужде
+   * прокручивается. */
+  --card-w: calc(var(--card-w-base) * var(--card-scale) * 1.25);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -528,6 +750,9 @@ button { font: inherit; color: inherit; }
   .rail-side { position: relative; width: 100%; }
   .plate { position: static; }
   .plate__flyout {
+    /* Узкий экран: полоса лежит строкой, и разворот падает под неё во всю
+     * ширину — привязка к окну здесь только мешала бы. */
+    position: absolute;
     left: 0;
     right: 0;
     top: calc(100% + 6px);
@@ -631,6 +856,22 @@ button { font: inherit; color: inherit; }
 /* margin-top:auto pins it to the bottom edge; the gradient is anchored to the
  * plate rather than to the card so a tall ability block brings its own opacity
  * down with it. */
+/*
+ * Плашка с текстом свойства.
+ *
+ * Раньше она была почти непрозрачной, и нижняя половина карты превращалась в
+ * чёрный прямоугольник: иллюстрация обрывалась ровно там, где начинался текст.
+ * Теперь под текстом просто лёгкая тёмная вуаль — иллюстрация продолжается и
+ * читается насквозь, но перестаёт спорить с буквами.
+ *
+ * Размытия здесь нет намеренно. Оно пробовалось и было отвергнуто на живых
+ * картах: разница видна только вплотную, а стоит она композитного слоя на
+ * каждой карте — при трёх десятках карт на столе это плата ни за что.
+ *
+ * Верх растворяется САМИМ градиентом, а не маской. Маска гасит всё содержимое
+ * элемента разом, поэтому первая строка описания выцветала вместе с фоном —
+ * текст выглядел размытым ровно там, где его начинают читать.
+ */
 .card__text {
   margin-top: auto;
   flex: 0 1 auto;
@@ -638,9 +879,10 @@ button { font: inherit; color: inherit; }
   overflow: hidden;
   border-radius: 1.2cqi;
   background: linear-gradient(to bottom,
-    rgba(4, 6, 10, 0.5) 0%,
-    rgba(4, 6, 10, 0.9) 30%,
-    rgba(4, 6, 10, 0.95) 100%);
+    rgba(4, 6, 10, 0) 0%,
+    rgba(4, 6, 10, calc(var(--card-plate-tint) * 0.45)) 12%,
+    rgba(4, 6, 10, calc(var(--card-plate-tint) * 0.9)) 30%,
+    rgba(4, 6, 10, var(--card-plate-tint)) 100%);
   padding: 1.6cqi 2.4cqi 1.8cqi;
   font-size: calc(7.1cqi * var(--card-text-scale));
   line-height: 1.26;
@@ -842,7 +1084,7 @@ button { font: inherit; color: inherit; }
   min-height: 100dvh;
   padding: var(--gap);
   padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
-  max-width: 1340px;
+  max-width: var(--table-max);
   margin: 0 auto;
 }
 
@@ -2859,3 +3101,83 @@ body.has-lab .table { padding-right: min(360px, 92vw); }
 /* Подпись под картой (например «Уничтожить · 5») в сложенном ряду не читается
  * и только сбивает высоту: её место занимает сама карта. */
 .row--fan.is-fanned > * > .eyebrow { display: none; }
+
+/* ── вскрытое событие ────────────────────────────────────────────────────────
+ *
+ * Карта, которую никто не разыгрывал: она вскрылась в торговом ряду, тут же
+ * применилась и ушла в утиль.
+ *
+ * Настоящее модальное окно посреди экрана, с кнопкой, а не всплывающий уголок:
+ * событие меняет положение обоих игроков, а текст у него длинный, и закрывать
+ * его должен читатель, а не таймер. Затемнение здесь и работает как пауза:
+ * стол виден, но всё внимание на карте.
+ *
+ * Выше листа выбора: половина событий тут же задаёт вопрос, и отвечать на него,
+ * не прочитав, от чего он, — не выбор, а угадывание. Закрыли карту — вопрос
+ * ждёт под ней. */
+.eventflash {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 5, 8, 0.72);
+  backdrop-filter: blur(3px);
+  animation: fx-event-in 200ms ease both;
+}
+
+.eventflash__inner {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  /* Ширина карты своя, а не из настроек стола: показ обязан быть читаемым при
+   * мелких картах и помещаться в экран при крупных. */
+  --card-w: min(300px, 62vw, 42vh);
+  animation: fx-event-rise 260ms cubic-bezier(.2,.8,.3,1) both;
+}
+
+.eventflash__slot {
+  container-type: inline-size;
+  width: var(--card-w);
+}
+
+.eventflash__card {
+  width: 100%;
+  /* Своя подсветка: событие приходит извне, и рамка отличает его от карт,
+   * которые кто-то положил на стол. */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--authority) 45%, transparent),
+    0 24px 60px -18px rgba(0, 0, 0, 0.9),
+    0 0 56px -8px color-mix(in srgb, var(--authority) 32%, transparent);
+}
+
+.eventflash__label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--authority);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
+}
+
+.eventflash__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eventflash__more {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+@keyframes fx-event-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fx-event-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}

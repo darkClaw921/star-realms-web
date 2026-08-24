@@ -20,6 +20,12 @@ export interface LocalOptions {
   readonly difficulty?: Difficulty
   /** Minimum time the bot appears to think, purely for pacing. */
   readonly botDelayMs?: number
+  /**
+   * Во сколько раз ускорить ход бота. Функция, а не число: темп — настройка
+   * показа, а не правило, и менять его посреди партии законно; прочитанный один
+   * раз при раздаче, он действовал бы только со следующей.
+   */
+  readonly pace?: () => number
   /** A campaign mission. Absent means the standard game. */
   readonly scenario?: ScenarioSetup | undefined
   /** A Frontiers Challenge boss. */
@@ -57,6 +63,7 @@ export class LocalMatchClient implements MatchClient {
   private timer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
   private thinking = false
+  private botMoved = false
 
   constructor(private readonly opts: LocalOptions) {
     this.state = createGame({
@@ -117,6 +124,7 @@ export class LocalMatchClient implements MatchClient {
       legal: enumerateLegalActions(view, viewer),
       log: this.log,
       botThinking: this.thinking,
+      botActed: this.botMoved,
       events: this.events,
       tick: this.tick,
     }
@@ -134,10 +142,18 @@ export class LocalMatchClient implements MatchClient {
     for (const cb of this.subs) cb(snap)
   }
 
+  /** Множитель темпа, зажатый в разумное: испорченная настройка не должна
+   *  ни останавливать бота, ни делать его ход мгновенным. */
+  private get rate(): number {
+    const raw = this.opts.pace?.() ?? 1
+    return Number.isFinite(raw) ? Math.min(6, Math.max(1, raw)) : 1
+  }
+
   private apply(actor: PlayerId, action: Action): void {
     // Зритель фиксируется ДО применения: события принадлежат тому состоянию, в
     // котором произошли.
     const viewer = this.viewer
+    this.botMoved = actor === this.botSeat
     const { state, events } = reduce(this.state, { actor, action })
     this.state = state
     // Локальный режим пропускает события через ту же воронку, что и сервер.
@@ -180,7 +196,7 @@ export class LocalMatchClient implements MatchClient {
       this.timer = null
       if (this.disposed) return
       this.stepBot(seat)
-    }, this.opts.botDelayMs ?? 550)
+    }, (this.opts.botDelayMs ?? 550) / this.rate)
   }
 
   private stepBot(seat: PlayerId): void {

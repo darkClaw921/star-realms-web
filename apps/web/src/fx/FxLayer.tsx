@@ -7,6 +7,7 @@ import { armAudio, SFX } from './audio'
 import { rain, clearFlight } from './flight'
 import { clearGhosts, ghost, traceCard } from './ghost'
 import { anim, burst, clearFx, popText, ring, screenFlash } from './particles'
+import { setTempo } from './tempo'
 
 const BLOB = '#5fd08a'
 const CULT = '#ff7a6b'
@@ -39,10 +40,12 @@ function centreOf(el: Element): Point {
  * не приходит.
  */
 export function FxLayer({
-  snapshot, enabled,
+  snapshot, enabled, rate,
 }: {
   snapshot: MatchSnapshot
   enabled: boolean
+  /** Темп этой пачки: ход бота показывается ускоренно, свой — как обычно. */
+  rate: number
 }): null {
   const byIid = useRef(new Map<string, Point>())
   const byDef = useRef(new Map<string, Point>())
@@ -76,6 +79,9 @@ export function FxLayer({
     seen.current = snapshot.tick
     // Реестры на этот момент хранят прошлый кадр — именно он и нужен для
     // карт, которых на столе уже нет. Обновляются они ниже, после эффектов.
+    // Темп — на всю пачку разом и до первого эффекта: внутри одного хода он
+    // смениться не может, а эффект читает его в момент запуска.
+    setTempo(rate)
     if (enabled && fresh && !first) {
       run(snapshot.events, snapshot.view.viewer, byIid.current, byDef.current, traces.current)
     }

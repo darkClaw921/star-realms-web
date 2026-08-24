@@ -60,8 +60,27 @@ if(s.textScale)r.style.setProperty('--card-text-scale',String(Math.min(1.4,Math.
         />
         {/* Небо. Отдельным элементом, а не третьим слоем на body: рукав
           * галактики и виньетка стоят на месте, пока два звёздных поля за
-          * ними медленно плывут. */}
-        <div className="sky" aria-hidden="true" />
+          * ними медленно плывут.
+          *
+          * Порядок слоёв — глубина: скопления галактик дальше всех, метеоры
+          * пролетают перед ними, и всё это накрывает пелена — рукав и
+          * виньетка, которые не двигаются. Пелена последняя именно потому,
+          * что гасит углы: под галактиками она гасила бы только пустоту. */}
+        <div className="sky" aria-hidden="true">
+          <div className="sky__deep">
+            <i className="galaxy galaxy--a" />
+            <i className="galaxy galaxy--b" />
+            <i className="galaxy galaxy--c" />
+            <i className="galaxy galaxy--d" />
+          </div>
+          <div className="sky__meteors">
+            <i className="meteor meteor--1" />
+            <i className="meteor meteor--2" />
+            <i className="meteor meteor--3" />
+            <i className="meteor meteor--4" />
+          </div>
+          <div className="sky__veil" />
+        </div>
         <IconSprite />
         {children}
       </body>

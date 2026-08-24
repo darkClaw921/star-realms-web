@@ -53,11 +53,19 @@ export interface Settings {
   volume: number
   /** Вспышки на столе: взрывы, осколки, свечение союза. */
   effects: boolean
+  /**
+   * Во сколько раз быстрее обычного идёт ход бота: и пауза «он думает», и все
+   * вспышки этого хода.
+   *
+   * Только чужой ход. Своим игрок распоряжается сам — там задержек нет, и
+   * ускорять нечего; ждать приходится ровно чужого.
+   */
+  botSpeed: number
 }
 
 export const DEFAULTS: Settings = {
   cardScale: 1, textScale: 1, sets: ['core'], gambits: 0, missions: 0, commandDeck: '', variant: '',
-  sound: true, volume: 0.5, effects: true,
+  sound: true, volume: 0.5, effects: true, botSpeed: 1,
 }
 
 export const LIMITS = {
@@ -66,6 +74,7 @@ export const LIMITS = {
   gambits: { min: 0, max: 3, step: 1 },
   missions: { min: 0, max: 3, step: 1 },
   volume: { min: 0, max: 1, step: 0.05 },
+  botSpeed: { min: 1, max: 4, step: 0.5 },
 } as const
 
 const KEY = 'sr:settings'
@@ -94,6 +103,8 @@ export function sanitize(raw: unknown): Settings {
     volume: clamp(Number.isFinite(Number(o.volume)) ? Number(o.volume) : DEFAULTS.volume,
       LIMITS.volume.min, LIMITS.volume.max),
     effects: o.effects === undefined ? DEFAULTS.effects : Boolean(o.effects),
+    botSpeed: clamp(Number(o.botSpeed) || DEFAULTS.botSpeed,
+      LIMITS.botSpeed.min, LIMITS.botSpeed.max),
   }
 }
 

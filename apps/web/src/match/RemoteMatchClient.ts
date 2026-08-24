@@ -135,6 +135,7 @@ export class RemoteMatchClient implements MatchClient {
       legal: enumerateLegalActions(this.view, this.seat),
       log: this.log,
       botThinking: false,
+      botActed: false,
       events: this.events,
       tick: this.tick,
     }

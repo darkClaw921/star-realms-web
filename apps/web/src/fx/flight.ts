@@ -17,6 +17,7 @@
  */
 
 import { calm } from './particles'
+import { pace } from './tempo'
 
 export type Res = 'trade' | 'combat' | 'authority'
 
@@ -95,8 +96,10 @@ export function rain(
     // Каждая капля берёт свой чуть иной старт: вылетевшие из одной точки
     // восемь значков читаются как один толстый значок.
     const jx = (i - (count - 1) / 2) * 7
-    const dur = 460 + (i % 3) * 40
-    const delay = i * step
+    // И полёт, и очередь — в темпе стола: ускорить только каплю, оставив
+    // прежний шаг, значит растянуть ту же очередь из более коротких капель.
+    const dur = pace(460 + (i % 3) * 40)
+    const delay = pace(i * step)
 
     // По горизонтали — равномерно, по вертикали — с ускорением и отскоком у
     // самой цели: это и есть «капель», а не полёт по прямой.
@@ -133,5 +136,5 @@ function tick(el: Element): void {
   el.classList.remove('is-tick')
   void el.offsetWidth
   el.classList.add('is-tick')
-  window.setTimeout(() => el.classList.remove('is-tick'), 220)
+  window.setTimeout(() => el.classList.remove('is-tick'), pace(220))
 }

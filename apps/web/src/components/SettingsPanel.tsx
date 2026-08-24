@@ -282,6 +282,19 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): React.JSX.E
                   onChange={(v) => set('volume', v)}
                 />
               </Group>
+              {/* Отдельной группой, а не ползунком в ряд с размерами: это
+                * единственная настройка, которая меняет не вид стола, а то,
+                * сколько игрок ждёт. */}
+              <Group title={UI.botSpeedGroup} note={UI.botSpeedGroupHint}>
+                <Slider
+                  name={UI.botSpeedName}
+                  hint={UI.botSpeedHint}
+                  value={settings.botSpeed}
+                  limits={LIMITS.botSpeed}
+                  format={UI.botSpeedValue}
+                  onChange={(v) => set('botSpeed', v)}
+                />
+              </Group>
               <Group title={UI.preview} note={UI.previewHint}>
                 <div className="settings__preview">
                   {PREVIEW.map((def) => <Card key={def} def={def} />)}

@@ -10,6 +10,8 @@
  * страница не тратит ни кадра.
  */
 
+import { pace, tempo } from './tempo'
+
 interface Particle {
   x: number; y: number; vx: number; vy: number; g: number
   life: number; age: number; size: number; grow: number
@@ -82,7 +84,9 @@ function size(): void {
 function tick(t: number): void {
   const c = ctx
   if (!c || !canvas) { raf = 0; return }
-  const dt = Math.min(0.05, (t - last) / 1000 || 0.016)
+  // Время частиц идёт в темпе стола: ускорять их укорочением жизни нельзя —
+  // осколок просто гас бы на середине полёта, вместо того чтобы долететь.
+  const dt = Math.min(0.05, (t - last) / 1000 || 0.016) * tempo()
   last = t
   c.clearRect(0, 0, window.innerWidth, window.innerHeight)
   parts = parts.filter((p) => (p.age += dt) < p.life)
@@ -203,15 +207,16 @@ export function anim(el: Element | null | undefined, keyframes: string, dur: num
   ease = 'cubic-bezier(.2,.7,.3,1)'): void {
   if (calm() || !(el instanceof HTMLElement)) return
   const token = String(++runs)
+  const run = pace(dur)
   el.dataset.fxRun = token
   el.style.animation = 'none'
   void el.offsetWidth
-  el.style.animation = `${keyframes} ${dur}s ${ease} both`
+  el.style.animation = `${keyframes} ${run}s ${ease} both`
   window.setTimeout(() => {
     if (el.dataset.fxRun !== token) return
     el.style.animation = ''
     delete el.dataset.fxRun
-  }, dur * 1000 + 60)
+  }, run * 1000 + 60)
 }
 
 /** Всплывающее число: «−8» над HUD, «+12» над счётчиком боя. */
@@ -230,7 +235,7 @@ export function popText(x: number, y: number, text: string, color: string,
   el.setAttribute('aria-hidden', 'true')
   document.body.appendChild(el)
   anim(el, kind, 0.9, 'ease-out')
-  window.setTimeout(() => el.remove(), 1000)
+  window.setTimeout(() => el.remove(), pace(0.9) * 1000 + 100)
 }
 
 /** Вспышка по всему экрану: край темнеет красным на входящем уроне. */
@@ -242,7 +247,7 @@ export function screenFlash(background: string, dur = 0.45): void {
   el.setAttribute('aria-hidden', 'true')
   document.body.appendChild(el)
   anim(el, 'fx-flash-out', dur, 'ease-out')
-  window.setTimeout(() => el.remove(), dur * 1000 + 80)
+  window.setTimeout(() => el.remove(), pace(dur) * 1000 + 80)
 }
 
 /** Полный сброс — уход со стола не должен оставлять на экране чужие искры. */

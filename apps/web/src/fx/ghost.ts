@@ -14,6 +14,7 @@
  */
 
 import { calm } from './particles'
+import { pace } from './tempo'
 
 export type Box = { x: number; y: number; w: number; h: number }
 
@@ -91,8 +92,9 @@ export function ghost(
   cell.style.left = `${box.x - box.w / 2}px`
   cell.style.top = `${box.y - box.h / 2}px`
   cell.style.setProperty('--card-w', `${box.w}px`)
-  cell.style.animation = `${keyframes} ${dur}s ${ease} both`
+  const run = pace(dur)
+  cell.style.animation = `${keyframes} ${run}s ${ease} both`
   cell.appendChild(trace)
   st.appendChild(cell)
-  window.setTimeout(() => cell.remove(), dur * 1000 + 60)
+  window.setTimeout(() => cell.remove(), run * 1000 + 60)
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { calm } from '@/fx/particles'
+import { pace } from '@/fx/tempo'
 
 /**
  * Ряд, который начинает складывать карты веером, когда они перестают помещаться.
@@ -70,7 +71,7 @@ function surf(el: HTMLElement, kids: readonly HTMLElement[]): void {
         { transform: 'translateY(-7px)', opacity: 1, offset: 0.72 },
         { transform: 'none', opacity: 1 },
       ],
-      { duration: 420, easing: 'cubic-bezier(.22,1.2,.36,1)' },
+      { duration: pace(420), easing: 'cubic-bezier(.22,1.2,.36,1)' },
     )
   }
   // Старые карты отступают вверх — коротко и тем сильнее, чем ближе к новой.
@@ -78,7 +79,7 @@ function surf(el: HTMLElement, kids: readonly HTMLElement[]): void {
   old.forEach((k, i) => {
     k.animate(
       [{ transform: `translateY(${Math.min(14, 3 + i)}px)` }, { transform: 'none' }],
-      { duration: 360, easing: 'cubic-bezier(.22,.9,.3,1)' },
+      { duration: pace(360), easing: 'cubic-bezier(.22,.9,.3,1)' },
     )
   })
 }
@@ -131,7 +132,7 @@ function glide(el: HTMLElement, kids: readonly HTMLElement[], was: Map<string, S
     gliding.get(k)?.cancel()
     const run = k.animate(
       [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-      { duration: 260, easing: 'cubic-bezier(.22,.7,.3,1)' },
+      { duration: pace(260), easing: 'cubic-bezier(.22,.7,.3,1)' },
     )
     gliding.set(k, run)
   }
