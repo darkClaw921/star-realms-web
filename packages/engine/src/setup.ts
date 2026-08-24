@@ -366,9 +366,28 @@ export function createGame(setup: MatchSetup): GameState {
     }
   }
 
+  /**
+   * Начальный ряд.
+   *
+   * Событие в него не кладётся: карта этого типа не существует в ряду ни одного
+   * мгновения — вскрылась, применилась, ушла в утиль. Разрешить его прямо
+   * здесь тоже нельзя, и это не осторожность, а арифметика: партия ещё не
+   * собрана — руки не розданы, активного игрока нет, — а «каждый игрок
+   * сбрасывает карту» требует и того, и другого. Поэтому событие, попавшее под
+   * раздачу, отправляется в утиль, а слот берёт следующую карту.
+   *
+   * Без этого ряд начинался с события примерно в каждой пятой раздаче на полном
+   * наборе, и оно лежало там обычной покупаемой картой.
+   */
+  const setupScrapped: CardInstance[] = []
   const tradeRow: (CardInstance | null)[] = []
   for (let i = 0; i < TRADE_ROW_SIZE + extraRowSlots; i++) {
-    tradeRow.push(tradeDeck.shift() ?? null)
+    let c = tradeDeck.shift() ?? null
+    while (c && cardDef(c.def).type === 'event') {
+      setupScrapped.push(c)
+      c = tradeDeck.shift() ?? null
+    }
+    tradeRow.push(c)
   }
 
   const second = coopPlayers ? (bossSeatId as PlayerId) : (setup.firstPlayer === 'p1' ? 'p2' : 'p1')
@@ -413,7 +432,7 @@ export function createGame(setup: MatchSetup): GameState {
     tradeRow,
     tradeDeck,
     explorerPile: EXPLORER_PILE_SIZE,
-    scrapHeap: [],
+    scrapHeap: setupScrapped,
     setAside: [],
     unclaimedGambits,
     extraRowSlots,

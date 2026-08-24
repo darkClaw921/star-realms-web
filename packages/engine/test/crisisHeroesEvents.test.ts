@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { asDefId } from '../src/ids'
-import { CARDS, tradeDeckComposition } from '../src/cards/registry'
+import { ALL_SETS, CARDS, cardDef, tradeDeckComposition } from '../src/cards/registry'
+import { createGame } from '../src/setup'
 import {
   byDef, choose, chooseMany, inPlay, legalFor,
   pending, playIid, rowIid, run, scenario,
@@ -179,6 +180,31 @@ describe('Crisis: Events', () => {
     expect(st.players.p1.hand.map((x) => x.iid).sort()).toEqual(['c', 'keep1'])
     // Selection order is deck order: the last one chosen ends up on top.
     expect(st.players.p1.deck[0]?.iid).toBe('b')
+  })
+
+  /**
+   * Раздача — единственное место, где событие могло попасть в ряд не через
+   * добор, а значит и не сработать. Проверяется на многих раздачах, а не на
+   * одной: карта редкая, и один сид ничего не доказывает.
+   */
+  it('never starts the game in the trade row, on any deal', () => {
+    let scrappedSomewhere = 0
+    for (let i = 0; i < 200; i++) {
+      const st = createGame({
+        matchId: `m${i}`, seed: `deal-${i}`, firstPlayer: 'p1', sets: ALL_SETS,
+      })
+      const inRow = st.tradeRow.filter((c) => c && cardDef(c.def).type === 'event')
+      expect(inRow).toEqual([])
+      // Отброшенное при раздаче лежит в утиле — из игры оно выбыло, а не
+      // растворилось: колода и утиль вместе обязаны сойтись.
+      if (st.scrapHeap.length > 0) {
+        expect(st.scrapHeap.every((c) => cardDef(c.def).type === 'event')).toBe(true)
+        scrappedSomewhere += 1
+      }
+    }
+    // Событий в колоде 28 из ~450 карт: на двух сотнях раздач хоть одно обязано
+    // было попасться. Ноль означал бы, что проверка ничего не проверяет.
+    expect(scrappedSomewhere).toBeGreaterThan(0)
   })
 
   it('Trade Mission is asymmetric: trade for the active player, cards for the other', () => {

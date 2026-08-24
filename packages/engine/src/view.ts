@@ -84,6 +84,14 @@ export interface SelfView {
     readonly slot: 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly'
   }[]
   readonly gainedThisTurn: { readonly trade: number; readonly combat: number; readonly authority: number }
+  /**
+   * The Legendary Commander in charge, or null in an ordinary game.
+   *
+   * Public on both sides: a commander is chosen before the deal and its hand
+   * size and starting authority are printed on the card, so hiding it would
+   * hide nothing an opponent cannot read off the counters anyway.
+   */
+  readonly commander: CardDefId | null
 }
 
 /** The other side. Counts where the physical game shows only a card back. */
@@ -103,6 +111,8 @@ export interface OpponentView {
   readonly combat: number
   readonly allyUnlocked: readonly Faction[]
   readonly factionPlayedThisTurn: Readonly<Record<Faction, number>>
+  /** Their Legendary Commander, or null. Public, exactly like yours. */
+  readonly commander: CardDefId | null
 }
 
 export interface PendingChoiceView {
@@ -251,6 +261,7 @@ function viewOpponent(st: GameState['players'][PlayerId]): OpponentView {
     combat: st.combat,
     allyUnlocked: [...st.allyUnlocked],
     factionPlayedThisTurn: { ...st.factionPlayedThisTurn },
+    commander: st.commander,
   }
 }
 
@@ -293,6 +304,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       alliesUsedThisTurn: meState.alliesUsedThisTurn.map((u) => ({ def: u.def, slot: u.slot })),
       gainedThisTurn: { ...meState.gainedThisTurn },
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
+      commander: meState.commander,
     },
     opponent: viewOpponent(oppState),
     opponentSeat: oppId,
