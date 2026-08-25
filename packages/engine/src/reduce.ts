@@ -338,6 +338,7 @@ function toScrapHeap(d: D, inst: CardInstance, from: Zone, owner: PlayerId | nul
   // has no owner) must not feed the counter.
   if (owner) {
     d.players[owner].scrappedThisTurn += 1
+    d.tally[owner].scrapped += 1
     // Converter watches YOUR scrapping from hand or discard -- not the trade
     // row, which has no owner, and not a card scrapping itself out of play.
     if (from === 'hand' || from === 'discard') fireScrapTriggers(d, owner, ev)
@@ -413,6 +414,8 @@ function acquire(
     dest = 'deck_top'
   }
   p.acquiredThisTurn = true
+  // A card taken for free off another card's ability was not bought.
+  if (cost > 0) d.tally[pid].buys += 1
   ev.push({ e: 'ACQUIRE', player: pid, def: inst.def, dest, cost })
   if (dest === 'deck_top') { p.deck.unshift(inst); fireAcquireSelf(d, pid, inst, ev); return }
   if (dest === 'hand') { p.hand.push(inst); fireAcquireSelf(d, pid, inst, ev); return }
@@ -1113,7 +1116,11 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
 
     case 'BUY_FROM_SCRAP_HEAP': {
       const opts: ChoiceOption[] = d.scrapHeap
-        .filter((c) => costFor(cardDef(c.def), p.inPlay) <= p.trade)
+        // The same price the purchase below will charge. Offering a different
+        // one means a card you can afford is silently missing from the list.
+        .filter((c) => costFor(cardDef(c.def), p.inPlay, {
+          variant: d.variant, buyer: me, scenario: d.scenario,
+        }) <= p.trade)
         .map((c) => ({ o: 'CARD' as const, iid: c.iid, def: c.def, zone: 'scrapHeap' as Zone, owner: null }))
       if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing affordable in the scrap heap' }); return }
       pushChoice(d, makeChoice(d, me, 'BUY_FROM_SCRAP_HEAP',
@@ -1683,7 +1690,9 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       const idx = d.scrapHeap.findIndex((x) => x.iid === o.iid)
       if (idx < 0) return
       const inst = d.scrapHeap[idx] as CardInstance
-      const price = costFor(cardDef(inst.def), p.inPlay, { variant: d.variant, buyer: me })
+      const price = costFor(cardDef(inst.def), p.inPlay, {
+        variant: d.variant, buyer: me, scenario: d.scenario,
+      })
       if (p.trade < price) return
       p.trade -= price
       d.scrapHeap.splice(idx, 1)
@@ -2087,7 +2096,11 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     const aside = d.setAside.findIndex((c) => c.iid === iid)
     if (aside < 0) throw new IllegalActionError('card is not in the trade row')
     const card = d.setAside[aside] as CardInstance
-    const price = costFor(cardDef(card.def), p.inPlay)
+    // With the same context legal.ts uses. Without it the two disagreed, and a
+    // discounted set-aside card was offered and then refused.
+    const price = costFor(cardDef(card.def), p.inPlay, {
+      variant: d.variant, buyer: me, scenario: d.scenario,
+    })
     if (p.trade < price) throw new IllegalActionError('not enough trade')
     p.trade -= price
     d.setAside.splice(aside, 1)
@@ -2099,6 +2112,7 @@ function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   // here rather than read off the card -- see costFor.
   let cost = costFor(cardDef(inst.def), p.inPlay, {
     variant: d.variant, buyer: me, counters: d.marketCounters[inst.iid] ?? 0,
+    scenario: d.scenario,
   })
   // Black Market: one point off, once per turn, for whoever revealed it, and
   // only from the slots the Black Market itself added.
@@ -2284,6 +2298,14 @@ function startTurnFor(d: D, seat: PlayerId, ev: GameEvent[]): void {
   next.gainedAuthorityThisTurn = false
   next.acquiredThisTurn = false
   next.pendingDiscounts = []
+  // The fight tally rolls over HERE and not at end of turn: a fight that ends
+  // mid-turn must leave that turn's numbers standing, because they are what
+  // the run reads afterwards.
+  const t = d.tally[seat]
+  t.dmgBest = Math.max(t.dmgBest, t.dmg)
+  t.dmg = 0
+  t.buysBest = Math.max(t.buysBest, t.buys)
+  t.buys = 0
   // Revealed gambits recharge with everything else in play.
   for (const g of next.gambitsInPlay) {
     g.used = {
@@ -2879,6 +2901,9 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       const shield = shieldOf(d, target)
       const dealt = Math.max(0, action.amount - shield)
       loseAuthority(d, target, dealt, ev)
+      // Counted here rather than in loseAuthority, which knows the victim but
+      // not who did it -- and fires for cards that hurt their own owner.
+      d.tally[me].dmg += dealt
       ev.push({ e: 'ATTACK_PLAYER', attacker: me, target, n: dealt })
       return
     }

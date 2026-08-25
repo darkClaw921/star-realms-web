@@ -116,6 +116,7 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
     // test has to go through the same function the purchase does.
     const price = c ? costFor(cardDef(c.def), me.inPlay, {
       variant: v.variant, buyer: seat, counters: v.marketCounters[c.iid] ?? 0,
+      scenario: v.scenario,
     }) : 0
     if (c && price <= me.trade) {
       out.push({ t: 'BUY_CARD', card: c.iid })
@@ -134,7 +135,9 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
 
   for (const c of v.setAside) {
     // Bought exactly as a row card is, so it goes through the same price.
-    if (costFor(cardDef(c.def), me.inPlay, { variant: v.variant, buyer: seat }) <= me.trade) {
+    if (costFor(cardDef(c.def), me.inPlay, {
+      variant: v.variant, buyer: seat, scenario: v.scenario,
+    }) <= me.trade) {
       out.push({ t: 'BUY_CARD', card: c.iid })
     }
   }

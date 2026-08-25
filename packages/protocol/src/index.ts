@@ -11,7 +11,7 @@ import { z } from 'zod'
  * the authenticated socket binding on the server. Trusting a client-supplied
  * player id would let either client act as the other.
  */
-export const ENGINE_VERSION = 1
+export const ENGINE_VERSION = 2
 export const PROTOCOL_VERSION = 1
 
 const zone = z.enum(['deck', 'hand', 'discard', 'inPlay', 'tradeRow', 'scrapHeap', 'explorerPile'])

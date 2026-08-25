@@ -1,7 +1,8 @@
 'use client'
 
 import {
-  applyReward, RUN_LENGTH, runStartCarry, type CardDefId, type RunCarry, type RunReward,
+  applyRelic, applyReward, RUN_LENGTH, relicOffer, runNode, runStartCarry,
+  type CardDefId, type RelicId, type RunCarry, type RunReward,
 } from '@sr/engine'
 
 /**
@@ -24,6 +25,8 @@ export type RunStage =
   | 'fight'
   /** Бой выигран, награда не взята. */
   | 'reward'
+  /** Награда взята, а задача боя выполнена — остался артефакт. */
+  | 'relic'
   | 'won'
   | 'lost'
 
@@ -36,6 +39,8 @@ export interface RunSave {
   readonly stage: RunStage
   /** Сколько боёв забега уже выиграно. */
   readonly cleared: number
+  /** Выполнена ли задача в последнем выигранном бою. */
+  readonly featDone: boolean
 }
 
 function fresh(): RunSave {
@@ -45,6 +50,7 @@ function fresh(): RunSave {
     carry: runStartCarry(),
     stage: 'fight',
     cleared: 0,
+    featDone: false,
   }
 }
 
@@ -69,8 +75,9 @@ export function loadRun(): RunSave | null {
     if (!c.deck.every((x) => typeof x === 'string')) return null
     if (!c.bases.every((x) => typeof x === 'string')) return null
     if (s.index < 1 || s.index > RUN_LENGTH + 1) return null
-    const stage: RunStage = s.stage === 'reward' || s.stage === 'won' || s.stage === 'lost'
-      ? s.stage : 'fight'
+    const stage: RunStage =
+      s.stage === 'reward' || s.stage === 'relic' || s.stage === 'won' || s.stage === 'lost'
+        ? s.stage : 'fight'
     return {
       seed: s.seed,
       index: s.index,
@@ -80,9 +87,15 @@ export function loadRun(): RunSave | null {
         deck: c.deck as CardDefId[],
         bases: c.bases as CardDefId[],
         authority: c.authority,
+        // Сохранение, сделанное до артефактов, — это забег без артефактов, а
+        // не испорченный забег: пустой список, а не выброшенное сохранение.
+        relics: Array.isArray(c.relics) && c.relics.every((x) => typeof x === 'string')
+          ? c.relics as RelicId[]
+          : [],
       },
       stage,
       cleared: typeof s.cleared === 'number' ? s.cleared : 0,
+      featDone: s.featDone === true,
     }
   } catch {
     return null
@@ -103,11 +116,12 @@ export function abandonRun(): void {
 }
 
 /** Бой выигран: колода, с которой из него вышли, и есть колода следующего боя. */
-export function clearedNode(save: RunSave, carry: RunCarry): RunSave {
+export function clearedNode(save: RunSave, carry: RunCarry, featDone: boolean): RunSave {
   return write({
     ...save,
     carry,
     cleared: save.index,
+    featDone,
     stage: save.index >= RUN_LENGTH ? 'won' : 'reward',
   })
 }
@@ -116,13 +130,30 @@ export function lostRun(save: RunSave): RunSave {
   return write({ ...save, stage: 'lost' })
 }
 
-/** Награда взята — дальше по лестнице. */
+/**
+ * Награда взята. Если задача боя выполнена — следом выбор артефакта.
+ *
+ * Артефакт именно СЛЕДОМ, а не четвёртым вариантом награды: иначе он стал бы
+ * альтернативой карте, а задача — способом отказаться от обычной награды.
+ */
 export function takeReward(save: RunSave, r: RunReward): RunSave {
+  const carry = applyReward(save.carry, r)
+  const node = runNode(save.index)
+  const owed = save.featDone && node !== null
+    && relicOffer(save.seed, node, carry.relics).length > 0
+  return write(owed
+    ? { ...save, carry, stage: 'relic' }
+    : { ...save, carry, index: save.index + 1, stage: 'fight', featDone: false })
+}
+
+/** Артефакт выбран — дальше по лестнице. */
+export function takeRelic(save: RunSave, id: RelicId): RunSave {
   return write({
     ...save,
-    carry: applyReward(save.carry, r),
+    carry: applyRelic(save.carry, id),
     index: save.index + 1,
     stage: 'fight',
+    featDone: false,
   })
 }
 

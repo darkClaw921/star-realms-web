@@ -15,6 +15,7 @@ import { FRONTIERS_PROMOS } from './frontiersPromos'
 import { COSMIC_GAMBITS, GAMBITS } from './gambits'
 import { COMMAND_DECK_CARDS } from './commandDecks'
 import { MISSIONS } from './missions'
+import { RELIC_CARDS } from './relicCards'
 import { VARIANT_CARDS } from './variantCards'
 import { PROMO_PACK_1, STELLAR_ALLIES, YEAR_TWO_PROMOS } from './promos'
 import { FRONTIERS } from './frontiers'
@@ -408,6 +409,7 @@ export const CARDS: CardRegistry = new Map([
   ...buildDefs(MISSIONS, 'missions'),
   ...buildDefs(COMMAND_DECK_CARDS, 'command-decks'),
   ...buildDefs(VARIANT_CARDS, 'scenarios'),
+  ...buildDefs(RELIC_CARDS, 'relics'),
 ])
 
 export function cardDef(id: CardDefId): CardDef {

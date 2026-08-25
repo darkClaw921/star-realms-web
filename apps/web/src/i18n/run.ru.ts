@@ -1,4 +1,4 @@
-import type { RunNodeKind } from '@sr/engine'
+import type { FeatSpec, RunNodeKind } from '@sr/engine'
 
 export interface RunNodeRu {
   readonly name: string
@@ -46,6 +46,30 @@ export const RUN_KIND_RU: Record<RunNodeKind, string> = {
   battle: 'Бой',
   elite: 'Элита',
   boss: 'Финал',
+}
+
+/**
+ * Задача боя одной строкой.
+ *
+ * Сделана по образцу objectiveRu: задача — такой же союз данных, как цель
+ * вылета, и переводится там же, где живут остальные тексты забега.
+ */
+export function featRu(f: FeatSpec): string {
+  switch (f.k) {
+    case 'DAMAGE_TURN': return `Нанести ${f.n} боевого урона за один ход`
+    case 'BUYS_TURN': return `Купить ${f.n} карты за один ход`
+    case 'BASES': return f.n === 1
+      ? 'Уничтожить базу противника'
+      : `Уничтожить базы противника: ${f.n}`
+    case 'SCRAP': return `Утилизировать ${f.n} карты за бой`
+    case 'BY_TURN': return `Победить не позже ${f.n}-го хода`
+    case 'AUTHORITY_END': return `Победить, сохранив не меньше ${f.n} авторитета`
+  }
+}
+
+/** Прогресс задачи. Для «победить к N-му ходу» это счёт вверх, а не вниз. */
+export function featProgressRu(f: FeatSpec, have: number): string {
+  return f.k === 'BY_TURN' ? `ход ${have} из ${f.n}` : `${have} / ${f.n}`
 }
 
 export const RUN_RU = {
@@ -100,4 +124,15 @@ export const RUN_RU = {
     ? 'Первый же бой. Бывает.'
     : `Пройдено боёв: ${n}. Колода распущена.`,
   nodeLabel: (i: number): string => `Бой ${i} из 8`,
+
+  featLabel: 'Задача',
+  featDone: 'выполнено',
+  featHint: 'Выполните задачу в выигранном бою — и после него выберете артефакт.',
+  relics: 'Артефакты',
+  relicsHint: 'Артефакт остаётся с вами до конца забега и переходит из боя в бой.',
+  relicTitle: 'Задача выполнена',
+  relicLede: 'Выберите артефакт. Он будет действовать до конца забега.',
+  relicNone: 'Все артефакты уже собраны.',
+  relicTake: 'Взять',
+  featMissed: 'Задача не выполнена — артефакта в этот раз не будет.',
 } as const

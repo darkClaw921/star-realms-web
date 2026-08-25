@@ -37,6 +37,16 @@ export interface ScenarioRules {
    */
   readonly turnStartCombat: Partial<Record<PlayerId, number>>
   readonly turnStartTrade: Partial<Record<PlayerId, number>>
+  /**
+   * A standing discount on every price this side pays.
+   *
+   * Read only by `costFor`, which is the one place a price may be decided --
+   * so the trade row, the set-aside cards, the scrap heap and the UI all agree
+   * about it without any of them knowing it exists. The Explorer pile is
+   * deliberately outside: it has no `costFor` call and a one-trade Explorer is
+   * a different game.
+   */
+  readonly buyDiscount?: Partial<Record<PlayerId, number>>
 }
 
 /** The opening position. Applied once, by createGame, and then forgotten. */
@@ -60,6 +70,17 @@ export interface ScenarioSetup {
   readonly unshuffled?: readonly PlayerId[]
   /** Cards that start in a discard pile rather than a deck. */
   readonly startingDiscard?: Partial<Record<PlayerId, readonly CardDefId[]>>
+  /** Overrides the five-card hand. A Legendary Commander sets the base; this wins. */
+  readonly handSize?: Partial<Record<PlayerId, number>>
+  /**
+   * Cards that open face up BESIDE the board rather than on it -- the revealed
+   * gambit zone, where a permanent modifier can watch play, pay at the start of
+   * a turn, or wait to be activated.
+   *
+   * Separate from `startingBases` because these are not bases: nothing attacks
+   * them, they are never destroyed, and they never occupy the play area.
+   */
+  readonly startingSideCards?: Partial<Record<PlayerId, readonly CardDefId[]>>
 }
 
 export function noScenarioCounters(): Partial<Record<PlayerId, number>> {

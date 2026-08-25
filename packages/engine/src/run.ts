@@ -1,9 +1,9 @@
 import { cardDef, tradeDeckComposition } from './cards/registry'
 import type { SetId } from './cards/types'
-import type { CardDefId, PlayerId } from './ids'
+import { asDefId, type CardDefId, type PlayerId } from './ids'
 import { seedRng, shuffle } from './rng'
 import type { ScenarioSetup } from './scenario'
-import type { GameState } from './state'
+import type { FightTally, GameState } from './state'
 
 /**
  * Забег -- a run: one deck carried through a ladder of fights.
@@ -55,6 +55,13 @@ export interface RunNode {
    * offer meaningful once the deck is good.
    */
   readonly offerCost: readonly [number, number]
+  /**
+   * What the fight asks of you beyond winning it. Doing it earns the right to
+   * pick a relic, and it is known before the fight starts -- a task you can
+   * play towards is a decision, a task you only learn about afterwards is a
+   * lottery.
+   */
+  readonly feat: FeatSpec
 }
 
 const ids = (...xs: string[]): CardDefId[] => xs as CardDefId[]
@@ -92,17 +99,20 @@ export const RUN_LADDER: readonly RunNode[] = [
     index: 1, kind: 'battle',
     enemyAuthority: 40, enemyCombat: 0, enemyTrade: 0, enemyBases: [],
     offerCost: [1, 4],
+    feat: { k: 'BUYS_TURN', n: 3 },
   },
   {
     index: 2, kind: 'battle',
     enemyAuthority: 45, enemyCombat: 1, enemyTrade: 1, enemyBases: [],
     offerCost: [1, 5],
+    feat: { k: 'DAMAGE_TURN', n: 12 },
   },
   {
     index: 3, kind: 'battle',
     enemyAuthority: 50, enemyCombat: 2, enemyTrade: 1,
     enemyBases: ids('defense-center'),
     offerCost: [2, 6],
+    feat: { k: 'BASES', n: 1 },
   },
   {
     index: 4, kind: 'elite',
@@ -110,12 +120,14 @@ export const RUN_LADDER: readonly RunNode[] = [
     enemyBases: ids('trading-post'),
     enemyDeck: ELITE_DECK,
     offerCost: [2, 6],
+    feat: { k: 'SCRAP', n: 3 },
   },
   {
     index: 5, kind: 'battle',
     enemyAuthority: 60, enemyCombat: 3, enemyTrade: 2,
     enemyBases: ids('the-hive'),
     offerCost: [3, 7],
+    feat: { k: 'DAMAGE_TURN', n: 20 },
   },
   {
     index: 6, kind: 'elite',
@@ -123,6 +135,7 @@ export const RUN_LADDER: readonly RunNode[] = [
     enemyBases: ids('blob-wheel', 'space-station'),
     enemyDeck: ELITE_DECK,
     offerCost: [3, 8],
+    feat: { k: 'BY_TURN', n: 12 },
   },
   {
     index: 7, kind: 'elite',
@@ -130,6 +143,7 @@ export const RUN_LADDER: readonly RunNode[] = [
     enemyBases: ids('mech-world'),
     enemyDeck: ELITE_DECK,
     offerCost: [4, 8],
+    feat: { k: 'AUTHORITY_END', n: 25 },
   },
   {
     index: 8, kind: 'boss',
@@ -137,8 +151,136 @@ export const RUN_LADDER: readonly RunNode[] = [
     enemyBases: ids('brain-world', 'fleet-hq'),
     enemyDeck: BOSS_DECK,
     offerCost: [4, 8],
+    feat: { k: 'DAMAGE_TURN', n: 30 },
   },
 ]
+
+/* ─────────────────────────── реликвии ─────────────────────────── */
+
+/**
+ * A relic: a rule that changes in your favour for the rest of the run.
+ *
+ * Ten of the fourteen are nothing but a card standing beside the board -- the
+ * card vocabulary already expresses "whenever you play a Viper", "at the start
+ * of your turn" and "once per turn, for a price", and the reducer has watched
+ * that zone since long before relics existed. The other four still get a card,
+ * so the board shows one list rather than two, but their rule is applied by the
+ * opening position: hand size, price, a base already standing, authority.
+ *
+ * Which is why nothing here is a rules hook. `runSetup` folds a relic into the
+ * ScenarioSetup it was already building, and the engine goes on knowing nothing
+ * about runs.
+ */
+export type RelicId =
+  | 'viper-fangs' | 'scout-scanners' | 'dock-crew' | 'swarm-doctrine'
+  | 'war-drums' | 'trade-charter' | 'hull-plating' | 'shield-array'
+  | 'salvage-rig' | 'overclock'
+  | 'deep-reserves' | 'black-market-pass' | 'outpost-cache' | 'field-hospital'
+
+export interface Relic {
+  readonly id: RelicId
+  /** The card that stands beside the board. Every relic has one. */
+  readonly card: CardDefId
+  /** Replaces the five-card hand. */
+  readonly handSize?: number
+  /** Trade off every price `costFor` decides. */
+  readonly buyDiscount?: number
+  /** A base already standing when each fight opens. */
+  readonly startingBase?: CardDefId
+  /** Authority on top of what the run carries, every fight. */
+  readonly authority?: number
+}
+
+const rel = (id: RelicId, extra: Omit<Relic, 'id' | 'card'> = {}): Relic =>
+  ({ id, card: asDefId(`rl-${id}`), ...extra })
+
+export const RELIC: Record<RelicId, Relic> = {
+  'viper-fangs': rel('viper-fangs'),
+  'scout-scanners': rel('scout-scanners'),
+  'dock-crew': rel('dock-crew'),
+  'swarm-doctrine': rel('swarm-doctrine'),
+  'war-drums': rel('war-drums'),
+  'trade-charter': rel('trade-charter'),
+  'hull-plating': rel('hull-plating'),
+  'shield-array': rel('shield-array'),
+  'salvage-rig': rel('salvage-rig'),
+  'overclock': rel('overclock'),
+  'deep-reserves': rel('deep-reserves', { handSize: 6 }),
+  'black-market-pass': rel('black-market-pass', { buyDiscount: 1 }),
+  'outpost-cache': rel('outpost-cache', { startingBase: asDefId('defense-center') }),
+  'field-hospital': rel('field-hospital', { authority: 8 }),
+}
+
+export const RELICS: readonly RelicId[] = Object.keys(RELIC) as RelicId[]
+
+/** The relic cards, for a board that wants to tell them from revealed gambits. */
+export const RELIC_DEFS: ReadonlySet<CardDefId> =
+  new Set(RELICS.map((id) => RELIC[id].card))
+
+/* ─────────────────────────── достижения ─────────────────────────── */
+
+/**
+ * A feat: what this fight asks of you beyond winning it.
+ *
+ * Data, like a mission's objective, and for the same reason -- it has to
+ * survive JSON and stay reviewable. Deliberately NOT part of ScenarioRules:
+ * the reducer never enforces a feat, it only counts, and ScenarioRules is the
+ * part of a scenario the engine is obliged to keep applying.
+ */
+export type FeatSpec =
+  /** Combat damage put into the opponent's face in a single turn. */
+  | { readonly k: 'DAMAGE_TURN'; readonly n: number }
+  /** Cards paid for in a single turn. */
+  | { readonly k: 'BUYS_TURN'; readonly n: number }
+  | { readonly k: 'BASES'; readonly n: number }
+  /** Cards scrapped over the whole fight. */
+  | { readonly k: 'SCRAP'; readonly n: number }
+  /** Win on or before this turn. */
+  | { readonly k: 'BY_TURN'; readonly n: number }
+  /** Finish the fight with at least this much authority. */
+  | { readonly k: 'AUTHORITY_END'; readonly n: number }
+
+/** Everything a feat can read. Available from a PlayerView and from a state. */
+export interface FeatSource {
+  readonly tally: FightTally
+  readonly turn: number
+  readonly basesDestroyed: number
+  readonly authority: number
+}
+
+export function featSource(state: GameState, hero: PlayerId = RUN_HERO): FeatSource {
+  return {
+    tally: state.tally[hero],
+    turn: state.turn,
+    basesDestroyed: state.basesDestroyed[hero],
+    authority: state.players[hero].authority,
+  }
+}
+
+export function featProgress(
+  f: FeatSpec, s: FeatSource,
+): { have: number; need: number; met: boolean } {
+  // The turn in progress counts: its numbers have not been rolled into the
+  // best-turn figure yet, and a feat completed on the winning turn is still
+  // completed.
+  const best = (now: number, top: number): number => Math.max(now, top)
+  const have = f.k === 'DAMAGE_TURN' ? best(s.tally.dmg, s.tally.dmgBest)
+    : f.k === 'BUYS_TURN' ? best(s.tally.buys, s.tally.buysBest)
+      : f.k === 'BASES' ? s.basesDestroyed
+        : f.k === 'SCRAP' ? s.tally.scrapped
+          : f.k === 'BY_TURN' ? s.turn
+            : s.authority
+  // Two of them are the wrong way round: finishing EARLY and finishing HIGH.
+  const met = f.k === 'BY_TURN' ? have <= f.n : have >= f.n
+  return { have, need: f.n, met }
+}
+
+/** Did the hero earn a relic in the fight they just won? */
+export function featEarned(
+  state: GameState, feat: FeatSpec, hero: PlayerId = RUN_HERO,
+): boolean {
+  return featProgress(feat, featSource(state, hero)).met
+}
 
 export function runNode(index: number): RunNode | null {
   return RUN_LADDER.find((n) => n.index === index) ?? null
@@ -160,6 +302,12 @@ export interface RunCarry {
   /** Bases and outposts left standing. */
   readonly bases: readonly CardDefId[]
   readonly authority: number
+  /**
+   * Relics earned so far. Unlike the deck they are not read back out of the
+   * finished fight -- they are never lost, destroyed or scrapped, so the list
+   * the run keeps IS the truth about them.
+   */
+  readonly relics: readonly RelicId[]
 }
 
 export function runStartCarry(): RunCarry {
@@ -167,6 +315,7 @@ export function runStartCarry(): RunCarry {
     deck: [...Array<CardDefId>(8).fill(SCOUT), ...Array<CardDefId>(2).fill(VIPER)],
     bases: [],
     authority: RUN_START_AUTHORITY,
+    relics: [],
   }
 }
 
@@ -178,7 +327,9 @@ export function runStartCarry(): RunCarry {
  * doing here -- in an ordinary game thinning pays off for twenty minutes, in a
  * run it pays off for the rest of the ladder.
  */
-export function harvestRun(state: GameState, hero: PlayerId = RUN_HERO): RunCarry {
+export function harvestRun(
+  state: GameState, hero: PlayerId = RUN_HERO, prev?: RunCarry,
+): RunCarry {
   const p = state.players[hero]
   const deck: CardDefId[] = []
   const bases: CardDefId[] = []
@@ -190,11 +341,33 @@ export function harvestRun(state: GameState, hero: PlayerId = RUN_HERO): RunCarr
     if (t === 'base' || t === 'outpost') bases.push(c.def)
     else deck.push(c.def)
   }
-  return { deck, bases, authority: Math.max(0, p.authority) }
+  // Relic cards stand in the gambit zone, never in play, so the loop above
+  // cannot mistake one for a base -- and they come from the run's own list
+  // rather than from the board.
+  return { deck, bases, authority: Math.max(0, p.authority), relics: prev?.relics ?? [] }
 }
 
-/** The opening position for one node, built from what the last one left you. */
+/**
+ * The opening position for one node, built from what the last one left you.
+ *
+ * The only place a relic turns into engine vocabulary. Four of them do it here
+ * -- as a hand size, a discount, a standing base and an authority bonus -- and
+ * the other ten simply come along as cards.
+ */
 export function runSetup(node: RunNode, carry: RunCarry): ScenarioSetup {
+  const relics = carry.relics.map((id) => RELIC[id])
+  const sum = (f: (r: Relic) => number | undefined): number =>
+    relics.reduce((n, r) => n + (f(r) ?? 0), 0)
+  const extraBases = relics
+    .map((r) => r.startingBase)
+    .filter((b): b is CardDefId => b !== undefined)
+  const bases = [...carry.bases, ...extraBases]
+  const discount = sum((r) => r.buyDiscount)
+  // The largest wins rather than the sum: two hand-size relics would otherwise
+  // stack into a hand nobody designed.
+  const hand = relics.reduce<number | undefined>(
+    (n, r) => (r.handSize === undefined ? n : Math.max(n ?? 0, r.handSize)), undefined,
+  )
   return {
     rules: {
       id: `run-${node.index}`,
@@ -202,16 +375,22 @@ export function runSetup(node: RunNode, carry: RunCarry): ScenarioSetup {
       objective: { k: 'AUTHORITY' },
       turnStartCombat: { p1: 0, p2: node.enemyCombat },
       turnStartTrade: { p1: 0, p2: node.enemyTrade },
+      ...(discount > 0 ? { buyDiscount: { p1: discount } } : {}),
     },
-    authority: { p1: carry.authority, p2: node.enemyAuthority },
+    authority: {
+      p1: carry.authority + sum((r) => r.authority),
+      p2: node.enemyAuthority,
+    },
     starterDeck: {
       p1: [...carry.deck],
       ...(node.enemyDeck ? { p2: [...node.enemyDeck] } : {}),
     },
     startingBases: {
-      ...(carry.bases.length ? { p1: [...carry.bases] } : {}),
+      ...(bases.length ? { p1: bases } : {}),
       ...(node.enemyBases.length ? { p2: [...node.enemyBases] } : {}),
     },
+    ...(relics.length ? { startingSideCards: { p1: relics.map((r) => r.card) } } : {}),
+    ...(hand === undefined ? {} : { handSize: { p1: hand } }),
     tradeDeckOnly: null,
   }
 }
@@ -253,6 +432,28 @@ export function runOffer(
   }
   const [shuffled] = shuffle(seedRng(`${seed}:offer:${node.index}`), pool)
   return shuffled.slice(0, RUN_OFFER_SIZE)
+}
+
+/**
+ * The three relics offered for a completed feat.
+ *
+ * Fewer than three near the end of a run, and none at all once every relic is
+ * taken -- the screen has to survive both. Fixed by the run's seed and the
+ * node, like the card offer: a reload must not re-roll a choice you did not
+ * like.
+ */
+export function relicOffer(
+  seed: string, node: RunNode, owned: readonly RelicId[],
+): RelicId[] {
+  const have = new Set<string>(owned)
+  const left = RELICS.filter((id) => !have.has(id))
+  const [shuffled] = shuffle(seedRng(`${seed}:relic:${node.index}`), left)
+  return shuffled.slice(0, RUN_OFFER_SIZE)
+}
+
+export function applyRelic(carry: RunCarry, id: RelicId): RunCarry {
+  if (carry.relics.includes(id)) return carry
+  return { ...carry, relics: [...carry.relics, id] }
 }
 
 export function applyReward(carry: RunCarry, r: RunReward): RunCarry {

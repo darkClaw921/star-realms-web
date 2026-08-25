@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  cardDef, costFor, EXPLORER, TENTACLE_FACTIONS, VARIANT_CARD,
-  type Action, type CardDefId, type CardIid, type Faction, type PlayerId,
+  cardDef, costFor, EXPLORER, featProgress, RELIC_DEFS, TENTACLE_FACTIONS, VARIANT_CARD,
+  type Action, type CardDefId, type CardIid, type Faction, type FeatSpec, type PlayerId,
 } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
 import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
+import { featProgressRu, featRu, RUN_RU } from '@/i18n/run.ru'
 import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import type { SeatNames } from '@/match/log'
@@ -47,10 +48,12 @@ export interface BoardProps {
   /** Hot-seat only: shown between turns so the device can change hands. */
   passScreen?: boolean
   onPassAcknowledged?: () => void
+  /** Забег: задача этого боя. В обычной партии её нет. */
+  feat?: FeatSpec
 }
 
 export function Board({
-  snapshot, seatNames, onAction, onExit, passScreen, onPassAcknowledged,
+  snapshot, seatNames, onAction, onExit, passScreen, onPassAcknowledged, feat,
 }: BoardProps): React.JSX.Element {
   const { view: v, legal, log, botThinking } = snapshot
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -228,9 +231,13 @@ export function Board({
   const priceOf = useCallback(
     (def: Parameters<typeof cardDef>[0], iid?: string): number => costFor(
       cardDef(def), v.me.inPlay,
-      { variant: v.variant, buyer: v.viewer, counters: iid ? v.marketCounters[iid] ?? 0 : 0 },
+      {
+        variant: v.variant, buyer: v.viewer,
+        counters: iid ? v.marketCounters[iid] ?? 0 : 0,
+        scenario: v.scenario,
+      },
     ),
-    [v.me.inPlay, v.variant, v.viewer, v.marketCounters],
+    [v.me.inPlay, v.variant, v.viewer, v.marketCounters, v.scenario],
   )
 
   const slotButtons = (iid: string): React.JSX.Element | null => {
@@ -268,14 +275,21 @@ export function Board({
    * ярлыком «Гамбиты», которых в этой партии может не быть вовсе.
    */
   const scenarioCards = v.me.gambitsInPlay.filter((c) => VARIANT_DEFS.has(c.def))
-  const revealedGambits = v.me.gambitsInPlay.filter((c) => !VARIANT_DEFS.has(c.def))
+  // То же и с артефактами забега: карта сбоку от стола, но не гамбит и не
+  // сценарий -- она только ваша, и вкладка у неё своя.
+  const relicCards = v.me.gambitsInPlay.filter((c) => RELIC_DEFS.has(c.def))
+  const revealedGambits = v.me.gambitsInPlay.filter(
+    (c) => !VARIANT_DEFS.has(c.def) && !RELIC_DEFS.has(c.def),
+  )
   const hasGambits = v.me.gambits.length > 0 || revealedGambits.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const hasTech = myTech.length > 0
   const hasHeroes = myHeroes.length > 0
   const hasCommander = v.me.commander !== null
   const hasVariant = scenarioCards.length > 0
-  const hasRail = hasGambits || hasMissions || hasTech || hasHeroes || hasCommander || hasVariant
+  const hasRelics = relicCards.length > 0
+  const hasRail = hasGambits || hasMissions || hasTech || hasHeroes || hasCommander
+    || hasVariant || hasRelics
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
 
@@ -484,6 +498,26 @@ export function Board({
         </div>
       )}
 
+      {/* Задача забега. Отдельной строкой от цели боя: цель — как победить,
+        * задача — что сверх победы, и путать их нельзя. */}
+      {feat && (() => {
+        const p = featProgress(feat, {
+          tally: v.tally[v.viewer] ?? { dmg: 0, dmgBest: 0, buys: 0, buysBest: 0, scrapped: 0 },
+          turn: v.turn,
+          basesDestroyed: v.basesDestroyed[v.viewer] ?? 0,
+          authority: v.me.authority,
+        })
+        return (
+          <div className={`objective objective--feat${p.met ? ' is-met' : ''}`}>
+            <span className="objective__label">{RUN_RU.featLabel}</span>
+            <span className="objective__text">{featRu(feat)}</span>
+            <span className="objective__progress">
+              {p.met ? RUN_RU.featDone : featProgressRu(feat, p.have)}
+            </span>
+          </div>
+        )
+      })()}
+
       {v.boss && (
         <div className="bossbar">
           <span className="bossbar__name">{CHALLENGE_RU[v.boss.id].name}</span>
@@ -651,6 +685,21 @@ export function Board({
               alert={scenarioCards.some((c) => (idx.activate.get(c.iid)?.size ?? 0) > 0)}
             >
               {scenarioCards.map((c) => (
+                <div key={c.iid} className="zone">
+                  <Card def={c.def} iid={c.iid} title={nameOf(c.def)} />
+                  {slotButtons(c.iid)}
+                </div>
+              ))}
+            </SidePlate>
+          )}
+
+          {hasRelics && (
+            <SidePlate
+              label={RUN_RU.relics}
+              count={relicCards.length}
+              alert={relicCards.some((c) => (idx.activate.get(c.iid)?.size ?? 0) > 0)}
+            >
+              {relicCards.map((c) => (
                 <div key={c.iid} className="zone">
                   <Card def={c.def} iid={c.iid} title={nameOf(c.def)} />
                   {slotButtons(c.iid)}

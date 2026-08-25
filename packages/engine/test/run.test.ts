@@ -4,9 +4,9 @@ import type { CardDefId } from '../src/ids'
 import { enumerateLegalActions } from '../src/legal'
 import { reduce } from '../src/reduce'
 import {
-  applyReward, harvestRun, RUN_LADDER, RUN_LENGTH, RUN_OFFER_SIZE, RUN_REPAIR,
-  RUN_START_AUTHORITY, runNode, runOffer, runSetup, runStartCarry, scrappable,
-  type RunCarry,
+  applyRelic, applyReward, harvestRun, RELICS, RUN_LADDER, RUN_LENGTH,
+  RUN_OFFER_SIZE, RUN_REPAIR, RUN_START_AUTHORITY, relicOffer, runNode, runOffer,
+  runSetup, runStartCarry, scrappable, type RunCarry,
 } from '../src/run'
 import { createGame } from '../src/setup'
 import { actorOf, type GameState } from '../src/state'
@@ -117,6 +117,7 @@ describe('carrying a deck', () => {
       deck: ['scout', 'scout', 'battle-mech', 'freighter'] as CardDefId[],
       bases: ['defense-center'] as CardDefId[],
       authority: 23,
+      relics: [],
     }
     const s = opening(2, carry)
     const mine = [...s.players.p1.deck, ...s.players.p1.hand]
@@ -132,6 +133,7 @@ describe('carrying a deck', () => {
         'trade-bot', 'battle-pod', 'survey-ship', 'missile-bot'] as CardDefId[],
       bases: [],
       authority: 40,
+      relics: [],
     }
     const orders = new Set<string>()
     for (const seed of ['a', 'b', 'c', 'd']) {
@@ -186,7 +188,9 @@ describe('rewards', () => {
 
   it('lists each distinct card once, and refuses to empty the deck', () => {
     expect(scrappable(runStartCarry()).sort()).toEqual(['scout', 'viper'])
-    expect(scrappable({ deck: ['scout'] as CardDefId[], bases: [], authority: 5 })).toEqual([])
+    expect(scrappable({
+      deck: ['scout'] as CardDefId[], bases: [], authority: 5, relics: [],
+    })).toEqual([])
   })
 })
 
@@ -207,5 +211,58 @@ describe('a whole run', () => {
       expect(JSON.parse(JSON.stringify(s))).toEqual(s)
     }
     expect(sizes.length).toBe(RUN_LENGTH)
+  })
+})
+
+describe('relics along the way', () => {
+  it('starts a run with none', () => {
+    expect(runStartCarry().relics).toEqual([])
+  })
+
+  it('keeps them through a fight -- they are never lost, so they are never re-read', () => {
+    const carry = applyRelic(runStartCarry(), 'viper-fangs')
+    const done = playOut(opening(1, carry), 11)
+    const next = harvestRun(done, 'p1', carry)
+    expect(next.relics).toEqual(['viper-fangs'])
+    // ...and the relic card is not mistaken for a base carried over.
+    expect(next.bases.some((b) => (b as string).startsWith('rl-'))).toBe(false)
+    expect(next.deck.some((c) => (c as string).startsWith('rl-'))).toBe(false)
+  })
+
+  it('takes the same relic only once', () => {
+    const once = applyRelic(runStartCarry(), 'war-drums')
+    expect(applyRelic(once, 'war-drums').relics).toEqual(['war-drums'])
+  })
+
+  it('offers three unowned relics, the same three every time it is asked', () => {
+    const node = RUN_LADDER[2]
+    if (!node) throw new Error('no node')
+    const offer = relicOffer('run', node, [])
+    expect(offer.length).toBe(RUN_OFFER_SIZE)
+    expect(new Set(offer).size).toBe(RUN_OFFER_SIZE)
+    expect(relicOffer('run', node, [])).toEqual(offer)
+    // Never one you already have.
+    const owned = relicOffer('run', node, offer)
+    expect(owned.some((id) => offer.includes(id))).toBe(false)
+  })
+
+  it('runs dry gracefully once every relic is taken', () => {
+    const node = RUN_LADDER[7]
+    if (!node) throw new Error('no node')
+    expect(relicOffer('run', node, RELICS)).toEqual([])
+    expect(relicOffer('run', node, RELICS.slice(0, RELICS.length - 2)).length).toBe(2)
+  })
+
+  it('carries a growing set of relics through all eight nodes', () => {
+    let carry = runStartCarry()
+    for (const node of RUN_LADDER) {
+      const offer = relicOffer('eight', node, carry.relics)
+      if (offer[0]) carry = applyRelic(carry, offer[0])
+      const s = opening(node.index, carry, `eight-${node.index}`)
+      expect(s.players.p1.gambitsInPlay.length).toBe(carry.relics.length)
+      carry = harvestRun(playOut(s, node.index * 7), 'p1', carry)
+    }
+    expect(carry.relics.length).toBe(RUN_LENGTH)
+    expect(new Set(carry.relics).size).toBe(RUN_LENGTH)
   })
 })

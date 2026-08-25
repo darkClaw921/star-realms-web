@@ -9,6 +9,7 @@ import { PROMOS_RU } from './promos.ru'
 import { UNITED_HEROES_RU, UNITED_RU } from './united.ru'
 import { CRISIS_EVENTS_RU, CRISIS_HEROES_RU } from './crisisExtra.ru'
 import { FRONTIERS_RU } from './frontiers.ru'
+import { RELIC_CARDS_RU } from './relics.ru'
 
 /**
  * Русская локализация карт.
@@ -161,6 +162,7 @@ const CARDS_RU: Record<string, CardRu> = {
   ...CRISIS_RU, ...CRISIS_HEROES_RU, ...CRISIS_EVENTS_RU,
   ...UNITED_RU, ...UNITED_HEROES_RU, ...HIGH_ALERT_RU, ...PROMOS_RU, ...FRONTIERS_PROMOS_RU,
   ...GAMBITS_RU, ...MISSIONS_RU, ...COMMAND_DECKS_RU, ...SCENARIOS_RU,
+  ...RELIC_CARDS_RU,
 }
 
 /** Локализованные тексты веток выбора «ИЛИ», которые не сводятся к иконкам. */

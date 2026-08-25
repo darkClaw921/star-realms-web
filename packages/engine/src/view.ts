@@ -9,7 +9,7 @@ import type { CoopState } from './coop'
 import { foeOf } from './helpers'
 import {
   actorOf, actorsOf, currentChoice,
-  type CardInstance, type GameState, type InPlayCard,
+  type CardInstance, type FightTally, type GameState, type InPlayCard,
 } from './state'
 
 /**
@@ -187,6 +187,8 @@ export interface PlayerView {
   /** Enemy bases each side has destroyed. Public; a DESTROY_BASES objective
    *  is scored from it and the UI shows the progress. */
   readonly basesDestroyed: Record<PlayerId, number>
+  /** What each side has managed this fight. Public, like the count above it. */
+  readonly tally: Record<PlayerId, FightTally>
   /**
    * The challenge boss. Every field of it is public by construction: the piles
    * it builds are laid out face up on the table, and the counts it attacks with
@@ -319,6 +321,9 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     pendingChoice: choice ? redactChoice(s, choice, viewer) : null,
     winner: s.winner,
     scenario: s.scenario,
+    tally: Object.fromEntries(
+      s.seats.map((seat) => [seat, { ...s.tally[seat] }]),
+    ) as Record<PlayerId, FightTally>,
     basesDestroyed: Object.fromEntries(
       s.seats.map((seat) => [seat, s.basesDestroyed[seat]]),
     ) as Record<PlayerId, number>,

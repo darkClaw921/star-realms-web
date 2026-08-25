@@ -59,7 +59,11 @@ describe('base-set data integrity', () => {
         c.damageReduction !== undefined || (c.onReveal?.length ?? 0) > 0 ||
         c.objective !== undefined || c.removeOnDestroy === true ||
         c.splinter.length > 0 || c.baseDefenseBonus !== undefined ||
-        (c.onFirstAuthority?.length ?? 0) > 0 || c.commander !== undefined
+        (c.onFirstAuthority?.length ?? 0) > 0 || c.commander !== undefined ||
+        // Four relics have no ability of their own: their rule is applied by
+        // the opening position (hand size, price, a standing base, authority),
+        // and the card exists so the board shows one list of relics, not two.
+        c.set === 'relics'
       expect(hasSomething, `${c.name} does nothing`).toBe(true)
     }
   })

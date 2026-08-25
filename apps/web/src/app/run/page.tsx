@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  cardDef, RUN_LADDER, RUN_LENGTH, RUN_REPAIR, runNode, runOffer, scrappable,
-  type CardDefId, type RunNode, type RunReward,
+  cardDef, RELIC, RUN_LADDER, RUN_LENGTH, RUN_REPAIR, relicOffer, runNode, runOffer,
+  scrappable, type CardDefId, type RelicId, type RunNode, type RunReward,
 } from '@sr/engine'
 import { Card } from '@/components/Card'
 import { FACTION_VAR } from '@/components/Icons'
 import { cardName } from '@/i18n/cards.ru'
-import { RUN_KIND_RU, RUN_NODE_RU, RUN_RU } from '@/i18n/run.ru'
+import { RELIC_RU } from '@/i18n/relics.ru'
+import { featRu, RUN_KIND_RU, RUN_NODE_RU, RUN_RU } from '@/i18n/run.ru'
 import { UI } from '@/i18n/ui'
 import {
-  abandonRun, deckTally, loadRun, runRecord, startRun, takeReward, type RunSave,
+  abandonRun, deckTally, loadRun, runRecord, startRun, takeRelic, takeReward,
+  type RunSave,
 } from '@/run/state'
 
 const KIND_COLOR: Record<string, string> = {
@@ -75,6 +77,13 @@ function Briefing({ n }: { n: RunNode }): React.JSX.Element {
           </div>
         )}
       </dl>
+      {/* Задача известна до боя намеренно: под неё можно строить ход, а
+        * узнать о ней постфактум значило бы получить артефакт по лотерее. */}
+      <div className="run-feat">
+        <span className="run-feat__label">{RUN_RU.featLabel}</span>
+        <span className="run-feat__text">{featRu(n.feat)}</span>
+        <span className="run-feat__hint">{RUN_RU.featHint}</span>
+      </div>
     </section>
   )
 }
@@ -188,6 +197,54 @@ function RewardPicker({ save, onTake }: {
   )
 }
 
+/**
+ * Выбор артефакта за выполненную задачу.
+ *
+ * Отдельным шагом после обычной награды, а не её четвёртым вариантом: задача
+ * добавляет к награде, а не заменяет её.
+ */
+function RelicPicker({ save, onTake }: {
+  save: RunSave
+  onTake: (id: RelicId) => void
+}): React.JSX.Element {
+  const node = runNode(save.cleared)
+  const offer = useMemo(
+    () => (node ? relicOffer(save.seed, node, save.carry.relics) : []),
+    [save.seed, node, save.carry.relics],
+  )
+  return (
+    <section className="run-reward">
+      <p className="eyebrow">{RUN_RU.relicTitle}</p>
+      <p className="run-note">{offer.length ? RUN_RU.relicLede : RUN_RU.relicNone}</p>
+      <div className="run-choices">
+        {offer.map((id) => (
+          <button key={id} type="button" className="run-choice" onClick={() => onTake(id)}>
+            <span className="run-choice__name">{RELIC_RU[id].name}</span>
+            <span className="run-choice__hint">{RELIC_RU[id].text}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** Взятые артефакты: карты те же, что стоят рядом со столом в бою. */
+function RelicShelf({ relics }: { relics: readonly RelicId[] }): React.JSX.Element {
+  return (
+    <section className="run-section">
+      <p className="eyebrow">{RUN_RU.relics} · {relics.length}</p>
+      <p className="run-note">{RUN_RU.relicsHint}</p>
+      <div className="run-deck">
+        {relics.map((id) => (
+          <div className="run-deck__slot" key={id}>
+            <Card def={RELIC[id].card} title={RELIC_RU[id].name} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function RunPage(): React.JSX.Element {
   const router = useRouter()
   // Сохранение живёт в localStorage, которого нет на сервере: первый кадр —
@@ -204,6 +261,9 @@ export default function RunPage(): React.JSX.Element {
 
   const onTake = useCallback((r: RunReward) => {
     setSave((s) => (s ? takeReward(s, r) : s))
+  }, [])
+  const onTakeRelic = useCallback((id: RelicId) => {
+    setSave((s) => (s ? takeRelic(s, id) : s))
   }, [])
 
   if (!ready) return <main className="menu"><p className="eyebrow">{UI.loading}</p></main>
@@ -248,13 +308,21 @@ export default function RunPage(): React.JSX.Element {
                 {RUN_RU.cleared}<b>{save.cleared} / {RUN_LENGTH}</b>
               </span>
               <span className="run-bar__stat">
+                {RUN_RU.relics}<b>{save.carry.relics.length}</b>
+              </span>
+              <span className="run-bar__stat">
                 {RUN_RU.record}<b>{record > 0 ? record : '—'}</b>
               </span>
             </div>
 
-            <Ladder at={save.stage === 'reward' ? save.index + 1 : save.index} cleared={save.cleared} />
+            <Ladder
+              at={save.stage === 'reward' || save.stage === 'relic' ? save.index + 1 : save.index}
+              cleared={save.cleared}
+            />
 
             {save.stage === 'reward' && <RewardPicker save={save} onTake={onTake} />}
+
+            {save.stage === 'relic' && <RelicPicker save={save} onTake={onTakeRelic} />}
 
             {save.stage === 'fight' && node && (
               <>
@@ -279,6 +347,10 @@ export default function RunPage(): React.JSX.Element {
                   {RUN_RU.again}
                 </button>
               </section>
+            )}
+
+            {save.carry.relics.length > 0 && (
+              <RelicShelf relics={save.carry.relics} />
             )}
 
             {save.carry.bases.length > 0 && save.stage !== 'lost' && (

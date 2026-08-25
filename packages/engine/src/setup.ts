@@ -15,7 +15,8 @@ import {
 import {
   ENGINE_VERSION, EXPLORER_PILE_SIZE, FIRST_TURN_HAND_SIZE, HAND_SIZE,
   STARTING_AUTHORITY, TRADE_ROW_SIZE,
-  emptyFactionCounts, type CardInstance, type GameState, type PlayerState,
+  emptyFactionCounts, emptyTally,
+  type CardInstance, type FightTally, type GameState, type PlayerState,
 } from './state'
 
 export interface MatchSetup {
@@ -215,6 +216,14 @@ export function createGame(setup: MatchSetup): GameState {
     players[pid].gambits.push(...gs)
   }
 
+  // A mission's hand size, after the commander's: the commander sets the base
+  // and the mission overrides it. Before the opening draw below, which derives
+  // the first hand from this number.
+  for (const pid of seats) {
+    const n = sc?.handSize?.[pid]
+    if (n !== undefined) players[pid].handSize = n
+  }
+
   // Cards that open in a discard pile (Blob Assault's face-up Spike Cluster).
   for (const pid of seats) {
     for (const def of sc?.startingDiscard?.[pid] ?? []) {
@@ -237,6 +246,25 @@ export function createGame(setup: MatchSetup): GameState {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
       doubleAlly: false, scrap: false, splinter: false,
     },
+        playedThisTurn: false,
+      })
+    }
+  }
+
+  // Cards that open BESIDE the board -- a run's relics. They live in the
+  // revealed-gambit zone, which is where the reducer already looks for a
+  // permanent modifier, and are neither bases nor gambits: nothing attacks
+  // them and nothing reveals them.
+  for (const pid of seats) {
+    for (const def of sc?.startingSideCards?.[pid] ?? []) {
+      let c: CardInstance
+      ;[c, rng] = mint(rng, def)
+      players[pid].gambitsInPlay.push({
+        iid: c.iid, def: c.def, copiedDef: null, chosenFaction: null,
+        used: {
+          primary: false, ally: false, ally2: false, ally3: false, ally4: false,
+          doubleAlly: false, scrap: false, splinter: false,
+        },
         playedThisTurn: false,
       })
     }
@@ -469,6 +497,9 @@ export function createGame(setup: MatchSetup): GameState {
     winner: null,
     scenario: sc?.rules ?? null,
     basesDestroyed: Object.fromEntries(ALL_SEATS.map((p) => [p, 0])) as Record<PlayerId, number>,
+    tally: Object.fromEntries(
+      ALL_SEATS.map((p) => [p, emptyTally()]),
+    ) as Record<PlayerId, FightTally>,
     boss,
     variant,
     marketCounters: {},

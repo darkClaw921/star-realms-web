@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { SeatNames } from '@/match/log'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  challengeById, challengeSetup, harvestRun, missionById, runNode, runSetup,
+  challengeById, challengeSetup, featEarned, harvestRun, missionById, runNode, runSetup,
   type Action, type ChallengeLevel, type PlayerId,
 } from '@sr/engine'
 import type { Difficulty } from '@/bot/bot'
@@ -145,11 +145,16 @@ function Play(): React.JSX.Element {
     if (!run || !won || runNoted.current || !client) return
     runNoted.current = true
     if (won !== 'p1') { lostRun(run.save); return }
-    // Колоду читаем из ДОИГРАННОГО состояния, а не из вида: перенести надо
-    // всё, включая закрытую стопку, которой в виде нет.
+    // Колоду и задачу читаем из ДОИГРАННОГО состояния, а не из вида: перенести
+    // надо всё, включая закрытую стопку, которой в виде нет, а счётчик боя
+    // виден целиком только там.
     const final = client.finished()
     if (!final) return
-    const next = clearedNode(run.save, harvestRun(final, 'p1'))
+    const next = clearedNode(
+      run.save,
+      harvestRun(final, 'p1', run.save.carry),
+      featEarned(final, run.node.feat, 'p1'),
+    )
     noteRecord(next.cleared)
   }, [run, won, client])
 
@@ -188,6 +193,7 @@ function Play(): React.JSX.Element {
       seatNames={seatNames}
       onAction={onAction}
       onExit={onExit}
+      {...(run ? { feat: run.node.feat } : {})}
       passScreen={needsPass}
       onPassAcknowledged={() => setRevealed(snapshot.view.viewer)}
     />

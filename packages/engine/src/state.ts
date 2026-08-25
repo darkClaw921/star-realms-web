@@ -8,7 +8,7 @@ import { sharedTurn } from './coop'
 import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
 
-export const ENGINE_VERSION = 1
+export const ENGINE_VERSION = 2
 
 /** Starting authority for a standard 2-player game. */
 export const STARTING_AUTHORITY = 50
@@ -221,6 +221,28 @@ export type ResolutionFrame =
   | { f: 'effect'; effect: Effect; ctx: EffectCtx }
   | { f: 'choice'; choice: PendingChoice; cont?: ChoiceCont }
 
+/**
+ * A fight, in five numbers.
+ *
+ * The per-turn pairs keep a running value and the best turn so far, because
+ * "twenty damage in one turn" is not answerable from a total -- and a total is
+ * not answerable from a maximum, so both are kept.
+ */
+export interface FightTally {
+  /** Combat damage put into the opponent, this turn and on the best turn. */
+  dmg: number
+  dmgBest: number
+  /** Cards PAID for, this turn and on the best turn. A free acquisition is not a buy. */
+  buys: number
+  buysBest: number
+  /** Cards this side scrapped, all fight. `scrappedThisTurn` resets; this does not. */
+  scrapped: number
+}
+
+export function emptyTally(): FightTally {
+  return { dmg: 0, dmgBest: 0, buys: 0, buysBest: 0, scrapped: 0 }
+}
+
 export interface GameState {
   readonly engineVersion: number
   readonly matchId: string
@@ -286,6 +308,16 @@ export interface GameState {
   /** Enemy bases each side has destroyed. Only a DESTROY_BASES objective reads
    *  it, but it is cheap and public, so it is always tracked. */
   basesDestroyed: Record<PlayerId, number>
+  /**
+   * What each side has managed this fight. Public, and tracked always, for the
+   * same reason `basesDestroyed` is: five integers cost nothing, and the
+   * alternative is a rules-engine that cannot answer "how hard did they hit".
+   *
+   * Nothing in the reducer reads it -- a run's feats do, from outside. That is
+   * on purpose: the engine counts, and what a count is WORTH is somebody else's
+   * question.
+   */
+  tally: Record<PlayerId, FightTally>
   /** A Frontiers Challenge boss, or null. Entirely public. */
   boss: BossState | null
   /** The Arena scenario in force, or null. Entirely public. */

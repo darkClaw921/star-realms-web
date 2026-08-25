@@ -1,5 +1,6 @@
 import { cardDef } from './cards/registry'
 import type { CardDef, MissionObjective } from './cards/types'
+import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
 import type { CardDefId, CardIid, Faction, PlayerId } from './ids'
 import { FACTIONS } from './ids'
@@ -94,6 +95,8 @@ export function costFor(
     buyer: PlayerId
     /** Buyer's Market: counters sitting on THIS copy of the card. */
     counters?: number
+    /** A mission's or a relic's standing discount for this buyer. */
+    scenario?: ScenarioRules | null
   },
 ): number {
   let cost = def.cost
@@ -117,6 +120,7 @@ export function costFor(
     // Buyer's Market: one point off per counter this copy has collected.
     if (v.id === 'buyers-market') cost -= ctx.counters ?? 0
   }
+  if (ctx) cost -= ctx.scenario?.buyDiscount?.[ctx.buyer] ?? 0
   return Math.max(0, cost)
 }
 

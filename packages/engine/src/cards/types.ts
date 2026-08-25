@@ -56,6 +56,8 @@ export type SetId =
   | 'missions'
   | 'command-decks'
   | 'scenarios'
+  /** Забег: реликвии, которые игрок носит рядом со столом. Наши, не издателя. */
+  | 'relics'
 
 /**
  * Printed card text, as tokens. `{trade:2}` / `{combat:4}` / `{authority:3}` are
