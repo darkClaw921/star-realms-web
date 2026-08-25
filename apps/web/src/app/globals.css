@@ -59,8 +59,8 @@
    * обязано быть общим: разойдясь, они разъедутся на широком мониторе. */
   --table-max: 1340px;
 
-  --font-display: 'Fira Sans Condensed', 'Helvetica Neue', sans-serif;
-  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-display: 'Exo 2', 'Helvetica Neue', sans-serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
