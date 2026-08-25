@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cardDef, costFor, EXPLORER, featProgress, RELIC_DEFS, TENTACLE_FACTIONS, VARIANT_CARD,
-  wagerById, wagerFor, wagerProgress, wagerSourceOf,
+  WAGER_PRICE, wagerById, wagerFor, wagerProgress, wagerSourceOf,
   type Action, type CardDefId, type CardIid, type Faction, type FeatSpec, type PlayerId,
 } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
@@ -308,12 +308,19 @@ export function Board({
       dmg: 0, dmgBest: 0, buys: 0, buysBest: 0, scrapped: 0,
     }, v.me))
     const taken = v.me.wager !== null
+    const won = v.me.wager?.won === true
     return {
-      offered: !taken && legal.some((a) => a.t === 'TAKE_WAGER'),
-      label: taken
-        ? (v.me.wager?.won ? RUN_RU.wagerWon : `${wagerRu(spec)} · ${p.have}/${p.need}`)
-        : RUN_RU.wagerTake,
-      hint: taken ? RUN_RU.wagerHintTaken(spec.stake) : `${wagerRu(spec)} · ${RUN_RU.wagerHint(spec.stake)}`,
+      taken,
+      won,
+      // Пари названо ДО того, как его берут: ставка, содержание которой видно
+      // только в подсказке, — это кнопка «сделать что-то», а решение принимают,
+      // зная на что.
+      text: wagerRu(spec),
+      note: won ? RUN_RU.wagerWon
+        : taken ? `${p.have}/${p.need}`
+          : RUN_RU.wagerPrice(WAGER_PRICE),
+      can: legal.some((a) => a.t === 'TAKE_WAGER'),
+      hint: taken ? RUN_RU.wagerHintTaken() : RUN_RU.wagerHint(WAGER_PRICE),
     }
   }, [v.scenario, v.me, v.matchId, v.turn, v.viewer, v.tally, legal])
 
@@ -897,12 +904,13 @@ export function Board({
             {wager && (
               <button
                 type="button"
-                className="btn btn--sm btn--wager"
-                disabled={!wager.offered}
+                className={`btn btn--sm btn--wager${wager.taken ? ' is-live' : ''}`}
+                disabled={wager.taken || !wager.can}
                 onClick={() => onAction({ t: 'TAKE_WAGER' })}
                 title={wager.hint}
               >
-                {wager.label}
+                <span className="btn__wager-text">{wager.text}</span>
+                <span className="btn__wager-note">{wager.note}</span>
               </button>
             )}
             {idx.playAll && (

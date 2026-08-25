@@ -476,6 +476,30 @@ export function relicOffer(
   return shuffled.slice(0, RUN_OFFER_SIZE)
 }
 
+/**
+ * Улучшения, выигранные в бою, но не потраченные в нём.
+ *
+ * Бывает ровно одно: пари взято ударом, который бой и закончил. Забег
+ * доспрашивает между боями — см. `applyUpgrade`.
+ */
+export function owedUpgrades(state: GameState, hero: PlayerId = RUN_HERO): number {
+  return state.players[hero].upgradesOwed
+}
+
+/** Улучшить одну копию в перенесённой колоде. */
+export function applyUpgrade(carry: RunCarry, def: CardDefId, up: number): RunCarry {
+  const at = carry.deck.findIndex((c) => c.def === def && c.up === up)
+  if (at < 0) return carry
+  return {
+    ...carry,
+    deck: [
+      ...carry.deck.slice(0, at),
+      { def, up: up + 1 },
+      ...carry.deck.slice(at + 1),
+    ],
+  }
+}
+
 export function applyRelic(carry: RunCarry, id: RelicId): RunCarry {
   if (carry.relics.includes(id)) return carry
   return { ...carry, relics: [...carry.relics, id] }

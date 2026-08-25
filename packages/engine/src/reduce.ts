@@ -6,7 +6,7 @@ import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
-import { wagerById, wagerFor, wagerProgress, wagerSourceOf } from './wagers'
+import { WAGER_PRICE, wagerById, wagerFor, wagerProgress, wagerSourceOf } from './wagers'
 import {
   allFoesOf, allySlotFaction, allyCountFor, canAttackFace, costFor, defenseOf, effectiveDefId,
   foeOf, foeGroups, foesOf,
@@ -127,6 +127,19 @@ function gain(d: D, pid: PlayerId, what: 'trade' | 'combat' | 'authority', n: nu
 function win(d: D, who: PlayerId, ev: GameEvent[]): void {
   d.winner = who
   d.phase = 'gameOver'
+  // Выигранное пари переживает конец боя.
+  //
+  // Ставку можно взять тем же ударом, который добивает соперника: пари
+  // проверяется раньше победы, потому что игрок должен видеть выплату сразу.
+  // Спросить «какую карту улучшить» уже некогда — стола нет, — поэтому
+  // невыбранные улучшения считаются и уезжают в забег, а он спросит между
+  // боями. Иначе лучший ход партии оставался бы без награды.
+  for (const f of d.resolution) {
+    const owner = f.f === 'effect'
+      ? (f.effect.k === 'UPGRADE_CARD' ? f.ctx.controller : null)
+      : (f.choice.prompt === 'UPGRADE_CARD' ? f.choice.actor : null)
+    if (owner) d.players[owner as PlayerId].upgradesOwed += 1
+  }
   d.resolution = []
   ev.push({ e: 'GAME_OVER', winner: who })
 }
@@ -2297,15 +2310,12 @@ function endTurnFor(d: D, me: PlayerId, ev: GameEvent[]): void {
   p.returnAtEndOfTurn = []
 
   // Пари гасится в конце ТОГО ЖЕ хода, на который взято: ставка на один ход,
-  // и переносить её на следующий значило бы дать бесплатную попытку.
+  // и переносить её на следующий значило бы дать бесплатную попытку. Ничего не
+  // отнимается: цена уже уплачена вперёд, и наказывать второй раз за один
+  // проигрыш — это две цены за одну ставку.
   const bet = p.wager
   if (bet) {
-    if (!bet.won) {
-      const spec = wagerById(bet.id)
-      const n = spec?.stake ?? 0
-      if (n > 0) loseAuthority(d, me, n, ev)
-      ev.push({ e: 'WAGER_LOST', player: me, id: bet.id, n })
-    }
+    if (!bet.won) ev.push({ e: 'WAGER_LOST', player: me, id: bet.id, n: WAGER_PRICE })
     p.wager = null
   }
 
@@ -3159,6 +3169,10 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       if (wagerProgress(w, wagerSourceOf(d.tally[me], p as unknown as PlayerState)).met) {
         throw new IllegalActionError('that turn has already happened')
       }
+      // Цена платится вперёд, и заплатить её насмерть нельзя: авторитета должно
+      // остаться хотя бы очко, иначе пари было бы способом проиграть бой.
+      if (p.authority <= WAGER_PRICE) throw new IllegalActionError('not enough authority')
+      loseAuthority(d, me, WAGER_PRICE, ev)
       p.wager = { id: w.id, turn: d.turn, won: false }
       ev.push({ e: 'WAGER_TAKEN', player: me, id: w.id })
       return

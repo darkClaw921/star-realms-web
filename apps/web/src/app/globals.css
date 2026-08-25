@@ -835,15 +835,45 @@ button { font: inherit; color: inherit; }
   background: radial-gradient(120% 90% at 50% 0%,
     color-mix(in srgb, var(--gold) 22%, transparent) 0%, transparent 62%);
 }
-/* Кнопка пари. Золотом, как и улучшение, которое она обещает: цвет здесь —
- * обещание, а не украшение. */
-.btn--wager {
+/* Кнопка пари.
+ *
+ * До заключения она намеренно тихая — серая, как всё, чего ещё не сделали, — и
+ * несёт на себе текст самой ставки: решают, зная на что. После заключения
+ * загорается золотом (тем же, каким помечено улучшение, которое она обещает) и
+ * становится табло: правая половина считает ход. */
+.btn.btn--wager {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  border-color: var(--rule);
+  color: var(--ink-dim);
+  text-transform: none;
+}
+.btn.btn--wager .btn__wager-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.btn.btn--wager:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--gold) 55%, var(--rule));
   color: var(--gold);
 }
-.btn--wager:disabled {
-  opacity: 0.62;
-  color: color-mix(in srgb, var(--gold) 70%, var(--ink-faint));
+.btn.btn--wager:not(:disabled):hover .btn__wager-note { color: var(--gold); }
+/* Заключённое пари — не «недоступная кнопка», а действующая ставка, поэтому
+ * гасить его как отключённое нельзя: оно самое яркое, что есть в этом ряду. */
+.btn.btn--wager.is-live,
+.btn.btn--wager.is-live:disabled {
+  opacity: 1;
+  border-color: var(--gold);
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 24%, transparent);
+}
+.btn.btn--wager.is-live .btn__wager-note {
+  color: var(--gold);
+  font-weight: 700;
 }
 
 /* Подкрученное число. Золотом поверх собственного цвета значка: игрок должен

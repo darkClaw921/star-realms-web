@@ -15,6 +15,11 @@ import type { FightTally } from './state'
  * Deliberately readable off counters the engine already keeps. A wager that
  * needed its own bookkeeping would be a rule the reducer has to enforce; this
  * way it is arithmetic over a turn that was going to be counted anyway.
+ *
+ * Платится ВПЕРЁД, а не по итогу. Ставка, которая наказывает только за провал,
+ * бесплатна до самого конца хода, и брать её можно не думая; цена на входе
+ * делает выбор выбором — и делает его сразу, тогда, когда игрок ещё видит свою
+ * руку и решает, каким будет этот ход.
  */
 export type WagerId = 'blitz' | 'buyout' | 'armada' | 'purge' | 'windfall'
 
@@ -23,9 +28,13 @@ export interface Wager {
   /** What is counted, all within the turn the wager was taken. */
   readonly k: 'DAMAGE' | 'BUYS' | 'PLAYED' | 'SCRAPPED' | 'TRADE'
   readonly n: number
-  /** Authority lost if the turn ends with the bet unmet. */
-  readonly stake: number
 }
+
+/**
+ * Чего стоит войти в пари. Один и тот же для всех пяти: цена — это цена права
+ * рискнуть, а не оценка сложности; сложность уже в самой ставке.
+ */
+export const WAGER_PRICE = 3
 
 /**
  * The five bets.
@@ -35,11 +44,11 @@ export interface Wager {
  * deck you happen to have, which is what makes taking it a decision.
  */
 export const WAGERS: readonly Wager[] = [
-  { id: 'blitz', k: 'DAMAGE', n: 10, stake: 4 },
-  { id: 'buyout', k: 'BUYS', n: 2, stake: 3 },
-  { id: 'armada', k: 'PLAYED', n: 4, stake: 3 },
-  { id: 'purge', k: 'SCRAPPED', n: 2, stake: 3 },
-  { id: 'windfall', k: 'TRADE', n: 8, stake: 4 },
+  { id: 'blitz', k: 'DAMAGE', n: 10 },
+  { id: 'buyout', k: 'BUYS', n: 2 },
+  { id: 'armada', k: 'PLAYED', n: 4 },
+  { id: 'purge', k: 'SCRAPPED', n: 2 },
+  { id: 'windfall', k: 'TRADE', n: 8 },
 ]
 
 export function wagerById(id: string): Wager | null {

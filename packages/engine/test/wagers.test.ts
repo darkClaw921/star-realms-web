@@ -8,7 +8,7 @@ import {
 import { createGame } from '../src/setup'
 import { actorOf, type GameState } from '../src/state'
 import { redact } from '../src/view'
-import { WAGERS, wagerFor, type WagerId } from '../src/wagers'
+import { WAGERS, WAGER_PRICE, wagerFor, type WagerId } from '../src/wagers'
 import { choose, run } from './scenario'
 
 const carry = (over: Partial<RunCarry> = {}): RunCarry => ({ ...runStartCarry(), ...over })
@@ -102,15 +102,48 @@ describe('settling a bet', () => {
     expect(after).toBe(before)
   })
 
-  it('costs the stake if the turn ends short', () => {
+  it('costs its price the moment it is taken, and nothing more', () => {
     const s = { ...structuredClone(fight()), turn: blitzTurn }
-    const taken = run(s, { t: 'TAKE_WAGER' }).state
-    const before = taken.players.p1.authority
-    const ended = run(taken, { t: 'END_TURN' })
-    expect(ended.state.players.p1.authority).toBe(before - 4)
+    const before = s.players.p1.authority
+    const taken = run(s, { t: 'TAKE_WAGER' })
+    // Цена вперёд: за право рискнуть платят сразу.
+    expect(taken.state.players.p1.authority).toBe(before - WAGER_PRICE)
+
+    const after = taken.state.players.p1.authority
+    const ended = run(taken.state, { t: 'END_TURN' })
+    // Провал больше ничего не отнимает: две цены за одну ставку — это не ставка.
+    expect(ended.state.players.p1.authority).toBe(after)
     expect(ended.events.some((e) => e.e === 'WAGER_LOST')).toBe(true)
     // И не переносится на следующий ход.
     expect(ended.state.players.p1.wager).toBeNull()
+  })
+
+  it('cannot be paid for with the last of your authority', () => {
+    const s = { ...structuredClone(fight()), turn: blitzTurn }
+    const poor = structuredClone(s)
+    poor.players.p1.authority = WAGER_PRICE
+    expect(enumerateLegalActions(redact(poor, 'p1'), 'p1').some((a) => a.t === 'TAKE_WAGER'))
+      .toBe(false)
+    expect(() => reduce(poor, { actor: 'p1', action: { t: 'TAKE_WAGER' } })).toThrow()
+    // На очко больше — уже можно.
+    const barely = structuredClone(s)
+    barely.players.p1.authority = WAGER_PRICE + 1
+    expect(run(barely, { t: 'TAKE_WAGER' }).state.players.p1.authority).toBe(1)
+  })
+
+  it('keeps a win that landed on the killing blow, for the run to spend later', () => {
+    const s = { ...structuredClone(fight()), turn: blitzTurn }
+    const taken = run(s, { t: 'TAKE_WAGER' }).state
+    const armed = structuredClone(taken)
+    // Ровно тот удар, который и берёт ставку, и заканчивает бой.
+    armed.players.p1.combat = 40
+    armed.players.p2.authority = 12
+    const done = run(armed, { t: 'ATTACK_PLAYER', amount: 40 })
+    expect(done.state.winner).toBe('p1')
+    expect(done.events.some((e) => e.e === 'WAGER_WON')).toBe(true)
+    // Выбирать уже негде, поэтому улучшение не пропадает, а ждёт забега.
+    expect(done.state.players.p1.upgradesOwed).toBe(1)
+    expect(done.state.resolution).toEqual([])
   })
 
   it('cannot be taken on a turn that already met it', () => {

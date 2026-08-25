@@ -4,7 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { SeatNames } from '@/match/log'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  challengeById, challengeSetup, featEarned, harvestRun, missionById, runNode, runSetup,
+  challengeById, challengeSetup, featEarned, harvestRun, missionById, owedUpgrades,
+  runNode, runSetup,
   type Action, type ChallengeLevel, type PlayerId,
 } from '@sr/engine'
 import type { Difficulty } from '@/bot/bot'
@@ -154,6 +155,7 @@ function Play(): React.JSX.Element {
       run.save,
       harvestRun(final, 'p1', run.save.carry),
       featEarned(final, run.node.feat, 'p1'),
+      owedUpgrades(final, 'p1'),
     )
     noteRecord(next.cleared)
   }, [run, won, client])

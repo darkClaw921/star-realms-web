@@ -5,7 +5,7 @@ import { costFor, defenseAgainst, objectiveMet } from './helpers'
 import { splinterSet } from './reduce'
 import type { ChoiceOption } from './choices'
 import { EXPLORER_COST } from './state'
-import { wagerFor, wagerProgress, wagerSourceOf } from './wagers'
+import { WAGER_PRICE, wagerFor, wagerProgress, wagerSourceOf } from './wagers'
 import type { InPlayCardView, PlayerView } from './view'
 
 /**
@@ -194,7 +194,8 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
 
   // Забег: ставка на собственный ход. Только на своём ходу, раз за ход, и
   // только пока она ещё не выиграна сама собой — обещать уже сделанное нельзя.
-  if (v.scenario?.wagers && v.activePlayer === seat && me.wager === null) {
+  if (v.scenario?.wagers && v.activePlayer === seat && me.wager === null
+      && me.authority > WAGER_PRICE) {
     const w = wagerFor(v.matchId, v.turn, seat)
     if (!wagerProgress(w, wagerSourceOf(v.tally[seat], me)).met) out.push({ t: 'TAKE_WAGER' })
   }

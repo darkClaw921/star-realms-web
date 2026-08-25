@@ -114,6 +114,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     handSize: HAND_SIZE,
     commander: null,
     wager: null,
+    upgradesOwed: 0,
   }
 }
 

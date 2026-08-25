@@ -13,7 +13,7 @@ import { RELIC_RU } from '@/i18n/relics.ru'
 import { featRu, RUN_KIND_RU, RUN_NODE_RU, RUN_RU } from '@/i18n/run.ru'
 import { UI } from '@/i18n/ui'
 import {
-  abandonRun, deckTally, loadRun, runRecord, startRun, takeRelic, takeReward,
+  abandonRun, deckTally, loadRun, runRecord, startRun, takeRelic, takeReward, takeUpgrade,
   type RunSave,
 } from '@/run/state'
 
@@ -248,6 +248,28 @@ function RelicShelf({ relics }: { relics: readonly RelicId[] }): React.JSX.Eleme
   )
 }
 
+/**
+ * Невыбранное улучшение — то самое, что выиграно последним ударом боя.
+ *
+ * Показывается той же полосой колоды, что и «убрать карту»: выбирают из тех же
+ * карт и тем же движением, и заводить для этого второй способ листать колоду
+ * было бы разной механикой для одного действия.
+ */
+function UpgradePicker({ save, onTake }: {
+  save: RunSave
+  onTake: (c: RunCard) => void
+}): React.JSX.Element {
+  return (
+    <section className="run-reward">
+      <p className="eyebrow">
+        {RUN_RU.upgradeTitle}{save.owed > 1 ? ` · ${save.owed}` : ''}
+      </p>
+      <p className="run-note">{RUN_RU.upgradeLede}</p>
+      <DeckStrip save={save} picking onPick={onTake} />
+    </section>
+  )
+}
+
 export default function RunPage(): React.JSX.Element {
   const router = useRouter()
   // Сохранение живёт в localStorage, которого нет на сервере: первый кадр —
@@ -267,6 +289,9 @@ export default function RunPage(): React.JSX.Element {
   }, [])
   const onTakeRelic = useCallback((id: RelicId) => {
     setSave((s) => (s ? takeRelic(s, id) : s))
+  }, [])
+  const onTakeUpgrade = useCallback((c: RunCard) => {
+    setSave((s) => (s ? takeUpgrade(s, c) : s))
   }, [])
 
   if (!ready) return <main className="menu"><p className="eyebrow">{UI.loading}</p></main>
@@ -319,13 +344,19 @@ export default function RunPage(): React.JSX.Element {
             </div>
 
             <Ladder
-              at={save.stage === 'reward' || save.stage === 'relic' ? save.index + 1 : save.index}
+              at={save.stage === 'fight' || save.stage === 'lost'
+                ? save.index
+                : save.index + 1}
               cleared={save.cleared}
             />
 
             {save.stage === 'reward' && <RewardPicker save={save} onTake={onTake} />}
 
             {save.stage === 'relic' && <RelicPicker save={save} onTake={onTakeRelic} />}
+
+            {save.stage === 'upgrade' && (
+              <UpgradePicker save={save} onTake={onTakeUpgrade} />
+            )}
 
             {save.stage === 'fight' && node && (
               <>

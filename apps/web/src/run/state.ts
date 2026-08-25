@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  applyRelic, applyReward, RUN_LENGTH, relicOffer, runNode, runStartCarry,
+  applyRelic, applyReward, applyUpgrade, RUN_LENGTH, relicOffer, runNode, runStartCarry,
   type CardDefId, type RelicId, type RunCard, type RunCarry, type RunReward,
 } from '@sr/engine'
 
@@ -27,6 +27,8 @@ export type RunStage =
   | 'reward'
   /** Награда взята, а задача боя выполнена — остался артефакт. */
   | 'relic'
+  /** Пари выиграно на последнем ударе: улучшение осталось невыбранным. */
+  | 'upgrade'
   | 'won'
   | 'lost'
 
@@ -41,6 +43,8 @@ export interface RunSave {
   readonly cleared: number
   /** Выполнена ли задача в последнем выигранном бою. */
   readonly featDone: boolean
+  /** Улучшения, выигранные в бою, но не потраченные в нём. */
+  readonly owed: number
 }
 
 function fresh(): RunSave {
@@ -51,6 +55,7 @@ function fresh(): RunSave {
     stage: 'fight',
     cleared: 0,
     featDone: false,
+    owed: 0,
   }
 }
 
@@ -91,7 +96,8 @@ export function loadRun(): RunSave | null {
     if (!deck || !bases) return null
     if (s.index < 1 || s.index > RUN_LENGTH + 1) return null
     const stage: RunStage =
-      s.stage === 'reward' || s.stage === 'relic' || s.stage === 'won' || s.stage === 'lost'
+      s.stage === 'reward' || s.stage === 'relic' || s.stage === 'upgrade'
+        || s.stage === 'won' || s.stage === 'lost'
         ? s.stage : 'fight'
     return {
       seed: s.seed,
@@ -111,6 +117,7 @@ export function loadRun(): RunSave | null {
       stage,
       cleared: typeof s.cleared === 'number' ? s.cleared : 0,
       featDone: s.featDone === true,
+      owed: typeof s.owed === 'number' && s.owed > 0 ? s.owed : 0,
     }
   } catch {
     return null
@@ -130,14 +137,35 @@ export function abandonRun(): void {
   try { localStorage.removeItem(KEY) } catch { /* не критично */ }
 }
 
-/** Бой выигран: колода, с которой из него вышли, и есть колода следующего боя. */
-export function clearedNode(save: RunSave, carry: RunCarry, featDone: boolean): RunSave {
+/**
+ * Бой выигран: колода, с которой из него вышли, и есть колода следующего боя.
+ *
+ * `owed` — улучшения, выигранные последним ударом, когда спрашивать было уже
+ * некогда. Их выбирают ПЕРВЫМИ, до обычной награды: это плата за то, что уже
+ * сделано, а награда — за победу.
+ */
+export function clearedNode(
+  save: RunSave, carry: RunCarry, featDone: boolean, owed = 0,
+): RunSave {
+  const done = save.index >= RUN_LENGTH
   return write({
     ...save,
     carry,
     cleared: save.index,
     featDone,
-    stage: save.index >= RUN_LENGTH ? 'won' : 'reward',
+    owed,
+    stage: owed > 0 && carry.deck.length > 0 ? 'upgrade' : done ? 'won' : 'reward',
+  })
+}
+
+/** Невыбранное улучшение потрачено. Дальше — обычная награда за бой. */
+export function takeUpgrade(save: RunSave, c: RunCard): RunSave {
+  const left = Math.max(0, save.owed - 1)
+  return write({
+    ...save,
+    carry: applyUpgrade(save.carry, c.def, c.up),
+    owed: left,
+    stage: left > 0 ? 'upgrade' : save.cleared >= RUN_LENGTH ? 'won' : 'reward',
   })
 }
 
