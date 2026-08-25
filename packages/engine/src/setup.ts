@@ -390,19 +390,45 @@ export function createGame(setup: MatchSetup): GameState {
     tradeRow.push(c)
   }
 
+  /**
+   * Два сценария начинают действовать раньше, чем кто-либо успевает походить.
+   *
+   * «At the start of each player's turn» — первый ход первого игрока тоже его
+   * ход, а начало хода движок отсчитывает от КОНЦА предыдущего, которого здесь
+   * ещё не было. Без этих двух строк оба правила пропускали ровно один ход —
+   * и всегда один и тот же: первый игрок за всю партию добирал на карту меньше
+   * соперника, а ряд успевал прожить лишний ход нетронутым.
+   */
+  if (variant?.id === 'fleeting-opportunities') {
+    const far = tradeRow.reduce((at, c, i) => (c ? i : at), -1)
+    if (far >= 0) {
+      setupScrapped.push(tradeRow[far] as CardInstance)
+      // Сдвиг на одну позицию: место освобождается у торговой колоды, и его
+      // берёт следующая карта — так же, как это делает начало каждого хода.
+      tradeRow.copyWithin(1, 0, far)
+      let c = tradeDeck.shift() ?? null
+      while (c && cardDef(c.def).type === 'event') {
+        setupScrapped.push(c)
+        c = tradeDeck.shift() ?? null
+      }
+      tradeRow[0] = c
+    }
+  }
+  const warpDraw = variant?.id === 'maximum-warp' ? 1 : 0
+
   const second = coopPlayers ? (bossSeatId as PlayerId) : (setup.firstPlayer === 'p1' ? 'p2' : 'p1')
   // The first player's short opening hand is two fewer than their normal one,
   // which is what FIRST_TURN_HAND_SIZE is against the standard five -- so a
   // commander with a different hand size keeps the same handicap.
   const firstHand = Math.max(
     1, players[setup.firstPlayer].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE),
-  )
+  ) + warpDraw
   // Challenge Notes, page 23: "When the players play first ... they get a
   // three-card starting hand on their first turn of the game." All of them, not
   // just one -- there is no second player to hand the long hand to.
   const openers: PlayerId[] = coopPlayers ? humans : [setup.firstPlayer]
   for (const pid of openers) {
-    const n = Math.max(1, players[pid].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE))
+    const n = Math.max(1, players[pid].handSize - (HAND_SIZE - FIRST_TURN_HAND_SIZE)) + warpDraw
     for (let i = 0; i < (coopPlayers ? n : firstHand); i++) {
       const c = players[pid].deck.shift()
       if (c) players[pid].hand.push(c)

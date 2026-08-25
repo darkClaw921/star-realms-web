@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  cardDef, costFor, EXPLORER, TENTACLE_FACTIONS,
-  type Action, type CardIid, type Faction, type PlayerId,
+  cardDef, costFor, EXPLORER, TENTACLE_FACTIONS, VARIANT_CARD,
+  type Action, type CardDefId, type CardIid, type Faction, type PlayerId,
 } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
 import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
@@ -32,6 +32,9 @@ const SLOT_LABEL: Record<
   ally2: UI.slotAlly2, ally3: UI.slotAlly3, ally4: UI.slotAlly4,
   doubleAlly: UI.slotDoubleAlly, scrap: UI.slotScrap, splinter: UI.slotSplinter,
 }
+
+/** Карты сценариев — по ним зона раскрытых гамбитов делится на две вкладки. */
+const VARIANT_DEFS = new Set<CardDefId>(Object.values(VARIANT_CARD))
 
 /** Localised card name, falling back to the engine's English. */
 const nameOf = (def: Parameters<typeof cardDef>[0]): string => cardName(def, cardDef(def).name)
@@ -214,36 +217,49 @@ export function Board({
   )
   // Карта в своей зоне рисуется одинаково, где бы она ни лежала: базы стоят
   // стопкой слева, корабли рядом справа, но кнопки свойств у них те же самые.
-  const myInPlayCard = (c: (typeof v.me.inPlay)[number]): React.JSX.Element => {
-    const slots = idx.activate.get(c.iid)
+  const slotButtons = (iid: string): React.JSX.Element | null => {
+    const slots = idx.activate.get(iid)
+    if (!slots || slots.size === 0) return null
     return (
-      <div key={c.iid} className="zone">
-        <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
-        {slots && slots.size > 0 && (
-          <div className="actions">
-            {(['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly', 'scrap', 'splinter'] as const)
-              .filter((s) => slots.has(s)).map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`btn btn--sm${s === 'scrap' ? ' btn--danger' : ''}`}
-                onClick={() => onAction({ t: 'ACTIVATE', card: c.iid as CardIid, slot: s })}
-              >
-                {SLOT_LABEL[s]}
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="actions">
+        {(['primary', 'ally', 'ally2', 'ally3', 'ally4', 'doubleAlly', 'scrap', 'splinter'] as const)
+          .filter((s) => slots.has(s)).map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`btn btn--sm${s === 'scrap' ? ' btn--danger' : ''}`}
+            onClick={() => onAction({ t: 'ACTIVATE', card: iid as CardIid, slot: s })}
+          >
+            {SLOT_LABEL[s]}
+          </button>
+        ))}
       </div>
     )
   }
+  const myInPlayCard = (c: (typeof v.me.inPlay)[number]): React.JSX.Element => (
+    <div key={c.iid} className="zone">
+      <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
+      {slotButtons(c.iid)}
+    </div>
+  )
 
-  const hasGambits = v.me.gambits.length > 0 || v.me.gambitsInPlay.length > 0
+  /**
+   * Карта сценария живёт в зоне раскрытых гамбитов, но гамбитом не является.
+   *
+   * Зона переиспользована движком не зря — это тоже карта сбоку от стола со
+   * свойством раз в ход. А вот вкладка у неё своя: сценарий действует на обоих
+   * игроков всю партию, и лежать он должен там, где его ищут глазами, а не под
+   * ярлыком «Гамбиты», которых в этой партии может не быть вовсе.
+   */
+  const scenarioCards = v.me.gambitsInPlay.filter((c) => VARIANT_DEFS.has(c.def))
+  const revealedGambits = v.me.gambitsInPlay.filter((c) => !VARIANT_DEFS.has(c.def))
+  const hasGambits = v.me.gambits.length > 0 || revealedGambits.length > 0
   const hasMissions = v.me.missions.length > 0 || v.me.missionsDone.length > 0
   const hasTech = myTech.length > 0
   const hasHeroes = myHeroes.length > 0
   const hasCommander = v.me.commander !== null
-  const hasRail = hasGambits || hasMissions || hasTech || hasHeroes || hasCommander
+  const hasVariant = scenarioCards.length > 0
+  const hasRail = hasGambits || hasMissions || hasTech || hasHeroes || hasCommander || hasVariant
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
 
@@ -602,10 +618,26 @@ export function Board({
                   <span className="eyebrow">{UI.gambitFaceDown}</span>
                 </div>
               ))}
-              {v.me.gambitsInPlay.map((c) => (
+              {revealedGambits.map((c) => (
                 <div key={c.iid} className="zone">
-                  <Card def={c.def} title={nameOf(c.def)} />
+                  <Card def={c.def} iid={c.iid} title={nameOf(c.def)} />
+                  {slotButtons(c.iid)}
                   <span className="eyebrow">{UI.gambitRevealed}</span>
+                </div>
+              ))}
+            </SidePlate>
+          )}
+
+          {hasVariant && (
+            <SidePlate
+              label={UI.variantName}
+              count={scenarioCards.length}
+              alert={scenarioCards.some((c) => (idx.activate.get(c.iid)?.size ?? 0) > 0)}
+            >
+              {scenarioCards.map((c) => (
+                <div key={c.iid} className="zone">
+                  <Card def={c.def} iid={c.iid} title={nameOf(c.def)} />
+                  {slotButtons(c.iid)}
                 </div>
               ))}
             </SidePlate>

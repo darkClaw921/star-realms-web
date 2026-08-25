@@ -50,7 +50,11 @@ export function enumerateLegalActions(v: PlayerView, seat: PlayerView['viewer'])
   // Revealed gambits offer their abilities exactly as cards in play do.
   for (const card of me.gambitsInPlay) {
     const eff = cardDef(card.def)
-    if (!card.used.primary && eff.activated && eff.primary.length > 0) {
+    // Цена — часть законности, а не пожелание: четыре арена-сценария живут в
+    // этой зоне и все четыре стоят торговли. Без проверки ход предлагался при
+    // нулевой торговле, и нажатие упиралось в отказ движка.
+    if (!card.used.primary && eff.activated && eff.primary.length > 0
+        && me.trade >= (eff.primaryCost ?? 0)) {
       out.push({ t: 'ACTIVATE', card: card.iid, slot: 'primary' })
     }
     for (const [slot, effects, pinned] of [

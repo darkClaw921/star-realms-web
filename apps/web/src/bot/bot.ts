@@ -48,8 +48,13 @@ export function chooseAction(
 
   // 2. Free value: base primaries and ally abilities, repeated to a fixpoint by
   //    virtue of being re-asked every step.
+  //    Свойство с ценой бесплатным не является: четыре арена-сценария и
+  //    технологии High Alert берут за него торговлю, и «бесплатная ценность»
+  //    съедала её раньше покупки — бот каждый ход уходил в ряд на монету
+  //    беднее, чем мог.
   const free = legal.filter((a) =>
-    a.t === 'ACTIVATE' && (a.slot === 'primary' || a.slot === 'ally'))
+    a.t === 'ACTIVATE' && (a.slot === 'primary' || a.slot === 'ally')
+    && priceOf(v, a.card, a.slot) === 0)
   if (free.length > 0) return free[0] as Action
 
   // 3. Scrap for TRADE before buying -- otherwise the bot never reaches the card
@@ -79,6 +84,12 @@ export function chooseAction(
       return pickSoftmax(scored, TEMP[difficulty], rand)
     }
   }
+
+  // 4a. Сдача. Покупать уже нечего — торговля, оставшаяся на руках, пропадёт
+  //     в конце хода, и платное свойство обменивает её хоть на что-то.
+  const paid = legal.filter((a) =>
+    a.t === 'ACTIVATE' && a.slot === 'primary' && priceOf(v, a.card, a.slot) > 0)
+  if (paid.length > 0 && v.me.trade > 0) return paid[0] as Action
 
   // 5. Combat last. Check lethal BEFORE spending combat on outposts.
   const attackFace = legal.filter((a) => a.t === 'ATTACK_PLAYER')
@@ -126,8 +137,19 @@ function playOrder(v: PlayerView, iid: string): number {
 function defOfInPlay(v: PlayerView, iid: string): CardDefId | null {
   const mine = v.me.inPlay.find((c) => c.iid === iid)
   if (mine) return mine.copiedDef ?? mine.def
+  // Карта сценария и раскрытый гамбит стоят в своей зоне, но свойства у них
+  // такие же, и цену за них спрашивают там же.
+  const side = v.me.gambitsInPlay.find((c) => c.iid === iid)
+  if (side) return side.def
   const theirs = v.opponent.inPlay.find((c) => c.iid === iid)
   return theirs ? theirs.def : null
+}
+
+/** Сколько торговли просит свойство. Платят только за основное. */
+function priceOf(v: PlayerView, iid: string, slot: string): number {
+  if (slot !== 'primary') return 0
+  const def = defOfInPlay(v, iid)
+  return def ? (cardDef(def).primaryCost ?? 0) : 0
 }
 
 function defenseOf(v: PlayerView, iid: string): number {

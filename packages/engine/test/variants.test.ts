@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createGame } from '../src/setup'
-import { VARIANTS, type VariantId } from '../src/variants'
+import { VARIANTS, VARIANT_CARD, type VariantId } from '../src/variants'
+import { enumerateLegalActions } from '../src/legal'
+import { actorOf } from '../src/state'
+import { redact } from '../src/view'
+import { reduce } from '../src/reduce'
 import { CARDS, cardDef, EXPLORER, SCOUT, VIPER } from '../src/cards/registry'
 import { costFor } from '../src/helpers'
 import { asDefId } from '../src/ids'
-import { legalFor, playIid, rowIid, run, scenario } from './scenario'
+import { byDef, choose, legalFor, playIid, rowIid, run, scenario } from './scenario'
 
 const D = asDefId
 
@@ -69,6 +73,60 @@ describe('scenarios with an ability', () => {
     const st = run(s, { t: 'END_TURN' }).state
     // p2's turn began: their hand is their five plus the scenario's card.
     expect(st.players.p2.hand.length).toBe(before + 1)
+  })
+
+  it('Maximum Warp counts the first turn of the game as a turn', () => {
+    // The opening three plus the card the scenario draws. The engine measures
+    // the start of a turn from the end of the previous one, and the first
+    // player has no previous turn -- so this is the one that is easy to lose.
+    expect(game('maximum-warp').players.p1.hand).toHaveLength(4)
+  })
+
+  it('Emergency Repairs buys back the discard pile, once a turn', () => {
+    const board = scenario({ me: { hand: [], discard: ['ram', 'cutter'], deck: ['scout'], trade: 3 } })
+    board.variant = { id: 'emergency-repairs' }
+    board.players.p1.gambitsInPlay = game('emergency-repairs').players.p1.gambitsInPlay
+    const card = board.players.p1.gambitsInPlay[0]!.iid
+    const st = run(board, { t: 'ACTIVATE', card, slot: 'primary' }).state
+    expect(st.players.p1.trade).toBe(2)
+    expect(st.players.p1.discard).toHaveLength(0)
+    expect(st.players.p1.deck).toHaveLength(3)
+    expect(legalFor(st, 'p1').some((a) => a.t === 'ACTIVATE' && a.card === card)).toBe(false)
+  })
+
+  it('Ruthless Efficiency scraps a card out of hand for a trade', () => {
+    const board = scenario({ me: { hand: ['scout', 'viper'], trade: 3 } })
+    board.variant = { id: 'ruthless-efficiency' }
+    board.players.p1.gambitsInPlay = game('ruthless-efficiency').players.p1.gambitsInPlay
+    const card = board.players.p1.gambitsInPlay[0]!.iid
+    let st = run(board, { t: 'ACTIVATE', card, slot: 'primary' }).state
+    expect(st.players.p1.trade).toBe(2)
+    st = run(st, choose(st, byDef('scout'))).state
+    expect(st.players.p1.hand.map((c) => c.def)).toEqual([D('viper')])
+    expect(st.scrapHeap.some((c) => c.def === D('scout'))).toBe(true)
+  })
+
+  it('Flare Mining draws then discards for a trade', () => {
+    const board = scenario({ me: { hand: ['scout'], deck: ['ram', 'cutter'], trade: 3 } })
+    board.variant = { id: 'flare-mining' }
+    board.players.p1.gambitsInPlay = game('flare-mining').players.p1.gambitsInPlay
+    const card = board.players.p1.gambitsInPlay[0]!.iid
+    let st = run(board, { t: 'ACTIVATE', card, slot: 'primary' }).state
+    expect(st.players.p1.trade).toBe(2)
+    // Drawn first, so the drawn card is one of the two that may be discarded.
+    expect(st.players.p1.hand.map((c) => c.def)).toEqual([D('scout'), D('ram')])
+    st = run(st, choose(st, byDef('scout'))).state
+    expect(st.players.p1.hand.map((c) => c.def)).toEqual([D('ram')])
+    expect(st.players.p1.discard.map((c) => c.def)).toEqual([D('scout')])
+  })
+
+  it('hands the scenario card to both players, whichever scenario it is', () => {
+    for (const [v, def] of Object.entries(VARIANT_CARD)) {
+      const s = game(v as VariantId)
+      for (const pid of ['p1', 'p2'] as const) {
+        expect(s.players[pid].gambitsInPlay.map((c) => c.def), v).toEqual([def])
+      }
+    }
   })
 })
 
@@ -212,6 +270,35 @@ describe('scenarios that are simply true', () => {
     expect(st.tradeRow.filter(Boolean)).toHaveLength(5)
   })
 
+  it('Fleeting Opportunities slides the row instead of eating one slot', () => {
+    const board = scenario({
+      me: { hand: [] },
+      tradeRow: ['cutter', 'ram', 'imperial-fighter', 'battle-pod', 'trade-bot'],
+    })
+    board.variant = { id: 'fleeting-opportunities' }
+    // По iid, а не по названию: в колоде лежат другие копии тех же карт, и
+    // сравнение по имени прошло бы на пришедшем из колоды двойнике.
+    const opening = board.tradeRow.map((c) => c!.iid)
+    let st = board
+    for (let i = 0; i < 5; i++) st = run(st, { t: 'END_TURN' }).state
+    // Five turn boundaries, five cards gone: every card the row opened with has
+    // walked to the far end and left. Without the slide the refill would land
+    // back in the slot just vacated and the other four would stand there for
+    // the rest of the game.
+    for (const iid of opening) {
+      expect(st.tradeRow.some((c) => c?.iid === iid), iid).toBe(false)
+      expect(st.scrapHeap.some((c) => c.iid === iid), iid).toBe(true)
+    }
+    expect(st.tradeRow.filter(Boolean)).toHaveLength(5)
+  })
+
+  it('Fleeting Opportunities counts the first turn of the game as a turn', () => {
+    const s = game('fleeting-opportunities')
+    expect(s.tradeRow.filter(Boolean)).toHaveLength(5)
+    // One card was already eaten before anyone played: the far slot of the deal.
+    expect(s.scrapHeap.filter((c) => cardDef(c.def).type !== 'event')).toHaveLength(1)
+  })
+
   it('Ready Reserves keeps the hand and charges a draw for each card kept', () => {
     const board = scenario({
       me: {
@@ -225,6 +312,28 @@ describe('scenarios that are simply true', () => {
     expect(st.players.p1.discard).toHaveLength(0)
     expect(st.players.p1.hand).toHaveLength(5)
     expect(st.players.p1.hand.filter((c) => c.def === D('ram'))).toHaveLength(3)
+  })
+
+  it('plays every one of the twenty through to a finished game', () => {
+    // Не про конкретное правило, а про то, что ни одно из двадцати не заводит
+    // партию в тупик: у сценария нет своего экрана, и сломанный ход
+    // обнаруживался бы уже в живой игре — зависшим столом без единого хода.
+    for (const v of VARIANTS) {
+      let st = createGame({ matchId: 'sweep', seed: `sweep-${v}`, firstPlayer: 'p1', variant: v })
+      let rng = 1
+      for (let i = 0; i < 600 && !st.winner; i++) {
+        const seat = actorOf(st)
+        const acts = enumerateLegalActions(redact(st, seat), seat)
+        expect(acts.length, `${v}: no legal action on turn ${st.turn}`).toBeGreaterThan(0)
+        rng = (rng * 1103515245 + 12345) % 2147483648
+        const busy = acts.filter((a) => a.t !== 'END_TURN' && a.t !== 'CONCEDE')
+        const pick = busy.length > 0 && rng % 4 !== 0
+          ? busy[rng % busy.length]!
+          : (acts.find((a) => a.t === 'END_TURN') ?? busy[0]!)
+        st = reduce(st, { actor: seat, action: pick }).state
+      }
+      expect(st.turn, `${v}: never got anywhere`).toBeGreaterThan(5)
+    }
   })
 
   it('leaves a card in play alone when no scenario is in force', () => {

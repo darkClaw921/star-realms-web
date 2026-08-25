@@ -2230,9 +2230,7 @@ function endTurnFor(d: D, me: PlayerId, ev: GameEvent[]): void {
   // scrapped and the row slides down. Done at the turn boundary, which is where
   // the row is otherwise untouched, so it reads in one place.
   if (d.variant?.id === 'fleeting-opportunities') {
-    const gone = takeFarthest(d)
-    if (gone) toScrapHeap(d, gone, 'tradeRow', null, ev)
-    refillTradeRow(d, ev)
+    slideTradeRow(d, ev)
   }
 
   // A deck boss draws what its challenge card says, not the standard five.
@@ -2457,6 +2455,32 @@ function takeFarthest(d: D): CardInstance | null {
   const card = d.tradeRow[i] as CardInstance
   d.tradeRow[i] = null
   return card
+}
+
+/**
+ * Fleeting Opportunities, printed in full: "scrap the card furthest from the
+ * trade deck, slide all the cards in the trade row over one space, then add the
+ * top card of the trade deck to the trade row".
+ *
+ * The slide is the whole scenario, and it is easy to drop. Scrapping the far
+ * card and simply refilling looks right for one turn and is wrong for the game:
+ * the refill lands back in the slot just vacated, so the SAME slot is eaten
+ * every turn and the other four cards stand there for the rest of the match.
+ * With the slide, every card walks the row and leaves after five turns, which
+ * is the pressure the card exists to create.
+ */
+function slideTradeRow(d: D, ev: GameEvent[]): void {
+  const gone = takeFarthest(d)
+  if (gone) toScrapHeap(d, gone, 'tradeRow', null, ev)
+  // Bought cards leave holes; the survivors close them up as they slide, and
+  // the near end of the row is what the refill below fills from the deck.
+  const width = TRADE_ROW_SIZE + d.extraRowSlots
+  const rest = d.tradeRow.filter((c): c is CardInstance => c !== null)
+  d.tradeRow = Array.from({ length: width }, (_, i) => {
+    const from = i - (width - rest.length)
+    return from >= 0 ? (rest[from] as CardInstance) : null
+  })
+  refillTradeRow(d, ev)
 }
 
 /**
