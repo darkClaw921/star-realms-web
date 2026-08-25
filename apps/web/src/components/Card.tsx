@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, memo, useCallback, useRef, useState } from 'react'
-import { cardDef, RELIC_DEFS, upgradeGain, type CardDefId, type Effect } from '@sr/engine'
+import { cardDef, RELIC_DEFS, upgradeTargets, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 
 /** Размер иллюстраций артефактов. Тот же 4:3, что у остального арта. */
@@ -95,13 +95,25 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardF
    * Улучшение видно в самих цифрах, а не только в печати «+N» у имени.
    *
    * Иначе игрок каждый раз считает в уме: карта говорит «1 очко боя», рядом
-   * стоит «+2», а даёт она три. Прибавка идёт ровно в тот значок, в который её
-   * кладёт движок (upgradeGain), и подсвечивается — чтобы было видно, что это
-   * не печатное число.
+   * стоит «+2», а даёт она три. Куда именно падает прибавка, знает движок —
+   * и знает по свойствам, а не по слотам: улучшение поднимает то свойство,
+   * которое сработало, включая обе ветки «ИЛИ» и союзные с утилем. Поэтому
+   * подсказка считается для каждого свойства отдельно.
    */
-  const boosted: IconName | null = (up ?? 0) > 0
-    ? (upgradeGain(c) === 'trade' ? 'trade' : upgradeGain(c) === 'combat' ? 'combat' : 'authority')
-    : null
+  const n = up ?? 0
+  const boostFor = (effects: Parameters<typeof upgradeTargets>[0]):
+  { icons: IconName[]; n: number } | undefined => {
+    if (n <= 0) return undefined
+    const icons = upgradeTargets(effects, n) as IconName[]
+    return icons.length > 0 ? { icons, n } : undefined
+  }
+  const primaryBoost = boostFor(c.primary)
+  /** Свойство поднимается своим набором значков — или не поднимается вовсе. */
+  const boostProp = (effects: Parameters<typeof upgradeTargets>[0]):
+  { boost?: { icons: IconName[]; n: number } } => {
+    const b = boostFor(effects)
+    return b ? { boost: b } : {}
+  }
 
   const entry = ART_MANIFEST[def]
   /**
@@ -117,8 +129,10 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardF
     : isRelic ? `/cards/relics/${def}.svg`
       : null
   const chipMap = chipsFor(c.primary)
-  if (boosted) chipMap.set(boosted, (chipMap.get(boosted) ?? 0) + (up ?? 0))
-  const chips = [...chipMap.entries()].filter(([, n]) => n !== 0)
+  for (const icon of primaryBoost?.icons ?? []) {
+    chipMap.set(icon, (chipMap.get(icon) ?? 0) + n)
+  }
+  const chips = [...chipMap.entries()].filter(([, v]) => v !== 0)
 
   return (
     <>
@@ -183,7 +197,8 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardF
               {chips.map(([icon, n]) => (
                 <span
                   key={icon}
-                  className={`chip glyph--${icon}${icon === boosted ? ' is-up' : ''}`}
+                  className={`chip glyph--${icon}${
+                    primaryBoost?.icons.includes(icon) ? ' is-up' : ''}`}
                 >
                   <Icon name={icon} /> {n}
                 </span>
@@ -191,16 +206,13 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardF
             </span>
             <span className="card__prose">
               {text.primary && (
-                <CardText
-                  src={text.primary}
-                  {...(boosted ? { boost: { icon: boosted, n: up ?? 0 } } : {})}
-                />
+                <CardText src={text.primary} {...(primaryBoost ? { boost: primaryBoost } : {})} />
               )}
               {text.ally && (
                 <>
                   <span className="card__rule" />
                   <span className="card__slot-label">Союз</span>{' '}
-                  <CardText src={text.ally} />
+                  <CardText src={text.ally} {...boostProp(c.ally)} />
                 </>
               )}
               {/* Up to four ally abilities, one per faction on Mercenary
@@ -210,28 +222,28 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardF
                 <Fragment key={i}>
                   <span className="card__rule" />
                   <span className="card__slot-label">{`Союз ${i + 2}`}</span>{' '}
-                  <CardText src={t} />
+                  <CardText src={t} {...boostProp([c.ally2, c.ally3, c.ally4][i] ?? [])} />
                 </Fragment>
               ))}
               {text.splinter && (
                 <>
                   <span className="card__rule" />
                   <span className="card__slot-label is-double">Сплинтер</span>{' '}
-                  <CardText src={text.splinter} />
+                  <CardText src={text.splinter} {...boostProp(c.splinter)} />
                 </>
               )}
               {text.doubleAlly && (
                 <>
                   <span className="card__rule" />
                   <span className="card__slot-label is-double">Двойной союз</span>{' '}
-                  <CardText src={text.doubleAlly} />
+                  <CardText src={text.doubleAlly} {...boostProp(c.doubleAlly)} />
                 </>
               )}
               {text.scrap && (
                 <>
                   <span className="card__rule" />
                   <span className="card__slot-label is-scrap">Утиль</span>{' '}
-                  <CardText src={text.scrap} />
+                  <CardText src={text.scrap} {...boostProp(c.scrap)} />
                 </>
               )}
             </span>

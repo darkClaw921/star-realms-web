@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { CARDS, cardDef } from '../src/cards/registry'
+import { upgradeTargets, withUpgrade } from '../src/helpers'
 import type { CardDefId, CardIid } from '../src/ids'
 import { enumerateLegalActions } from '../src/legal'
 import { reduce } from '../src/reduce'
@@ -225,6 +227,78 @@ describe('an upgraded card', () => {
     const cut = applyReward(c, { k: 'SCRAP', def: 'viper' as CardDefId, up: 0 })
     expect(cut.deck.some((x) => x.def === 'viper' && x.up === 2)).toBe(true)
     expect(cut.deck.filter((x) => x.def === 'viper').length).toBe(2)
+  })
+})
+
+describe('where the upgrade lands', () => {
+  const play = (defs: string[], up: number, iid = 'h0'): GameState => {
+    const s = hand(fight(), defs)
+    const next = structuredClone(s)
+    const c = next.players.p1.hand.find((x) => x.iid === iid)
+    if (c) (c as { up?: number }).up = up
+    return next
+  }
+
+  it('lifts BOTH halves of an OR, so the choice keeps the upgrade', () => {
+    // Торговый пост: «1 влияния ИЛИ 1 торговли» — прежнее правило не находило
+    // в нём прямой выдачи и приписывало очко боя, которого на карте нет вовсе.
+    const s = play(['trading-post'], 1)
+    const played = run(s, { t: 'PLAY_CARD', card: 'h0' as CardIid }).state
+    const used = run(played, { t: 'ACTIVATE', card: 'h0' as CardIid, slot: 'primary' })
+    const choice = redact(used.state, 'p1').pendingChoice
+    expect(choice?.prompt).toBe('CHOOSE_BRANCH')
+    // Обе ветки подняты, и подписи говорят то же, что и дело.
+    const labels = (choice?.options ?? [])
+      .map((o) => (o.o === 'BRANCH' ? o.label : ''))
+    expect(labels).toEqual(['{authority:2}', '{trade:2}'])
+
+    // Какую бы ни выбрали — она и приходит улучшенной, и ничего лишнего.
+    const before = used.state.players.p1.authority
+    const took = run(used.state, choose(used.state, (o: never) =>
+      (o as { o: string; index?: number }).index === 0))
+    expect(took.state.players.p1.authority).toBe(before + 2)
+    expect(took.state.players.p1.combat).toBe(0)
+  })
+
+  it('reports the same targets to the board as it applies in the game', () => {
+    expect(upgradeTargets(cardDef('trading-post' as CardDefId).primary, 1).sort())
+      .toEqual(['authority', 'trade'])
+    expect(upgradeTargets(cardDef('viper' as CardDefId).primary, 1)).toEqual(['combat'])
+    expect(upgradeTargets(cardDef('viper' as CardDefId).primary, 0)).toEqual([])
+  })
+
+  it('lifts whichever ability is used, not only the first one', () => {
+    // Таран: 5 боя основным, 2 союзным, 3 торговли утилем.
+    const s = play(['ram', 'blob-fighter'], 1)
+    let st = run(s, { t: 'PLAY_CARD', card: 'h0' as CardIid }).state
+    expect(st.players.p1.combat).toBe(6)
+    // Союз включается вторым слизнем.
+    st = run(st, { t: 'PLAY_CARD', card: 'h1' as CardIid }).state
+    const beforeAlly = st.players.p1.combat
+    st = run(st, { t: 'ACTIVATE', card: 'h0' as CardIid, slot: 'ally' }).state
+    expect(st.players.p1.combat).toBe(beforeAlly + 3)
+    // И утиль тоже: улучшали карту, а не её верхнюю строчку.
+    st = run(st, { t: 'ACTIVATE', card: 'h0' as CardIid, slot: 'scrap' }).state
+    expect(st.players.p1.trade).toBe(4)
+  })
+
+  it('never multiplies a per-item payout', () => {
+    // «За каждую» поднимать нельзя: прибавка умножилась бы на количество.
+    // Такие свойства получают плоскую добавку, и ровно одну.
+    const perCards = [...CARDS.values()].filter(
+      (d) => d.role === 'trade_deck' && d.primary.some((e) => e.k === 'PER'),
+    )
+    for (const def of perCards) {
+      const lifted = withUpgrade(def.primary, 2)
+      const per = lifted.find((e) => e.k === 'PER')
+      expect(JSON.stringify(per)).toBe(JSON.stringify(def.primary.find((e) => e.k === 'PER')))
+    }
+  })
+
+  it('leaves an unupgraded copy exactly as printed', () => {
+    for (const def of CARDS.values()) {
+      expect(withUpgrade(def.primary, 0)).toEqual([...def.primary])
+    }
   })
 })
 

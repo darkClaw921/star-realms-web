@@ -388,33 +388,131 @@ export function defenseAgainst(
 }
 
 /**
- * What an upgrade adds to a card, and of what.
+ * Куда падает прибавка улучшенной копии.
  *
- * Read off the card's own primary rather than chosen by the player: an
- * upgraded Scout should be a better Scout, not a Scout with a combat point
- * stapled to it. SEQ is looked through because plenty of abilities are a
- * sequence whose first step is the payout; CHOOSE_ONE is not, because its
- * branches are alternatives and the card has no single "its own" resource
- * until the player picks one -- those default to combat.
+ * Не «плюс очко сбоку», а прибавка ВНУТРИ самого свойства — иначе карта с
+ * выбором «ИЛИ» улучшалась мимо: движок не находил в ней прямой выдачи,
+ * сваливался на бой по умолчанию, и Торговый пост, дающий влияние или
+ * торговлю, получал очко боя, которого на нём и нарисовано-то нигде не было.
+ *
+ * Правила обхода:
+ *  · первая выдача в списке — её и поднимаем, дальше не идём: свойство даёт
+ *    одну награду, а не каждую по очереди;
+ *  · ветки «ИЛИ» — альтернативы, поэтому прибавку получает КАЖДАЯ: иначе
+ *    улучшение пропадало бы, стоило выбрать не ту половину;
+ *  · «за каждую» (PER) не трогаем: там прибавка умножалась бы на количество,
+ *    и одно улучшение стоило бы пяти.
  */
-export function upgradeGain(def: CardDef): 'trade' | 'combat' | 'authority' {
-  const walk = (es: readonly Effect[]): 'trade' | 'combat' | 'authority' | null => {
+export type UpgradeRes = 'trade' | 'combat' | 'authority'
+
+const RES_OF: Partial<Record<Effect['k'], UpgradeRes>> = {
+  GAIN_TRADE: 'trade',
+  GAIN_COMBAT: 'combat',
+  GAIN_AUTHORITY: 'authority',
+}
+
+/** Печатный текст ветки — тоже данные, и число в нём обязано совпасть с делом. */
+function bumpLabel(label: string, res: UpgradeRes, n: number): string {
+  return label.replace(
+    new RegExp(`\\{${res}:(-?\\d+)\\}`),
+    (_m, v: string) => `{${res}:${Number(v) + n}}`,
+  )
+}
+
+function walk(
+  effects: readonly Effect[], n: number, hit: Set<UpgradeRes>,
+): [Effect[], boolean] {
+  let done = false
+  const out: Effect[] = []
+  for (const e of effects) {
+    if (done) { out.push(e); continue }
+    const res = RES_OF[e.k]
+    if (res !== undefined && 'n' in e && typeof e.n === 'number') {
+      hit.add(res)
+      done = true
+      out.push({ ...e, n: e.n + n } as Effect)
+      continue
+    }
+    if (e.k === 'SEQ') {
+      const [inner, got] = walk(e.effects, n, hit)
+      done = got
+      out.push({ ...e, effects: inner })
+      continue
+    }
+    if (e.k === 'MAY' || e.k === 'IF') {
+      const [inner, got] = walk(e.then, n, hit)
+      done = got
+      out.push({ ...e, then: inner })
+      continue
+    }
+    if (e.k === 'CHOOSE_ONE') {
+      const branches = e.branches.map((b) => {
+        const seen = new Set<UpgradeRes>()
+        const [inner, got] = walk(b.then, n, seen)
+        for (const r of seen) hit.add(r)
+        if (!got) return b
+        done = true
+        // Ветка поднимает ровно один вид награды, поэтому подпись правится по
+        // нему же.
+        const res2 = [...seen][0] as UpgradeRes
+        return { ...b, label: bumpLabel(b.label, res2, n), then: inner }
+      })
+      out.push({ ...e, branches })
+      continue
+    }
+    out.push(e)
+  }
+  return [out, done]
+}
+
+/** Свойство карты с учётом улучшений копии. */
+export function withUpgrade(effects: readonly Effect[], n: number): Effect[] {
+  if (n <= 0) return [...effects]
+  return walk(effects, n, new Set())[0]
+}
+
+/**
+ * Каких наград коснётся улучшение в этом свойстве.
+ *
+ * Нужно интерфейсу: карта показывает поднятые числа сама, и знать, какие
+ * именно, она должна из того же обхода, что и движок, — иначе на карте будет
+ * одна арифметика, а в игре другая.
+ */
+export function upgradeTargets(effects: readonly Effect[], n: number): UpgradeRes[] {
+  if (n <= 0) return []
+  const hit = new Set<UpgradeRes>()
+  walk(effects, n, hit)
+  return [...hit]
+}
+
+/**
+ * Чем добрать, если поднимать в свойстве нечего.
+ *
+ * Бывает у карт, чьё свойство — «за каждую», и у чисто текстовых: поднимать
+ * там нечего, но улучшение обязано что-то значить. Вид награды берётся из
+ * самой карты, а не назначается боем наугад.
+ */
+export function upgradeGain(def: CardDef): UpgradeRes {
+  const walkKind = (es: readonly Effect[]): UpgradeRes | null => {
     for (const e of es) {
-      if (e.k === 'GAIN_TRADE') return 'trade'
-      if (e.k === 'GAIN_COMBAT') return 'combat'
-      if (e.k === 'GAIN_AUTHORITY') return 'authority'
-      if (e.k === 'SEQ') {
-        const inner = walk(e.effects)
+      const res = RES_OF[e.k]
+      if (res !== undefined) return res
+      if (e.k === 'SEQ') { const inner = walkKind(e.effects); if (inner) return inner }
+      if (e.k === 'MAY' || e.k === 'IF' || e.k === 'PER') {
+        const inner = walkKind(e.then)
         if (inner) return inner
+      }
+      if (e.k === 'CHOOSE_ONE') {
+        for (const b of e.branches) { const inner = walkKind(b.then); if (inner) return inner }
       }
     }
     return null
   }
-  return walk(def.primary) ?? 'combat'
+  return walkKind(def.primary) ?? walkKind(def.ally) ?? 'combat'
 }
 
-/** The extra effects an upgraded copy adds to its own primary. */
-export function upgradeBonus(def: CardDef, n: number): Effect[] {
+/** Плоская добавка — только там, где поднимать оказалось нечего. */
+export function upgradeFallback(def: CardDef, n: number): Effect[] {
   if (n <= 0) return []
   const what = upgradeGain(def)
   const k = what === 'trade' ? 'GAIN_TRADE' : what === 'combat' ? 'GAIN_COMBAT' : 'GAIN_AUTHORITY'

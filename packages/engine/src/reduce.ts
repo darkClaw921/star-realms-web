@@ -13,7 +13,7 @@ import {
   factionsOf,
   findInPlay, isBase,
   isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets, objectiveMet,
-  upgradeBonus,
+  upgradeFallback, upgradeTargets, withUpgrade,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { asDefId, FACTIONS, opponentOf } from './ids'
@@ -2028,12 +2028,17 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   if (def.type === 'ship') {
     // A ship's primary ability is mandatory and immediate. A base's is not: the
     // player chooses when to activate it during their main phase.
-    queued.push(...def.primary)
-    // An upgraded copy pays more, and pays it with its own ability rather than
-    // beside it: a card that gains combat gains more combat, and one that
-    // gains trade gains more trade. A base's bonus waits for its activation,
-    // where its primary actually happens -- see activate().
-    queued.push(...upgradeBonus(def, inst.up ?? 0))
+    //
+    // Улучшение поднимает САМО свойство, а не приписывает очко сбоку: у карты
+    // с «ИЛИ» поднимаются обе ветки, и что бы игрок ни выбрал, улучшение с ним.
+    // База получает своё при активации — см. activate().
+    const up = inst.up ?? 0
+    queued.push(...withUpgrade(def.primary, up))
+    // Поднимать было нечего (свойство вида «за каждую») — тогда плоская
+    // добавка, иначе улучшение на такой карте не значило бы ничего.
+    if (up > 0 && upgradeTargets(def.primary, up).length === 0) {
+      queued.push(...upgradeFallback(def, up))
+    }
     card.used.primary = true
   }
   // The card's own on-play triggers (Stealth Tower). Deliberately NOT its
@@ -2179,11 +2184,13 @@ function activate(
     p.inPlay.splice(idx, 1)
     toScrapHeap(d, sameCard(card), 'inPlay', me, ev)
   }
-  pushEffects(d, effects, { controller: me, source: iid, slot })
-  // The upgrade rides on the primary, which for a base is here and not on play.
-  if (slot === 'primary' && !besideTheBoard) {
-    const bonus = upgradeBonus(def, card.up ?? 0)
-    if (bonus.length > 0) pushEffects(d, bonus, { controller: me, source: iid, slot })
+  // Улучшение поднимает ЛЮБОЕ свойство этой копии, а не только первое: игрок
+  // улучшал карту, а не её верхнюю строчку. Гамбитов и реликвий это не
+  // касается — их не улучшают.
+  const up = besideTheBoard ? 0 : (card.up ?? 0)
+  pushEffects(d, withUpgrade(effects, up), { controller: me, source: iid, slot })
+  if (up > 0 && upgradeTargets(effects, up).length === 0) {
+    pushEffects(d, upgradeFallback(def, up), { controller: me, source: iid, slot })
   }
 }
 

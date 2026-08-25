@@ -56,23 +56,31 @@ export function speak(src: string): string {
  * `boost` — прибавка улучшенной копии, которую надо показать В САМОМ ЧИСЛЕ.
  *
  * Иначе карта врёт: она говорит «1 очко боя», рядом стоит печать «+2», а даёт
- * она три, и складывать приходится игроку. Прибавка идёт в ПЕРВЫЙ значок
- * нужного вида — ровно туда, куда её кладёт движок (см. upgradeGain), — и
- * помечается, чтобы число не выглядело опечаткой типографии.
+ * она три, и складывать приходится игроку.
+ *
+ * Значков может быть несколько: у свойства с «ИЛИ» прибавку получает каждая
+ * ветка, и на карте должны подняться оба числа. Какие именно — считает
+ * движок (upgradeTargets) тем же обходом, каким он и раздаёт прибавку;
+ * интерфейс тут ничего не решает сам, иначе на карте была бы одна арифметика,
+ * а в игре другая. В пределах одного значка поднимается первое число: свойство
+ * выдаёт награду один раз, а не каждую по очереди.
  */
 export function CardText(
-  { src, boost }: { src: string; boost?: { icon: IconName; n: number } | undefined },
+  { src, boost }: {
+    src: string
+    boost?: { icons: readonly IconName[]; n: number } | undefined
+  },
 ): React.JSX.Element {
-  let bumped = false
+  const left = new Set<IconName>(boost?.icons ?? [])
   return (
     <>
       {tokenize(src).map((n, i) => {
         if (n.kind === 'text') return <span key={i}>{n.value}</span>
-        const lift = !bumped && boost !== undefined && n.icon === boost.icon
-        if (lift) bumped = true
+        const icon = n.icon as IconName
+        const lift = boost !== undefined && left.delete(icon)
         return (
-          <span key={i} className={`glyph glyph--${n.icon}${lift ? ' is-up' : ''}`}>
-            <Icon name={n.icon as IconName} />
+          <span key={i} className={`glyph glyph--${icon}${lift ? ' is-up' : ''}`}>
+            <Icon name={icon} />
             {lift ? Number(n.value) + boost.n : n.value}
           </span>
         )
