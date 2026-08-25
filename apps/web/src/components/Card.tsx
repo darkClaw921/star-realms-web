@@ -1,8 +1,12 @@
 'use client'
 
 import { Fragment, memo, useCallback, useRef, useState } from 'react'
-import { cardDef, type CardDefId, type Effect } from '@sr/engine'
+import { cardDef, RELIC_DEFS, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
+
+/** Размер иллюстраций артефактов. Тот же 4:3, что у остального арта. */
+const RELIC_ART_W = 320
+const RELIC_ART_H = 240
 import { cardRu, FACTION_RU } from '@/i18n/cards.ru'
 import { CardText, speak } from './cardText'
 import { CardPreview } from './CardPreview'
@@ -81,7 +85,18 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
     if (el?.complete && el.naturalWidth > 0) setLoaded(true)
   }, [])
   const entry = ART_MANIFEST[def]
-  const art = entry ? `/cards/art/${def}-320.webp` : null
+  /**
+   * Арт артефакта лежит в репозитории, а не в гитигнорной папке издателя.
+   *
+   * Артефактов в Star Realms нет — их иллюстрации нарисованы здесь
+   * (scripts/relic-art.mjs), поэтому они единственные, кого можно и нужно
+   * коммитить. Отсюда и второй источник: манифест описывает то, чего в
+   * репозитории нет, а это — то, что в нём есть всегда.
+   */
+  const isRelic = RELIC_DEFS.has(def)
+  const art = entry ? `/cards/art/${def}-320.webp`
+    : isRelic ? `/cards/relics/${def}.svg`
+      : null
   const chips = [...chipsFor(c.primary).entries()].filter(([, n]) => n !== 0)
 
   return (
@@ -96,8 +111,8 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
             alt=""
             loading="lazy"
             decoding="async"
-            width={entry?.w}
-            height={entry?.h}
+            width={entry?.w ?? RELIC_ART_W}
+            height={entry?.h ?? RELIC_ART_H}
             onLoad={() => setLoaded(true)}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
