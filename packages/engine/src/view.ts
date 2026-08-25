@@ -208,6 +208,17 @@ export interface PlayerView {
   readonly marketCounters: Readonly<Record<string, number>>
 }
 
+/**
+ * Карта в открытой зоне — та же карта, включая улучшения.
+ *
+ * Отдельной функцией, потому что редакция собирает вид ПОЛЯ ЗА ПОЛЕМ, и
+ * улучшение уже один раз потерялось ровно так: на столе оно было, а в руке и в
+ * сбросе — нет, потому что там карта пересобиралась вручную из двух полей.
+ */
+function viewCard(c: CardInstance): CardInstance {
+  return c.up ? { iid: c.iid, def: c.def, up: c.up } : { iid: c.iid, def: c.def }
+}
+
 function viewInPlay(c: InPlayCard): InPlayCardView {
   return {
     iid: c.iid,
@@ -264,7 +275,7 @@ function viewOpponent(st: GameState['players'][PlayerId]): OpponentView {
     missionCount: st.missions.length,
     gambitsInPlay: st.gambitsInPlay.map(viewInPlay),
     missionsDone: [...st.missionsDone],
-    discard: st.discard.map((c) => ({ iid: c.iid, def: c.def })),
+    discard: st.discard.map(viewCard),
     inPlay: st.inPlay.map(viewInPlay),
     deckCount: st.deck.length,
     trade: st.trade,
@@ -295,8 +306,8 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     coop: s.coop ? { ...s.coop, eliminated: [...s.coop.eliminated] } : null,
     me: {
       authority: meState.authority,
-      hand: meState.hand.map((c) => ({ iid: c.iid, def: c.def })),
-      discard: meState.discard.map((c) => ({ iid: c.iid, def: c.def })),
+      hand: meState.hand.map(viewCard),
+      discard: meState.discard.map(viewCard),
       inPlay: meState.inPlay.map(viewInPlay),
       deckCount: meState.deck.length,
       // Sorted, so the order of the real deck cannot be read off the list.
@@ -326,7 +337,7 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
     tradeRow: s.tradeRow.map((c) => (c ? { iid: c.iid, def: c.def } : null)),
     tradeDeckCount: s.tradeDeck.length,
     explorerPile: s.explorerPile,
-    scrapHeap: s.scrapHeap.map((c) => ({ iid: c.iid, def: c.def })),
+    scrapHeap: s.scrapHeap.map(viewCard),
     setAside: s.setAside.map((c) => ({ iid: c.iid, def: c.def })),
     pendingChoice: choice ? redactChoice(s, choice, viewer) : null,
     winner: s.winner,

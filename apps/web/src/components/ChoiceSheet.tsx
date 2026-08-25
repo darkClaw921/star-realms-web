@@ -118,6 +118,15 @@ export function ChoiceSheet({
     choice,
     firstCard && firstCard.o === 'CARD' ? cardName(firstCard.def, cardDef(firstCard.def).name) : null,
   )
+  /**
+   * Улучшение показывается на самой карте, как только её выбрали.
+   *
+   * Иначе выбор слепой: игрок жмёт на карту и видит ровно то же самое, а
+   * решает он именно «во что она превратится». Выбранная карта рисуется уже
+   * улучшенной — с поднятым числом и печатью нового уровня.
+   */
+  const previewsUpgrade = choice.prompt === 'UPGRADE_CARD'
+
   const confirmOnly = opts.length === 1 && opts[0]?.o === 'CONFIRM'
   const resolve = (selected: ChoiceOption[]): void =>
     onResolve({ t: 'RESOLVE_CHOICE', choiceId: choice.id, selected })
@@ -220,16 +229,26 @@ export function ChoiceSheet({
                 const owner = o.owner === null || o.owner === viewer
                   ? null
                   : (seatNames[o.owner] ?? UI.opponent)
+                const chosen = picked.some((x) => same(x, o))
+                const shown = previewsUpgrade && chosen ? (o.up ?? 0) + 1 : o.up
                 return (
-                  <div key={o.iid} className="choice__pick">
+                  <div
+                    key={o.iid}
+                    className={`choice__pick${previewsUpgrade && chosen ? ' is-upgrading' : ''}`}
+                  >
                     <Card
                       def={o.def}
-                      up={o.up}
-                      selected={picked.some((x) => same(x, o))}
+                      up={shown}
+                      selected={chosen}
                       playable
                       onClick={() => toggle(o)}
                       title={cardName(o.def, cardDef(o.def).name)}
                     />
+                    {previewsUpgrade && (
+                      <span className="choice__preview">
+                        {chosen ? UI.upgradeAfter((o.up ?? 0) + 1) : UI.upgradeBefore(o.up ?? 0)}
+                      </span>
+                    )}
                     {owner && <span className="choice__owner">{owner}</span>}
                   </div>
                 )

@@ -210,6 +210,10 @@ export const UI = {
   challengeLost: 'Приключение провалено',
   toChallenges: 'К приключениям',
 
+  // улучшение карты
+  upgradeBefore: (n: number): string => (n > 0 ? `сейчас +${n}` : 'без улучшений'),
+  upgradeAfter: (n: number): string => `станет +${n}`,
+
   // просмотр карты
   previewHint: 'Двигайте мышью, чтобы наклонить карту',
   previewClose: 'Закрыть',

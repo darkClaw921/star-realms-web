@@ -195,6 +195,52 @@ describe('an upgraded card', () => {
   })
 })
 
+describe('what the player is shown', () => {
+  it('carries the upgrade into every zone the view rebuilds', () => {
+    const s = hand(fight(), ['viper', 'scout'])
+    const marked = structuredClone(s)
+    // По одной улучшенной карте в каждой открытой зоне.
+    const h = marked.players.p1.hand[0]
+    if (h) (h as { up?: number }).up = 1
+    marked.players.p1.discard = [{ iid: 'd0' as CardIid, def: 'ram' as CardDefId, up: 2 }]
+    marked.scrapHeap = [{ iid: 's0' as CardIid, def: 'cutter' as CardDefId, up: 3 }]
+    marked.players.p2.discard = [{ iid: 'e0' as CardIid, def: 'ram' as CardDefId, up: 1 }]
+
+    const v = redact(marked, 'p1')
+    // Рука была тем местом, где улучшение терялось: вид собирается полем за
+    // полем, и карта там пересобиралась из двух полей вместо трёх.
+    expect(v.me.hand.find((c) => c.iid === 'h0')?.up).toBe(1)
+    expect(v.me.discard.find((c) => c.iid === 'd0')?.up).toBe(2)
+    expect(v.scrapHeap.find((c) => c.iid === 's0')?.up).toBe(3)
+    expect(v.opponent.discard.find((c) => c.iid === 'e0')?.up).toBe(1)
+
+    // И на столе, где оно и раньше доезжало.
+    const played = run(marked, { t: 'PLAY_CARD', card: 'h0' as CardIid }).state
+    expect(redact(played, 'p1').me.inPlay.find((c) => c.iid === 'h0')?.up).toBe(1)
+  })
+
+  it('offers the upgrade choice with each copy\'s current level on it', () => {
+    const s = hand(fight(), ['viper'])
+    // На ходу, где предлагают «Блиц»: его и выигрывает удар ниже.
+    const marked = { ...structuredClone(s), turn: offerOn('w', 'blitz') }
+    const h = marked.players.p1.hand[0]
+    if (h) (h as { up?: number }).up = 2
+    marked.players.p1.discard = [{ iid: 'd0' as CardIid, def: 'ram' as CardDefId }]
+    const asked = run(marked, { t: 'TAKE_WAGER' }).state
+    const armed = structuredClone(asked)
+    // Ровно столько, чтобы взять ставку и не добить соперника: конец партии
+    // остановил бы разрешение раньше, чем дошло бы до выбора карты.
+    armed.players.p1.combat = 12
+    const hit = run(armed, { t: 'ATTACK_PLAYER', amount: 12 }).state
+    const choice = redact(hit, 'p1').pendingChoice
+    expect(choice?.prompt).toBe('UPGRADE_CARD')
+    const upgraded = choice.options.find((o) => o.o === 'CARD' && o.iid === 'h0')
+    expect(upgraded && upgraded.o === 'CARD' ? upgraded.up : null).toBe(2)
+    const plain = choice.options.find((o) => o.o === 'CARD' && o.iid === 'd0')
+    expect(plain && plain.o === 'CARD' ? plain.up : 'missing').toBeUndefined()
+  })
+})
+
 describe('the whole loop', () => {
   it('plays a run turn with a bet and never stalls', () => {
     let st = fight('loop')
