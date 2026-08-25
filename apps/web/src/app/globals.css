@@ -2127,6 +2127,222 @@ input[type='range'] {
 
 .camp-foot { display: flex; gap: 10px; margin-top: 4px; }
 
+/* ── забег: лестница из восьми боёв ─────────────────────────────────────── */
+
+.run-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 22px 0 14px;
+}
+.run-bar__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.run-bar__stat b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+/* Лестница горизонтальна, потому что она про «сколько ещё осталось»:
+ * восемь шагов в один ряд видно целиком, а список — нет. */
+.run-ladder-wrap { overflow-x: auto; }
+.ladder {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+.ladder__step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--rule);
+  border-top: 3px solid color-mix(in srgb, var(--fc) 35%, transparent);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+  opacity: 0.6;
+}
+.ladder__step.is-done {
+  opacity: 1;
+  border-top-color: var(--ok);
+}
+.ladder__step.is-here {
+  opacity: 1;
+  border-top-color: var(--fc);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fc) 45%, transparent);
+}
+.ladder__no {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.ladder__step.is-done .ladder__no { color: var(--ok); }
+.ladder__name {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.ladder__kind {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fc);
+}
+
+.run-brief {
+  padding: 18px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--fc);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+}
+.run-brief__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+  margin: 4px 0 8px;
+  color: var(--fc, var(--ink));
+}
+.run-brief__text { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-dim); }
+
+.run-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 18px;
+  margin: 14px 0 0;
+}
+.run-facts div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.run-facts dt {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.run-facts dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+.run-start { display: flex; justify-content: center; margin: 18px 0 22px; }
+.run-section { margin: 22px 0; }
+.run-note { margin: 4px 0 12px; font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
+
+/* Колода забега прокручивается вбок: к восьмому бою в ней десятки карт, и
+ * заворачивать их в сетку значило бы выдавить со страницы всё остальное. */
+.run-deck {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+}
+.run-deck__slot { position: relative; flex: 0 0 auto; }
+.run-deck__n {
+  position: absolute;
+  right: -4px;
+  bottom: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.run-reward {
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--rule));
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  margin-bottom: 20px;
+}
+.run-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.run-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.run-choice:hover:not(:disabled) {
+  border-color: var(--ok);
+  transform: translateY(-1px);
+}
+.run-choice:disabled { opacity: 0.45; cursor: default; }
+.run-choice__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.run-choice__hint { font-size: 12.5px; line-height: 1.45; color: var(--ink-dim); }
+
+.run-offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 10px 0 14px;
+}
+.run-offer__pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.run-over {
+  padding: 20px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--hull) 100%);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
 /* ── challenges: the boss bar ───────────────────────────────────────────── */
 .boss-grid {
   display: grid;

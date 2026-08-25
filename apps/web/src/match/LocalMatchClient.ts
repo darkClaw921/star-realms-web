@@ -116,6 +116,18 @@ export class LocalMatchClient implements MatchClient {
     return summarise(this.state, seat, meta)
   }
 
+  /**
+   * Доигранная партия целиком, или null, пока она идёт.
+   *
+   * Нужна забегу: в следующий бой переносится вся колода игрока, а колода —
+   * это ровно то, чего в отредактированном виде нет и быть не должно. Отдаётся
+   * только после конца партии: пока идёт эта, знать её состояние экрану
+   * незачем, и через эту дверь оно не утечёт.
+   */
+  finished(): GameState | null {
+    return this.state.winner ? this.state : null
+  }
+
   snapshot(): MatchSnapshot {
     const viewer = this.viewer
     const view = redact(this.state, viewer)

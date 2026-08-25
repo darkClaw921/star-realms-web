@@ -26,6 +26,12 @@ const MODES = [
     fc: FACTION_VAR.machine_cult,
   },
   {
+    href: '/run',
+    name: UI.modeRun,
+    desc: UI.modeRunDesc,
+    fc: FACTION_VAR.star_empire,
+  },
+  {
     href: '/challenges',
     name: UI.modeChallenges,
     desc: UI.modeChallengesDesc,

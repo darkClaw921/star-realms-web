@@ -93,6 +93,7 @@ export const MODE_RU: Record<PlayMode, string> = {
   hotseat: 'За одним экраном',
   campaign: 'Кампания',
   challenge: 'Испытания',
+  run: 'Забег',
 }
 
 /** Русское число: «1 ход», «2 хода», «5 ходов». */

@@ -14,10 +14,10 @@ import type { CardDefId, Faction } from '@sr/engine'
  */
 
 /** Полигон в список не входит: там состояние правят руками. */
-export type PlayMode = 'bot' | 'online' | 'hotseat' | 'campaign' | 'challenge'
+export type PlayMode = 'bot' | 'online' | 'hotseat' | 'campaign' | 'challenge' | 'run'
 
 export const PLAY_MODES: readonly PlayMode[] = [
-  'bot', 'online', 'campaign', 'challenge', 'hotseat',
+  'bot', 'online', 'campaign', 'challenge', 'run', 'hotseat',
 ]
 
 /** Итог одной партии — то, что игрок мог бы записать в тетрадку сам. */

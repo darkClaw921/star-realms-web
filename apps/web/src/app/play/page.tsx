@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { SeatNames } from '@/match/log'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  challengeById, challengeSetup, missionById,
+  challengeById, challengeSetup, harvestRun, missionById, runNode, runSetup,
   type Action, type ChallengeLevel, type PlayerId,
 } from '@sr/engine'
 import type { Difficulty } from '@/bot/bot'
@@ -14,6 +14,8 @@ import { LocalMatchClient } from '@/match/LocalMatchClient'
 import type { VariantId } from '@sr/engine'
 import { useMatch } from '@/match/useMatch'
 import { markBeaten, markChallengeBeaten } from '@/campaign/progress'
+import { clearedNode, loadRun, lostRun, noteRecord } from '@/run/state'
+import { RUN_NODE_RU } from '@/i18n/run.ru'
 import { MISSION_RU } from '@/i18n/campaign.ru'
 import { CHALLENGE_RU } from '@/i18n/challenges.ru'
 import { BOT_RU } from '@/i18n/profile.ru'
@@ -42,6 +44,16 @@ function Play(): React.JSX.Element {
     return { spec, ...challengeSetup(spec, level) }
   }, [urlMode, params])
 
+  // Забег: где он сейчас и с какой колодой. Читается один раз, на монтировании,
+  // как и всё остальное в раздаче — сохранение обновится по итогу этой партии,
+  // и увидеть своё же обновление посреди неё эта партия не должна.
+  const runSave = useMemo(() => (urlMode === 'run' ? loadRun() : null), [urlMode])
+  const run = useMemo(() => {
+    if (!runSave || runSave.stage !== 'fight') return null
+    const node = runNode(runSave.index)
+    return node ? { save: runSave, node, setup: runSetup(node, runSave.carry) } : null
+  }, [runSave])
+
   // Sets are read ONCE, when the match is created. Reading them live would let
   // a settings change rewrite the trade deck mid-game.
   // Same for gambits and missions: they are dealt at setup, so a change made
@@ -67,11 +79,13 @@ function Play(): React.JSX.Element {
   // считать прохождение обычной партией.
   const playMode: PlayMode = mission ? 'campaign'
     : challenge ? 'challenge'
-      : mode === 'hotseat' ? 'hotseat' : 'bot'
+      : run ? 'run'
+        : mode === 'hotseat' ? 'hotseat' : 'bot'
   const opponentName = mission ? MISSION_RU[mission.id]?.name ?? mission.id
     : challenge ? CHALLENGE_RU[challenge.spec.id]?.name ?? challenge.spec.id
-      : mode === 'hotseat' ? UI.playerTwo
-        : BOT_RU[difficulty] ?? UI.bot
+      : run ? RUN_NODE_RU[run.node.index]?.name ?? `#${run.node.index}`
+        : mode === 'hotseat' ? UI.playerTwo
+          : BOT_RU[difficulty] ?? UI.bot
 
   const factory = useCallback(
     () => new LocalMatchClient({
@@ -79,26 +93,26 @@ function Play(): React.JSX.Element {
       // Не из `dealt`: темп — не часть раздачи, и менять его посреди партии
       // законно. Поэтому настройка читается на каждую паузу заново.
       pace: () => readSettings().botSpeed,
-      scenario: mission?.setup ?? challenge?.scenario,
+      scenario: mission?.setup ?? challenge?.scenario ?? run?.setup,
       boss: challenge?.boss,
       // A challenge or a mission fixes its own card pool, so the player's set
       // choice only applies to an ordinary game.
       // A challenge is played on the Frontiers trade deck regardless of the
       // player's own set choice -- that is what the challenge is built for.
-      sets: challenge ? challenge.sets : mission ? undefined : sets,
+      sets: challenge ? challenge.sets : mission || run ? undefined : sets,
       // A challenge or a mission is a fixed setup; gambits and missions belong
       // to the ordinary game the player configured.
-      gambitsPerPlayer: challenge || mission ? 0 : dealt.gambits,
-      missionsPerPlayer: challenge || mission ? 0 : dealt.missions,
+      gambitsPerPlayer: challenge || mission || run ? 0 : dealt.gambits,
+      missionsPerPlayer: challenge || mission || run ? 0 : dealt.missions,
       // Only the player's own seat: the opponent keeps the standard deck.
-      commandDeck: challenge || mission || !dealt.commandDeck
+      commandDeck: challenge || mission || run || !dealt.commandDeck
         ? undefined
         : { p1: dealt.commandDeck },
-      variant: challenge || mission || !dealt.variant
+      variant: challenge || mission || run || !dealt.variant
         ? undefined
         : (dealt.variant as VariantId),
     }),
-    [seed, mode, difficulty, mission, challenge, sets, dealt],
+    [seed, mode, difficulty, mission, challenge, run, sets, dealt],
   )
   const { snapshot, client } = useMatch(factory)
 
@@ -109,8 +123,10 @@ function Play(): React.JSX.Element {
 
   const onAction = useCallback((a: Action) => { client?.send(a) }, [client])
   const onExit = useCallback(
-    () => { router.push(mission ? '/campaign' : challenge ? '/challenges' : '/') },
-    [router, mission, challenge],
+    () => {
+      router.push(mission ? '/campaign' : challenge ? '/challenges' : run ? '/run' : '/')
+    },
+    [router, mission, challenge, run],
   )
 
   // Recording the win here rather than inside the engine keeps progress out of
@@ -120,6 +136,22 @@ function Play(): React.JSX.Element {
     if (mission && won === 'p1') markBeaten(mission.id)
     if (challenge && won === 'p1') markChallengeBeaten(challenge.spec.id)
   }, [mission, challenge, won])
+
+  // Итог боя записывается в забег ровно один раз: снимок с победителем
+  // приходит на каждую перерисовку экрана победы, а второй раз «пройден» —
+  // это лишний узел лестницы.
+  const runNoted = useRef(false)
+  useEffect(() => {
+    if (!run || !won || runNoted.current || !client) return
+    runNoted.current = true
+    if (won !== 'p1') { lostRun(run.save); return }
+    // Колоду читаем из ДОИГРАННОГО состояния, а не из вида: перенести надо
+    // всё, включая закрытую стопку, которой в виде нет.
+    const final = client.finished()
+    if (!final) return
+    const next = clearedNode(run.save, harvestRun(final, 'p1'))
+    noteRecord(next.cleared)
+  }, [run, won, client])
 
   // Партия начинается с раздачи, а не с открытия страницы: секунды до первого
   // хода — не игра.
