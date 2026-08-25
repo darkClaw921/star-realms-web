@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Exo_2, IBM_Plex_Mono, Manrope } from 'next/font/google'
+import { Commissioner, IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google'
 import { IconSprite } from '@/components/Icons'
 import './globals.css'
 
@@ -9,13 +9,13 @@ import './globals.css'
 // `cyrillic-ext` без базовой кириллицы, — названия карт набраны дисплейным, и
 // провал был бы виден на каждой.
 //
-// Exo 2 на названиях и Manrope в описаниях: первый техничный и держит форму в
-// наборе заглавными, второй спокойный и не спорит с ним в узкой колонке
-// текста свойства.
-const body = Manrope({
+// Commissioner на названиях и IBM Plex Sans в описаниях: первый спокойный
+// гротеск, который держит строй в наборе заглавными, второй разборчив в узкой
+// колонке текста свойства и не спорит с ним по рисунку.
+const body = IBM_Plex_Sans({
   subsets: ['latin', 'cyrillic'], weight: ['400', '500', '600'], variable: '--f-body', display: 'swap',
 })
-const display = Exo_2({
+const display = Commissioner({
   subsets: ['latin', 'cyrillic'], weight: ['600', '700'], variable: '--f-display', display: 'swap',
 })
 const mono = IBM_Plex_Mono({

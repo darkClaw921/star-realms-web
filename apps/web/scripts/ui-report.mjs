@@ -618,7 +618,7 @@ const html = `<!doctype html><html lang="ru"><meta charset="utf-8">
 <style>
   :root { color-scheme: dark; }
   body { margin:0; background:#07090d; color:#eef2f7;
-         font:15px/1.6 Manrope, system-ui, sans-serif; }
+         font:15px/1.6 'IBM Plex Sans', system-ui, sans-serif; }
   .wrap { max-width:1100px; margin:0 auto; padding:44px 20px 90px; }
   h1 { font-size:34px; margin:0 0 4px; letter-spacing:-0.01em; }
   .sub { color:#98a3b6; margin:0 0 8px; }
