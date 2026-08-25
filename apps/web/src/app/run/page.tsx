@@ -139,15 +139,19 @@ function RewardPicker({ save, onTake }: {
       <section className="run-reward">
         <p className="eyebrow">{RUN_RU.pickCard}</p>
         <div className="run-offer">
+          {/* Нажимается САМА карта, а не обёртка вокруг неё: карта — уже
+            * кнопка, и кнопка внутри кнопки это и невалидный HTML, и разъезд
+            * разметки при гидратации. Обёртке остаётся раскладка. */}
           {offer.map((def) => (
-            <button
-              key={def}
-              type="button"
-              className="run-offer__pick"
-              onClick={() => onTake({ k: 'CARD', def })}
-            >
-              <Card def={def} title={nameOf(def)} cost={cardDef(def).cost} />
-            </button>
+            <div key={def} className="run-offer__pick">
+              <Card
+                def={def}
+                title={nameOf(def)}
+                cost={cardDef(def).cost}
+                playable
+                onClick={() => onTake({ k: 'CARD', def })}
+              />
+            </div>
           ))}
         </div>
         <button type="button" className="btn btn--sm" onClick={() => setMode(null)}>

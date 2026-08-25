@@ -2462,12 +2462,9 @@ input[type='range'] {
   gap: 14px;
   margin: 10px 0 14px;
 }
-.run-offer__pick {
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
+/* Обёртка карты в предложении наград: только раскладка. Нажимается сама
+ * карта — она и есть кнопка. */
+.run-offer__pick { flex: 0 0 auto; }
 
 .run-over {
   padding: 20px;
