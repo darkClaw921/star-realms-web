@@ -217,6 +217,22 @@ export function Board({
   )
   // Карта в своей зоне рисуется одинаково, где бы она ни лежала: базы стоят
   // стопкой слева, корабли рядом справа, но кнопки свойств у них те же самые.
+  /**
+   * Цена карты глазами покупателя, а не типографии.
+   *
+   * Три сценария меняют цены — Рынок покупателя копит скидку на самых дорогих
+   * картах ряда, Набор рекрутов удешевляет базы, Укоренившаяся верность — свою
+   * фракцию, — и движок считает по ним честно. А на карте стояла печатная
+   * цифра: игрок видел восьмёрку, платил шестёрку и не понимал, за что.
+   */
+  const priceOf = useCallback(
+    (def: Parameters<typeof cardDef>[0], iid?: string): number => costFor(
+      cardDef(def), v.me.inPlay,
+      { variant: v.variant, buyer: v.viewer, counters: iid ? v.marketCounters[iid] ?? 0 : 0 },
+    ),
+    [v.me.inPlay, v.variant, v.viewer, v.marketCounters],
+  )
+
   const slotButtons = (iid: string): React.JSX.Element | null => {
     const slots = idx.activate.get(iid)
     if (!slots || slots.size === 0) return null
@@ -552,10 +568,10 @@ export function Board({
                 onClick={idx.buy.has(c.iid)
                   ? () => onAction({ t: 'BUY_CARD', card: c.iid as CardIid })
                   : undefined}
-                cost={costFor(cardDef(c.def), v.me.inPlay)}
+                cost={priceOf(c.def, c.iid)}
                 title={idx.buy.has(c.iid)
-                  ? UI.buyFor(nameOf(c.def), costFor(cardDef(c.def), v.me.inPlay))
-                  : UI.costs(nameOf(c.def), costFor(cardDef(c.def), v.me.inPlay))}
+                  ? UI.buyFor(nameOf(c.def), priceOf(c.def, c.iid))
+                  : UI.costs(nameOf(c.def), priceOf(c.def, c.iid))}
               />
             ) : (
               <div key={`empty-${i}`} className="empty-slot" />
@@ -585,7 +601,7 @@ export function Board({
                   onClick={idx.buy.has(c.iid)
                     ? () => onAction({ t: 'BUY_CARD', card: c.iid as CardIid })
                     : undefined}
-                  cost={costFor(cardDef(c.def), v.me.inPlay)}
+                  cost={priceOf(c.def, c.iid)}
                   title={UI.setAsideTitle(nameOf(c.def))}
                 />
               ))}

@@ -797,6 +797,15 @@ button { font: inherit; color: inherit; }
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
 }
 
+/* Цена ниже напечатанной: скидка сценария или своей выложенной фракции.
+ * Цифру уже подменили — метка говорит, что это не опечатка на карте, а
+ * действующая цена, и её стоит успеть использовать. */
+.card__cost.is-discounted {
+  background: var(--ok);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--ok) 60%, transparent));
+}
+
 /* Light ink on the veil, not dark ink on a faction plate: the plate is gone, so
  * the faction now speaks through the rule under the name and the corner mark.
  * White on the veil's 0.74 stop clears 8:1 over any illustration underneath. */
