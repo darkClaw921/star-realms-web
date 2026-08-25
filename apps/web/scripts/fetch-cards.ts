@@ -39,6 +39,21 @@ const BASE_API = 'https://www.starrealms.com/wp-json/wp/v2/media?media_type=imag
  * only one large enough that the cropped illustration still clears our 320px
  * output without upscaling.
  */
+/**
+ * Файлы вырезанного арта сценариев — по имени, а не по правилу.
+ *
+ * Правила у них нет: за полгода анонсов один и тот же набор назвали и
+ * `SRSCN_Art_TotalWar`, и `SRSCN_ArtCrop_MaximumWarp`, и
+ * `SRSCN_Art_EmergencyRepairs_Crop`. Четыре имени короче любой попытки описать
+ * это выражением, и промах здесь виден сразу — карта останется без картинки.
+ */
+const SCENARIO_ART = new Map<string, string>([
+  ['SRSCN_Art_TotalWar', 'sc-total-war'],
+  ['SRSCN_ArtCrop_MaximumWarp', 'sc-maximum-warp'],
+  ['SRSCN_Art_EmergencyRepairs_Crop', 'sc-emergency-repairs'],
+  ['SRSCN_Art_FlareMining', 'sc-flare-mining'],
+])
+
 const SOURCES = [
   {
     set: 'core',
@@ -214,6 +229,35 @@ const SOURCES = [
     id: (title: string): string => SQUASHED_IDS.get(title.toLowerCase()) ?? title,
   },
   {
+    /**
+     * Сценарии, у которых есть своя карта на столе.
+     *
+     * Единственный набор, чью иллюстрацию издатель выложил УЖЕ вырезанной, — в
+     * анонсах набора, по одному арту на пост, под своим префиксом. Это и лучший
+     * из доступных исходников: лица карт из галереи 2017 года лежат в 300x420,
+     * и вырезанная из них полоса не дотягивала бы даже до нашего меньшего
+     * размера.
+     *
+     * Пятый сценарий с картой, Ruthless Efficiency, в анонсах не появился —
+     * его иллюстрация берётся из лица карты источником ниже.
+     */
+    set: 'scenarios',
+    url: `${BASE_API}&per_page=100&search=SRSCN`,
+    pages: 1,
+    cropped: true,
+    expect: 4,
+    keep: (title: string): boolean => SCENARIO_ART.has(title),
+    id: (title: string): string => SCENARIO_ART.get(title) ?? title,
+  },
+  {
+    set: 'scenario-singles',
+    url: `${BASE_API}&per_page=100&search=Ruthless-Efficiency`,
+    pages: 1,
+    expect: 1,
+    keep: (title: string): boolean => title === 'Ruthless-Efficiency',
+    id: (): string => 'sc-ruthless-efficiency',
+  },
+  {
     set: 'colony-wars',
     url: `${BASE_API}&per_page=100&after=2016-08-18T00:00:00&before=2016-08-20T00:00:00`,
     pages: 1,
@@ -321,9 +365,30 @@ const CROP = {
   landscape: { top: 0.150, height: 0.545, left: 0.030, width: 0.940 },
 } as const
 
+/**
+ * Пропорция вырезанной иллюстрации на портретной карте: 0.936 ширины к 0.498
+ * высоты по CROP выше. Именно её ждёт вёрстка карты.
+ */
+const ART_RATIO = 0.936 / 0.498 * (724 / 1023)
+
+/** Центральный кусок нужной пропорции. Шире исходника не берёт. */
+function centred(w: number, h: number): { left: number; top: number; width: number; height: number } {
+  const width = Math.min(w, Math.round(h * ART_RATIO))
+  const height = Math.min(h, Math.round(width / ART_RATIO))
+  return {
+    left: Math.round((w - width) / 2),
+    top: Math.round((h - height) / 2),
+    width,
+    height,
+  }
+}
+
 /** Reads one source, paging through it and keeping only its own card faces. */
-async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; id: string }[]> {
-  const out: { item: MediaItem; id: string }[] = []
+async function collect(
+  src: typeof SOURCES[number],
+): Promise<{ item: MediaItem; id: string; cropped: boolean }[]> {
+  const out: { item: MediaItem; id: string; cropped: boolean }[] = []
+  const cropped = 'cropped' in src && src.cropped === true
   for (let page = 1; page <= src.pages; page++) {
     const res = await fetch(`${src.url}&page=${page}`)
     // A page past the end is a 400, not an empty list.
@@ -334,7 +399,7 @@ async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; 
       const title = item.title.rendered
       if (!src.keep(title)) continue
       const derived = src.id(title)
-      out.push({ item, id: ID_FIXES[derived] ?? derived })
+      out.push({ item, id: ID_FIXES[derived] ?? derived, cropped })
     }
   }
   console.log(`  ${src.set}: ${out.length} card faces (expected ${src.expect})`)
@@ -346,18 +411,24 @@ async function collect(src: typeof SOURCES[number]): Promise<{ item: MediaItem; 
 
 async function main(): Promise<void> {
   console.log('Fetching the card media index from starrealms.com ...')
-  const found: { item: MediaItem; id: string }[] = []
-  for (const src of SOURCES) found.push(...await collect(src))
-  const items = found.map((f) => f.item)
-  const idOf = new Map(found.map((f) => [f.item.source_url, f.id]))
+  // Аргументами можно назвать наборы: скачать заново один набор дешевле, чем
+  // все семьсот с лишним файлов ради пяти новых.
+  const only = process.argv.slice(2)
+  const sources = only.length > 0 ? SOURCES.filter((s) => only.includes(s.set)) : SOURCES
+  if (sources.length === 0) {
+    console.error(`No such set. Known: ${SOURCES.map((s) => s.set).join(', ')}`)
+    process.exitCode = 1
+    return
+  }
+  const found: { item: MediaItem; id: string; cropped: boolean }[] = []
+  for (const src of sources) found.push(...await collect(src))
 
   await mkdir(ART_DIR, { recursive: true })
 
   let ok = 0
   let failed = 0
 
-  for (const item of items) {
-    const id = idOf.get(item.source_url) ?? toCardId(item.title.rendered)
+  for (const { item, id, cropped } of found) {
     try {
       const imgRes = await fetch(item.source_url)
       if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)
@@ -368,12 +439,20 @@ async function main(): Promise<void> {
 
       const orientation = w >= h ? 'landscape' : 'portrait'
       const c = CROP[orientation]
-      const box = {
-        left: Math.round(w * c.left),
-        top: Math.round(h * c.top),
-        width: Math.round(w * c.width),
-        height: Math.round(h * c.height),
-      }
+      // Уже вырезанную иллюстрацию резать нечем и незачем: рамки на ней нет, и
+      // наш кроп снял бы с неё саму картинку. Приводится только пропорция:
+      // анонсы выкладывали арт широкой полосой 2:1, а в карте иллюстрация
+      // растянута по ширине и высоту берёт из пропорции — полоса оставляла бы
+      // под собой пустую четверть карты. Лишнее снимается с боков, потому что
+      // высоты у полосы и так меньше, чем нужно.
+      const box = cropped
+        ? centred(w, h)
+        : {
+          left: Math.round(w * c.left),
+          top: Math.round(h * c.top),
+          width: Math.round(w * c.width),
+          height: Math.round(h * c.height),
+        }
       for (const size of SIZES) {
         const out = sharp(buf).extract(box).resize({ width: size }).webp({ quality: 82 })
         await out.toFile(join(ART_DIR, `${id}-${size}.webp`))
