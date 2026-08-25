@@ -117,6 +117,11 @@ export function describe(e: GameEvent, names: SeatNames = DEFAULT_NAMES): string
     case 'ELIMINATED': return `${who(e.player)} выбывает из игры`
     case 'TRANSFER':
       return `${who(e.from)} передаёт ${who(e.to)} ${e.n} ${RESOURCE[e.what]}`
+    case 'WAGER_TAKEN': return `${who(e.player)} заключает пари`
+    case 'WAGER_WON': return `${who(e.player)} выигрывает пари`
+    case 'WAGER_LOST': return `${who(e.player)} проигрывает пари: −${e.n} авторитета`
+    case 'CARD_UPGRADED':
+      return `${who(e.player)} улучшает ${card(e.def)} до +${e.level}`
     case 'GAME_OVER': return `${who(e.winner)} побеждает`
   }
 }

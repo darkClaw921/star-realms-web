@@ -91,8 +91,9 @@ describe('carrying a deck', () => {
   it('opens the run on the printed starting deck', () => {
     const c = runStartCarry()
     expect(c.authority).toBe(RUN_START_AUTHORITY)
-    expect(c.deck.filter((x) => x === 'scout').length).toBe(8)
-    expect(c.deck.filter((x) => x === 'viper').length).toBe(2)
+    expect(c.deck.filter((x) => x.def === 'scout').length).toBe(8)
+    expect(c.deck.filter((x) => x.def === 'viper').length).toBe(2)
+    expect(c.deck.every((x) => x.up === 0)).toBe(true)
     expect(c.bases).toEqual([])
   })
 
@@ -114,15 +115,17 @@ describe('carrying a deck', () => {
 
   it('carries the harvested deck, bases and authority into the next node', () => {
     const carry: RunCarry = {
-      deck: ['scout', 'scout', 'battle-mech', 'freighter'] as CardDefId[],
-      bases: ['defense-center'] as CardDefId[],
+      deck: ['scout', 'scout', 'battle-mech', 'freighter']
+        .map((def) => ({ def: def as CardDefId, up: 0 })),
+      bases: [{ def: 'defense-center' as CardDefId, up: 0 }],
       authority: 23,
       relics: [],
     }
     const s = opening(2, carry)
     const mine = [...s.players.p1.deck, ...s.players.p1.hand]
     expect(mine.length).toBe(carry.deck.length)
-    expect(mine.map((c) => c.def as string).sort()).toEqual([...carry.deck].map(String).sort())
+    expect(mine.map((c) => c.def as string).sort())
+      .toEqual(carry.deck.map((c) => c.def as string).sort())
     expect(s.players.p1.inPlay.map((c) => c.def as string)).toEqual(['defense-center'])
     expect(s.players.p1.authority).toBe(23)
   })
@@ -130,7 +133,8 @@ describe('carrying a deck', () => {
   it('deals the carried deck shuffled -- a run is not a solitaire of known draws', () => {
     const carry: RunCarry = {
       deck: ['scout', 'viper', 'freighter', 'cutter', 'ram', 'corvette',
-        'trade-bot', 'battle-pod', 'survey-ship', 'missile-bot'] as CardDefId[],
+        'trade-bot', 'battle-pod', 'survey-ship', 'missile-bot']
+        .map((def) => ({ def: def as CardDefId, up: 0 })),
       bases: [],
       authority: 40,
       relics: [],
@@ -171,10 +175,10 @@ describe('rewards', () => {
     const c0 = runStartCarry()
     const added = applyReward(c0, { k: 'CARD', def: 'battle-mech' as CardDefId })
     expect(added.deck.length).toBe(11)
-    expect(added.deck).toContain('battle-mech')
+    expect(added.deck.some((c) => c.def === 'battle-mech')).toBe(true)
 
-    const cut = applyReward(added, { k: 'SCRAP', def: 'scout' as CardDefId })
-    expect(cut.deck.filter((x) => x === 'scout').length).toBe(7)
+    const cut = applyReward(added, { k: 'SCRAP', def: 'scout' as CardDefId, up: 0 })
+    expect(cut.deck.filter((x) => x.def === 'scout').length).toBe(7)
     expect(cut.deck.length).toBe(10)
 
     expect(applyReward(c0, { k: 'REPAIR', n: RUN_REPAIR }).authority)
@@ -183,13 +187,14 @@ describe('rewards', () => {
 
   it('does not invent a card the deck never had', () => {
     const c0 = runStartCarry()
-    expect(applyReward(c0, { k: 'SCRAP', def: 'flagship' as CardDefId })).toEqual(c0)
+    expect(applyReward(c0, { k: 'SCRAP', def: 'flagship' as CardDefId, up: 0 })).toEqual(c0)
   })
 
   it('lists each distinct card once, and refuses to empty the deck', () => {
-    expect(scrappable(runStartCarry()).sort()).toEqual(['scout', 'viper'])
+    expect(scrappable(runStartCarry()).map((c) => c.def as string).sort())
+      .toEqual(['scout', 'viper'])
     expect(scrappable({
-      deck: ['scout'] as CardDefId[], bases: [], authority: 5, relics: [],
+      deck: [{ def: 'scout' as CardDefId, up: 0 }], bases: [], authority: 5, relics: [],
     })).toEqual([])
   })
 })
@@ -225,8 +230,8 @@ describe('relics along the way', () => {
     const next = harvestRun(done, 'p1', carry)
     expect(next.relics).toEqual(['viper-fangs'])
     // ...and the relic card is not mistaken for a base carried over.
-    expect(next.bases.some((b) => (b as string).startsWith('rl-'))).toBe(false)
-    expect(next.deck.some((c) => (c as string).startsWith('rl-'))).toBe(false)
+    expect(next.bases.some((b) => (b.def as string).startsWith('rl-'))).toBe(false)
+    expect(next.deck.some((c) => (c.def as string).startsWith('rl-'))).toBe(false)
   })
 
   it('takes the same relic only once', () => {

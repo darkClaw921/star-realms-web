@@ -6,6 +6,7 @@ import type { BossState } from './boss'
 import type { CoopState } from './coop'
 import { sharedTurn } from './coop'
 import type { ScenarioRules } from './scenario'
+import type { WagerState } from './wagers'
 import type { VariantState } from './variants'
 
 export const ENGINE_VERSION = 2
@@ -25,6 +26,8 @@ export type { CardInstance }
 export interface InPlayCard {
   readonly iid: CardIid
   readonly def: CardDefId
+  /** Улучшения этой копии. Переезжают вместе с картой из зоны в зону. */
+  readonly up?: number
   /**
    * Stealth Needle only: the ship it copied. The Needle then has that ship's
    * abilities AND its faction, in addition to Machine Cult.
@@ -159,6 +162,13 @@ export interface PlayerState {
   handSize: number
   /** The Legendary Commander in charge, or null in an ordinary game. Public. */
   commander: CardDefId | null
+  /**
+   * Забег: пари, взятое на этот ход, или null.
+   *
+   * Публично: ставка соперника — часть того, что он делает на столе, и прятать
+   * её значило бы прятать причину его хода.
+   */
+  wager: WagerState | null
 }
 
 export interface EffectCtx {

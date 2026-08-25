@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   cardDef, RELIC, RUN_LADDER, RUN_LENGTH, RUN_REPAIR, relicOffer, runNode, runOffer,
-  scrappable, type CardDefId, type RelicId, type RunNode, type RunReward,
+  scrappable, type CardDefId, type RelicId, type RunCard, type RunNode, type RunReward,
 } from '@sr/engine'
 import { Card } from '@/components/Card'
 import { FACTION_VAR } from '@/components/Icons'
@@ -91,24 +91,27 @@ function Briefing({ n }: { n: RunNode }): React.JSX.Element {
 /** Колода забега стопками: одна карта — одна плитка со счётчиком копий. */
 function DeckStrip({ save, onPick, picking }: {
   save: RunSave
-  onPick?: (def: CardDefId) => void
+  onPick?: (c: RunCard) => void
   picking?: boolean
 }): React.JSX.Element {
   const tally = useMemo(() => {
     const t = deckTally(save.carry)
-    // По стоимости, потом по имени: игрок ищет глазами «что тут дешёвого и
-    // ненужного», и это ровно левый край.
+    // По стоимости, потом по улучшениям, потом по имени: игрок ищет глазами
+    // «что тут дешёвого и ненужного», и это ровно левый край.
     return t.sort((a, b) =>
-      cardDef(a.def).cost - cardDef(b.def).cost || nameOf(a.def).localeCompare(nameOf(b.def)))
+      cardDef(a.def).cost - cardDef(b.def).cost
+      || a.up - b.up
+      || nameOf(a.def).localeCompare(nameOf(b.def)))
   }, [save.carry])
   return (
     <div className="run-deck">
-      {tally.map(({ def, n }) => (
-        <div className="run-deck__slot" key={def}>
+      {tally.map(({ def, up, n }) => (
+        <div className="run-deck__slot" key={`${def}:${up}`}>
           <Card
             def={def}
+            up={up}
             title={nameOf(def)}
-            {...(onPick ? { onClick: () => onPick(def), playable: true } : {})}
+            {...(onPick ? { onClick: () => onPick({ def, up }), playable: true } : {})}
           />
           {n > 1 && <span className="run-deck__n">×{n}</span>}
         </div>
@@ -158,7 +161,7 @@ function RewardPicker({ save, onTake }: {
     return (
       <section className="run-reward">
         <p className="eyebrow">{RUN_RU.pickScrap}</p>
-        <DeckStrip save={save} picking onPick={(def) => onTake({ k: 'SCRAP', def })} />
+        <DeckStrip save={save} picking onPick={(c) => onTake({ k: 'SCRAP', ...c })} />
         <button type="button" className="btn btn--sm" onClick={() => setMode(null)}>
           {RUN_RU.back}
         </button>
@@ -358,9 +361,9 @@ export default function RunPage(): React.JSX.Element {
                 <p className="eyebrow">{RUN_RU.bases}</p>
                 <p className="run-note">{RUN_RU.basesHint}</p>
                 <div className="run-deck">
-                  {save.carry.bases.map((def, i) => (
-                    <div className="run-deck__slot" key={`${def}-${i}`}>
-                      <Card def={def} title={nameOf(def)} />
+                  {save.carry.bases.map((b, i) => (
+                    <div className="run-deck__slot" key={`${b.def}-${i}`}>
+                      <Card def={b.def} up={b.up} title={nameOf(b.def)} />
                     </div>
                   ))}
                 </div>

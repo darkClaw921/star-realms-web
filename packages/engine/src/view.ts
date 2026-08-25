@@ -4,6 +4,7 @@ import type { GameEvent } from './events'
 import type { BossState } from './boss'
 import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
+import type { WagerState } from './wagers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId } from './ids'
 import type { CoopState } from './coop'
 import { foeOf } from './helpers'
@@ -27,6 +28,8 @@ import {
 export interface InPlayCardView {
   readonly iid: CardIid
   readonly def: CardDefId
+  /** Забег: улучшения этой копии. Публичны — карта на столе лежит лицом вверх. */
+  readonly up?: number
   readonly copiedDef: CardDefId | null
   readonly used: {
     readonly primary: boolean; readonly ally: boolean
@@ -84,6 +87,10 @@ export interface SelfView {
     readonly slot: 'ally' | 'ally2' | 'ally3' | 'ally4' | 'doubleAlly'
   }[]
   readonly gainedThisTurn: { readonly trade: number; readonly combat: number; readonly authority: number }
+  /** Карт утилизировано за этот ход. Читают пари и Reclamation Station. */
+  readonly scrappedThisTurn: number
+  /** Забег: взятое на этот ход пари, или null. */
+  readonly wager: WagerState | null
   /**
    * The Legendary Commander in charge, or null in an ordinary game.
    *
@@ -205,6 +212,7 @@ function viewInPlay(c: InPlayCard): InPlayCardView {
   return {
     iid: c.iid,
     def: c.def,
+    ...(c.up ? { up: c.up } : {}),
     copiedDef: c.copiedDef,
     used: {
       primary: c.used.primary, ally: c.used.ally,
@@ -305,6 +313,8 @@ export function redact(s: GameState, viewer: PlayerId): PlayerView {
       shipsPlayedThisTurn: meState.shipsPlayedThisTurn.map((c) => ({ iid: c.iid, def: c.def })),
       alliesUsedThisTurn: meState.alliesUsedThisTurn.map((u) => ({ def: u.def, slot: u.slot })),
       gainedThisTurn: { ...meState.gainedThisTurn },
+      scrappedThisTurn: meState.scrappedThisTurn,
+      wager: meState.wager ? { ...meState.wager } : null,
       factionPlayedThisTurn: { ...meState.factionPlayedThisTurn },
       commander: meState.commander,
     },

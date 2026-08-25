@@ -3,7 +3,7 @@ import { COMMAND_DECKS, type CommandDeckSpec } from './cards/commandDecks'
 import type { CardDefId, CardIid, PlayerId } from './ids'
 import type { BossState } from './boss'
 import type { SetId } from './cards/types'
-import type { ScenarioSetup } from './scenario'
+import { starterDef, starterUp, type ScenarioSetup, type StarterCard } from './scenario'
 import { asDefId, ALL_SEATS, FACTIONS, opponentOf } from './ids'
 import { newCoopState, type CoopState, type TeamMode } from './coop'
 import type { Faction } from './ids'
@@ -62,17 +62,20 @@ export interface MatchSetup {
 }
 
 /** Card instance ids are drawn from the seeded stream, so setup is reproducible. */
-function mint(rng: RngState, def: CardDefId): [CardInstance, RngState] {
+function mint(rng: RngState, def: CardDefId, up = 0): [CardInstance, RngState] {
   const [hex, next] = nextHex(rng, 12)
-  return [{ iid: hex as CardIid, def }, next]
+  return [up > 0 ? { iid: hex as CardIid, def, up } : { iid: hex as CardIid, def }, next]
 }
 
-function mintAll(rng: RngState, defs: readonly CardDefId[]): [CardInstance[], RngState] {
+function mintAll(
+  rng: RngState, defs: readonly (CardDefId | StarterCard)[],
+): [CardInstance[], RngState] {
   const out: CardInstance[] = []
   let s = rng
-  for (const d of defs) {
+  for (const entry of defs) {
+    const d = starterDef(entry)
     let c: CardInstance
-    ;[c, s] = mint(s, d)
+    ;[c, s] = mint(s, d, starterUp(entry))
     out.push(c)
   }
   return [out, s]
@@ -110,6 +113,7 @@ function newPlayer(deck: CardInstance[], authority: number): PlayerState {
     returnAtEndOfTurn: [],
     handSize: HAND_SIZE,
     commander: null,
+    wager: null,
   }
 }
 
@@ -150,18 +154,23 @@ export function createGame(setup: MatchSetup): GameState {
     let cards: CardInstance[]
     const personal = cmd[pid]?.deck.map((x) => asDefId(x))
     // Two scenarios change the starting deck itself, and nothing else.
-    const base: CardDefId[] = [...(personal ?? sc?.starterDeck[pid] ?? starterDeck())]
+    const base: StarterCard[] = [...(personal ?? sc?.starterDeck[pid] ?? starterDeck())]
+    // Обе замены ищут карту БЕЗ улучшений: улучшенный разведчик — уже не тот
+    // разведчик, которого сценарий собирался разменять, и терять на этом
+    // вложенное улучшение было бы грабежом.
+    const plain = (want: CardDefId): number =>
+      base.findIndex((c) => typeof c === 'string' && c === want)
     if (setup.variant === 'frontier-expedition') {
       // Two Explorers in the place of two Scouts.
       for (let i = 0; i < 2; i++) {
-        const at = base.indexOf(SCOUT)
+        const at = plain(SCOUT)
         if (at >= 0) base[at] = EXPLORER
       }
     }
     if (setup.variant === 'frantic-preparations') {
       // One Viper and one Scout removed.
       for (const gone of [SCOUT, VIPER]) {
-        const at = base.indexOf(gone)
+        const at = plain(gone)
         if (at >= 0) base.splice(at, 1)
       }
     }

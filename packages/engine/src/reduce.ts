@@ -6,12 +6,14 @@ import type { ChoiceOption, PendingChoice, PromptKind } from './choices'
 import { sameOption } from './choices'
 import type { AcquireDest, Condition, Effect, EffectBranch } from './effects'
 import type { GameEvent } from './events'
+import { wagerById, wagerFor, wagerProgress, wagerSourceOf } from './wagers'
 import {
   allFoesOf, allySlotFaction, allyCountFor, canAttackFace, costFor, defenseOf, effectiveDefId,
   foeOf, foeGroups, foesOf,
   factionsOf,
   findInPlay, isBase,
   isHero, isOutpost, isTech, legalAttackTargets, legalDestroyTargets, objectiveMet,
+  upgradeBonus,
 } from './helpers'
 import type { CardDefId, CardIid, ChoiceId, Faction, PlayerId, Zone } from './ids'
 import { asDefId, FACTIONS, opponentOf } from './ids'
@@ -175,12 +177,12 @@ function checkCoopWin(d: D, ev: GameEvent[]): void {
           const keep: CardInstance[] = []
           for (const card of gone[zone]) {
             if (isStarter(card.def)) keep.push(card as CardInstance)
-            else d.scrapHeap.push({ iid: card.iid, def: card.def })
+            else d.scrapHeap.push(sameCard(card))
           }
           gone[zone] = keep as never
         }
         for (const card of gone.inPlay) {
-          if (!isStarter(card.def)) d.scrapHeap.push({ iid: card.iid, def: card.def })
+          if (!isStarter(card.def)) d.scrapHeap.push(sameCard(card))
         }
         gone.inPlay = []
         ev.push({ e: 'ELIMINATED', player: pid })
@@ -324,6 +326,19 @@ function refillTradeRow(d: D, ev: GameEvent[]): void {
     d.tradeRow[i] = c
     ev.push({ e: 'TRADE_ROW_REFILL', def: c?.def ?? null, slot: i })
   }
+}
+
+/**
+ * The same card, as a plain instance.
+ *
+ * Every place that moves a card between zones rebuilds it from `iid` and `def`,
+ * and an upgraded copy that went through such a place would come back
+ * un-upgraded. So the rebuild goes through here, and the field is carried only
+ * when there is one: an ordinary game must not start writing zeroes onto every
+ * card in it.
+ */
+function sameCard(c: { iid: CardIid; def: CardDefId; up?: number }): CardInstance {
+  return c.up ? { iid: c.iid, def: c.def, up: c.up } : { iid: c.iid, def: c.def }
 }
 
 /**
@@ -556,20 +571,22 @@ function destroyBase(
   // owner's discard pile, which is what makes buying one a real commitment.
   if (cardDef(card.def).removeOnDestroy || d.variant?.id === 'rushed-defenses') {
     // Secret Outpost: a token, not a card you own. Destroyed means gone.
-    d.scrapHeap.push({ iid: card.iid, def: card.def })
+    d.scrapHeap.push(sameCard(card))
     ev.push({ e: 'BASE_DESTROYED', owner, iid: card.iid, def: card.def, by })
     return
   }
   // Destroyed bases go to their OWNER'S discard pile, not the scrap heap --
   // they cycle back into that player's deck.
-  p.discard.push({ iid: card.iid, def: card.def })
+  p.discard.push(sameCard(card))
   ev.push({ e: 'BASE_DESTROYED', owner, iid: card.iid, def: card.def, by })
 }
 
 // ────────────────────────────── choice building ──────────────────────────────
 
 function cardOpts(cards: readonly CardInstance[], zone: Zone, owner: PlayerId): ChoiceOption[] {
-  return cards.map((c) => ({ o: 'CARD' as const, iid: c.iid, def: c.def, zone, owner }))
+  return cards.map((c) => (c.up
+    ? { o: 'CARD' as const, iid: c.iid, def: c.def, zone, owner, up: c.up }
+    : { o: 'CARD' as const, iid: c.iid, def: c.def, zone, owner }))
 }
 
 function makeChoice(
@@ -854,6 +871,22 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       const min = Math.min(effect.min, opts.length)
       const label = min === 0 ? 'You may scrap a card' : 'Scrap a card'
       pushChoice(d, makeChoice(d, me, 'SCRAP_ZONES', label, min, max, opts, ctx.source))
+      return
+    }
+
+    case 'UPGRADE_CARD': {
+      // Рука, сброс и стол — но не колода: она закрыта даже от владельца, и
+      // выбирать из неё значило бы её показать.
+      const opts: ChoiceOption[] = [
+        ...cardOpts(p.hand as CardInstance[], 'hand', me),
+        ...cardOpts(p.discard as CardInstance[], 'discard', me),
+        ...p.inPlay.map((c) => (c.up
+          ? { o: 'CARD' as const, iid: c.iid, def: c.def, zone: 'inPlay' as Zone, owner: me, up: c.up }
+          : { o: 'CARD' as const, iid: c.iid, def: c.def, zone: 'inPlay' as Zone, owner: me })),
+      ]
+      if (opts.length === 0) { ev.push({ e: 'FIZZLE', label: 'nothing to upgrade' }); return }
+      pushChoice(d, makeChoice(d, me, 'UPGRADE_CARD', 'Upgrade a card',
+        1, Math.min(effect.n, opts.length), opts, ctx.source))
       return
     }
 
@@ -1145,7 +1178,7 @@ function applyEffect(d: D, effect: Effect, ctx: EffectCtx, ev: GameEvent[]): voi
       if (idx < 0) return
       const card = p.inPlay[idx] as Draft<InPlayCard>
       p.inPlay.splice(idx, 1)
-      toScrapHeap(d, { iid: card.iid, def: card.def }, 'inPlay', me, ev)
+      toScrapHeap(d, sameCard(card), 'inPlay', me, ev)
       return
     }
 
@@ -1408,6 +1441,25 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
         toScrapHeap(d, inst, o.zone, o.zone === 'tradeRow' ? null : me, ev)
       }
       if (fromRow) refillTradeRow(d, ev)
+      return
+    }
+
+    case 'UPGRADE_CARD': {
+      for (const o of selected) {
+        if (o.o !== 'CARD') continue
+        // Карта улучшается НА МЕСТЕ: вынимать её из зоны нельзя — улучшение
+        // разыгранного корабля не должно снимать его со стола, а улучшение
+        // карты в руке не должно её разыгрывать.
+        const zones = [p.hand, p.discard, p.inPlay] as { iid: CardIid; up?: number }[][]
+        for (const zone of zones) {
+          const card = zone.find((c) => c.iid === o.iid)
+          if (!card) continue
+          const level = (card.up ?? 0) + 1
+          card.up = level
+          ev.push({ e: 'CARD_UPGRADED', player: me, iid: o.iid, def: o.def, level })
+          break
+        }
+      }
       return
     }
 
@@ -1798,7 +1850,7 @@ function resolveChoice(d: D, frame: ChoiceFrame, selected: readonly ChoiceOption
       if (idx < 0) return
       owner.inPlay.splice(idx, 1)
       // To HAND, not to the discard pile: its owner replays it for free.
-      owner.hand.push({ iid: found.card.iid, def: found.card.def })
+      owner.hand.push(sameCard(found.card))
       ev.push({ e: 'RETURN_TO_HAND', owner: found.owner, iid: found.card.iid, def: found.card.def })
       return
     }
@@ -1861,11 +1913,35 @@ function selfHarm(c: PendingChoice): boolean {
   return c.options.every((o) => o.o === 'CARD' && o.owner === c.actor)
 }
 
+/**
+ * Выигранное пари платит сразу, а не в конце хода.
+ *
+ * Проверяется там же, где победа — после каждой команды: игрок должен видеть,
+ * что ставка взята, в тот момент, когда она взята, иначе остаток хода он
+ * доигрывает вслепую. Флаг `won` ставится ДО выдачи улучшения: выбор карты
+ * попадёт в стек разрешения, settle прокрутится ещё раз, и без флага пари
+ * выплатилось бы столько раз, сколько кругов сделает цикл.
+ */
+function checkWagers(d: D, ev: GameEvent[]): void {
+  for (const pid of d.seats) {
+    const p = d.players[pid]
+    const w = p.wager
+    if (!w || w.won) continue
+    const spec = wagerById(w.id)
+    if (!spec) continue
+    if (!wagerProgress(spec, wagerSourceOf(d.tally[pid], p as unknown as PlayerState)).met) continue
+    p.wager = { ...w, won: true }
+    ev.push({ e: 'WAGER_WON', player: pid, id: w.id })
+    pushEffects(d, [{ k: 'UPGRADE_CARD', n: 1 }], { controller: pid, source: null, slot: 'primary' })
+  }
+}
+
 export function settle(d: D, ev: GameEvent[]): void {
   let steps = 0
   for (;;) {
     if (++steps > MAX_RESOLUTION_STEPS) throw new Error('settle: resolution did not converge')
     for (const pid of d.seats) recomputeAlly(d, pid, ev)
+    checkWagers(d, ev)
     checkWin(d, ev)
     if (d.phase === 'gameOver') return
 
@@ -1916,6 +1992,7 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
   const card: InPlayCard = {
     iid: inst.iid,
     def: inst.def,
+    ...(inst.up ? { up: inst.up } : {}),
     copiedDef: null, chosenFaction: null,
     used: {
       primary: false, ally: false, ally2: false, ally3: false, ally4: false,
@@ -1939,6 +2016,11 @@ function playCard(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
     // A ship's primary ability is mandatory and immediate. A base's is not: the
     // player chooses when to activate it during their main phase.
     queued.push(...def.primary)
+    // An upgraded copy pays more, and pays it with its own ability rather than
+    // beside it: a card that gains combat gains more combat, and one that
+    // gains trade gains more trade. A base's bonus waits for its activation,
+    // where its primary actually happens -- see activate().
+    queued.push(...upgradeBonus(def, inst.up ?? 0))
     card.used.primary = true
   }
   // The card's own on-play triggers (Stealth Tower). Deliberately NOT its
@@ -2057,7 +2139,7 @@ function activate(
       const at = p.inPlay.findIndex((x) => x.iid === c.iid)
       if (at < 0) continue
       p.inPlay.splice(at, 1)
-      p.discard.push({ iid: c.iid, def: c.def })
+      p.discard.push(sameCard(c))
       ev.push({ e: 'DISCARD', player: me, iid: c.iid, def: c.def })
     }
     for (const g of p.gambitsInPlay) {
@@ -2082,9 +2164,14 @@ function activate(
     // other abilities may have been used first, which is the standard line.
     const idx = p.inPlay.findIndex((c) => c.iid === iid)
     p.inPlay.splice(idx, 1)
-    toScrapHeap(d, { iid: card.iid, def: card.def }, 'inPlay', me, ev)
+    toScrapHeap(d, sameCard(card), 'inPlay', me, ev)
   }
   pushEffects(d, effects, { controller: me, source: iid, slot })
+  // The upgrade rides on the primary, which for a base is here and not on play.
+  if (slot === 'primary' && !besideTheBoard) {
+    const bonus = upgradeBonus(def, card.up ?? 0)
+    if (bonus.length > 0) pushEffects(d, bonus, { controller: me, source: iid, slot })
+  }
 }
 
 function buyFromRow(d: D, me: PlayerId, iid: CardIid, ev: GameEvent[]): void {
@@ -2174,7 +2261,7 @@ function endTurnFor(d: D, me: PlayerId, ev: GameEvent[]): void {
       // Bases stay, and so do Heroes and Tech: they wait in the play area across
       // turns, which is the whole of what makes them what they are.
       if (isBase(c) || isHero(c) || isTech(c)) { staying.push(c); continue }
-      p.discard.push({ iid: c.iid, def: c.def })
+      p.discard.push(sameCard(c))
     }
     p.inPlay = staying
     // Docking: a card that would be discarded goes back to hand instead, if you
@@ -2208,6 +2295,19 @@ function endTurnFor(d: D, me: PlayerId, ev: GameEvent[]): void {
     ev.push({ e: 'RETURN_FROM_SCRAP', player: me, iid: inst.iid, def: inst.def })
   }
   p.returnAtEndOfTurn = []
+
+  // Пари гасится в конце ТОГО ЖЕ хода, на который взято: ставка на один ход,
+  // и переносить её на следующий значило бы дать бесплатную попытку.
+  const bet = p.wager
+  if (bet) {
+    if (!bet.won) {
+      const spec = wagerById(bet.id)
+      const n = spec?.stake ?? 0
+      if (n > 0) loseAuthority(d, me, n, ev)
+      ev.push({ e: 'WAGER_LOST', player: me, id: bet.id, n })
+    }
+    p.wager = null
+  }
 
   // Per-turn bookkeeping that is easy to forget and silently wrong if missed.
   p.factionPlayedThisTurn = emptyFactionCounts()
@@ -3045,6 +3145,22 @@ function applyAction(d: D, cmd: Command, ev: GameEvent[]): void {
       from[action.what] -= action.n
       d.players[action.to][action.what] += action.n
       ev.push({ e: 'TRANSFER', from: me, to: action.to, what: action.what, n: action.n })
+      return
+    }
+
+    case 'TAKE_WAGER': {
+      const p = d.players[me]
+      if (!d.scenario?.wagers) throw new IllegalActionError('no wagers in this game')
+      if (p.wager) throw new IllegalActionError('a wager is already on the table')
+      if (d.activePlayer !== me) throw new IllegalActionError('not your turn')
+      const w = wagerFor(d.matchId, d.turn, me)
+      // Ставку нельзя взять уже выполненной: пари — обещание доиграть ход, а
+      // не награда за то, что уже сделано.
+      if (wagerProgress(w, wagerSourceOf(d.tally[me], p as unknown as PlayerState)).met) {
+        throw new IllegalActionError('that turn has already happened')
+      }
+      p.wager = { id: w.id, turn: d.turn, won: false }
+      ev.push({ e: 'WAGER_TAKEN', player: me, id: w.id })
       return
     }
 

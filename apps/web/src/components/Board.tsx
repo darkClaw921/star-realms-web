@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cardDef, costFor, EXPLORER, featProgress, RELIC_DEFS, TENTACLE_FACTIONS, VARIANT_CARD,
+  wagerById, wagerFor, wagerProgress, wagerSourceOf,
   type Action, type CardDefId, type CardIid, type Faction, type FeatSpec, type PlayerId,
 } from '@sr/engine'
 import { cardName } from '@/i18n/cards.ru'
 import { objectiveProgressRu, objectiveRu } from '@/i18n/campaign.ru'
-import { featProgressRu, featRu, RUN_RU } from '@/i18n/run.ru'
+import { featProgressRu, featRu, RUN_RU, wagerRu } from '@/i18n/run.ru'
 import { CHALLENGE_RU, TENTACLE_RU } from '@/i18n/challenges.ru'
 import { UI } from '@/i18n/ui'
 import type { SeatNames } from '@/match/log'
@@ -261,7 +262,7 @@ export function Board({
   }
   const myInPlayCard = (c: (typeof v.me.inPlay)[number]): React.JSX.Element => (
     <div key={c.iid} className="zone">
-      <Card def={c.copiedDef ?? c.def} iid={c.iid} title={nameOf(c.def)} />
+      <Card def={c.copiedDef ?? c.def} iid={c.iid} up={c.up} title={nameOf(c.def)} />
       {slotButtons(c.iid)}
     </div>
   )
@@ -292,6 +293,29 @@ export function Board({
     || hasVariant || hasRelics
   const meName = seatNames[v.viewer] ?? v.viewer
   const themName = seatNames[v.opponentSeat] ?? UI.opponent
+
+  /**
+   * Пари этого хода: что предлагают, взято ли, и как идут дела.
+   *
+   * Считается тем же движком, что и правило — иначе стол показывал бы одну
+   * арифметику, а выплачивалась бы другая.
+   */
+  const wager = useMemo(() => {
+    if (!v.scenario?.wagers) return null
+    const spec = v.me.wager ? wagerById(v.me.wager.id) : wagerFor(v.matchId, v.turn, v.viewer)
+    if (!spec) return null
+    const p = wagerProgress(spec, wagerSourceOf(v.tally[v.viewer] ?? {
+      dmg: 0, dmgBest: 0, buys: 0, buysBest: 0, scrapped: 0,
+    }, v.me))
+    const taken = v.me.wager !== null
+    return {
+      offered: !taken && legal.some((a) => a.t === 'TAKE_WAGER'),
+      label: taken
+        ? (v.me.wager?.won ? RUN_RU.wagerWon : `${wagerRu(spec)} · ${p.have}/${p.need}`)
+        : RUN_RU.wagerTake,
+      hint: taken ? RUN_RU.wagerHintTaken(spec.stake) : `${wagerRu(spec)} · ${RUN_RU.wagerHint(spec.stake)}`,
+    }
+  }, [v.scenario, v.me, v.matchId, v.turn, v.viewer, v.tally, legal])
 
   // Утилизация и сплинтер уничтожают карту, поэтому в пакет не входят: их
   // выбирают поимённо, а не «применить всё».
@@ -867,6 +891,20 @@ export function Board({
           shielded={false}
         >
           <div className="actions" style={{ marginLeft: 'auto' }}>
+            {/* Пари. Кнопка живёт рядом с «завершить ход» не случайно: ставка
+              * делается на этот ход, и решают её тем же движением, каким его
+              * заканчивают. */}
+            {wager && (
+              <button
+                type="button"
+                className="btn btn--sm btn--wager"
+                disabled={!wager.offered}
+                onClick={() => onAction({ t: 'TAKE_WAGER' })}
+                title={wager.hint}
+              >
+                {wager.label}
+              </button>
+            )}
             {idx.playAll && (
               <button type="button" className="btn btn--sm" onClick={() => onAction({ t: 'PLAY_ALL' })}>
                 {UI.playAllShips}
@@ -904,6 +942,7 @@ export function Board({
               key={c.iid}
               def={c.def}
               iid={c.iid}
+              up={c.up}
               playable={idx.play.has(c.iid)}
               dimmed={!idx.play.has(c.iid)}
               onClick={idx.play.has(c.iid)

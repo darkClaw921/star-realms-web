@@ -52,19 +52,31 @@ export function speak(src: string): string {
     .trim()
 }
 
-export function CardText({ src }: { src: string }): React.JSX.Element {
+/**
+ * `boost` — прибавка улучшенной копии, которую надо показать В САМОМ ЧИСЛЕ.
+ *
+ * Иначе карта врёт: она говорит «1 очко боя», рядом стоит печать «+2», а даёт
+ * она три, и складывать приходится игроку. Прибавка идёт в ПЕРВЫЙ значок
+ * нужного вида — ровно туда, куда её кладёт движок (см. upgradeGain), — и
+ * помечается, чтобы число не выглядело опечаткой типографии.
+ */
+export function CardText(
+  { src, boost }: { src: string; boost?: { icon: IconName; n: number } | undefined },
+): React.JSX.Element {
+  let bumped = false
   return (
     <>
-      {tokenize(src).map((n, i) =>
-        n.kind === 'text' ? (
-          <span key={i}>{n.value}</span>
-        ) : (
-          <span key={i} className={`glyph glyph--${n.icon}`}>
+      {tokenize(src).map((n, i) => {
+        if (n.kind === 'text') return <span key={i}>{n.value}</span>
+        const lift = !bumped && boost !== undefined && n.icon === boost.icon
+        if (lift) bumped = true
+        return (
+          <span key={i} className={`glyph glyph--${n.icon}${lift ? ' is-up' : ''}`}>
             <Icon name={n.icon as IconName} />
-            {n.value}
+            {lift ? Number(n.value) + boost.n : n.value}
           </span>
-        ),
-      )}
+        )
+      })}
     </>
   )
 }

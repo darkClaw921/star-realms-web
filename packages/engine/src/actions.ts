@@ -41,6 +41,11 @@ export type Action =
    * gang up on one expensive card or one big base.
    */
   | { t: 'TRANSFER'; to: PlayerId; what: 'trade' | 'combat'; n: number }
+  /**
+   * Забег: взять пари на этот ход. Раз за ход, и отменить его нельзя — иначе
+   * это не ставка.
+   */
+  | { t: 'TAKE_WAGER' }
   | { t: 'END_TURN' }
 
 /** An action plus who is attempting it. Built by the server, never by the client. */

@@ -224,6 +224,7 @@ export function ChoiceSheet({
                   <div key={o.iid} className="choice__pick">
                     <Card
                       def={o.def}
+                      up={o.up}
                       selected={picked.some((x) => same(x, o))}
                       playable
                       onClick={() => toggle(o)}

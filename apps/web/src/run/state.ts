@@ -2,7 +2,7 @@
 
 import {
   applyRelic, applyReward, RUN_LENGTH, relicOffer, runNode, runStartCarry,
-  type CardDefId, type RelicId, type RunCarry, type RunReward,
+  type CardDefId, type RelicId, type RunCard, type RunCarry, type RunReward,
 } from '@sr/engine'
 
 /**
@@ -72,8 +72,23 @@ export function loadRun(): RunSave | null {
     if (typeof s.seed !== 'string' || typeof s.index !== 'number') return null
     if (!c || !Array.isArray(c.deck) || !Array.isArray(c.bases)) return null
     if (typeof c.authority !== 'number') return null
-    if (!c.deck.every((x) => typeof x === 'string')) return null
-    if (!c.bases.every((x) => typeof x === 'string')) return null
+    const cards = (xs: unknown[]): RunCard[] | null => {
+      const out: RunCard[] = []
+      for (const x of xs) {
+        // Сохранение до улучшений хранило одни идентификаторы. Такой забег —
+        // забег без улучшений, а не испорченный: строка читается как карта с
+        // нулём, а не выбрасывает всё сохранение.
+        if (typeof x === 'string') { out.push({ def: x as CardDefId, up: 0 }); continue }
+        if (!x || typeof x !== 'object') return null
+        const c2 = x as { def?: unknown; up?: unknown }
+        if (typeof c2.def !== 'string') return null
+        out.push({ def: c2.def as CardDefId, up: typeof c2.up === 'number' ? c2.up : 0 })
+      }
+      return out
+    }
+    const deck = cards(c.deck as unknown[])
+    const bases = cards(c.bases as unknown[])
+    if (!deck || !bases) return null
     if (s.index < 1 || s.index > RUN_LENGTH + 1) return null
     const stage: RunStage =
       s.stage === 'reward' || s.stage === 'relic' || s.stage === 'won' || s.stage === 'lost'
@@ -84,8 +99,8 @@ export function loadRun(): RunSave | null {
       // Идентификаторы карт брендированы: строка из хранилища становится
       // CardDefId только здесь, после проверки, что это вообще строки.
       carry: {
-        deck: c.deck as CardDefId[],
-        bases: c.bases as CardDefId[],
+        deck,
+        bases,
         authority: c.authority,
         // Сохранение, сделанное до артефактов, — это забег без артефактов, а
         // не испорченный забег: пустой список, а не выброшенное сохранение.
@@ -177,9 +192,20 @@ export function noteRecord(cleared: number): void {
   try { localStorage.setItem(RECORD_KEY, String(cleared)) } catch { /* не критично */ }
 }
 
-/** Сколько каких карт в колоде — колоду показывают стопками, а не списком. */
-export function deckTally(carry: RunCarry): { def: CardDefId; n: number }[] {
-  const by = new Map<CardDefId, number>()
-  for (const id of carry.deck) by.set(id, (by.get(id) ?? 0) + 1)
-  return [...by.entries()].map(([def, n]) => ({ def, n }))
+/**
+ * Сколько каких карт в колоде — колоду показывают стопками, а не списком.
+ *
+ * Улучшенные копии считаются отдельной стопкой: две гадюки и одна улучшенная —
+ * это два разных предмета, и складывать их в одну кучу значило бы спрятать
+ * лучшую карту колоды.
+ */
+export function deckTally(carry: RunCarry): { def: CardDefId; up: number; n: number }[] {
+  const by = new Map<string, { def: CardDefId; up: number; n: number }>()
+  for (const c of carry.deck) {
+    const key = `${c.def}:${c.up}`
+    const at = by.get(key)
+    if (at) at.n += 1
+    else by.set(key, { def: c.def, up: c.up, n: 1 })
+  }
+  return [...by.values()]
 }

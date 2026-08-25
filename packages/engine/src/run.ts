@@ -296,11 +296,23 @@ export const RUN_HERO: PlayerId = 'p1'
  * still standing when the fight ends is still standing when the next one opens,
  * while a destroyed one went to the discard pile and is simply a card again.
  */
+/**
+ * Карта забега: сама карта и то, сколько раз её улучшали.
+ *
+ * Улучшение принадлежит КОПИИ, а не названию: выигранное пари улучшает одну
+ * гадюку, а не все гадюки в колоде, и перенос между боями обязан помнить
+ * именно копию.
+ */
+export interface RunCard {
+  readonly def: CardDefId
+  readonly up: number
+}
+
 export interface RunCarry {
   /** The whole personal deck, flattened -- draw pile, hand and discard alike. */
-  readonly deck: readonly CardDefId[]
-  /** Bases and outposts left standing. */
-  readonly bases: readonly CardDefId[]
+  readonly deck: readonly RunCard[]
+  /** Bases and outposts left standing, upgrades and all. */
+  readonly bases: readonly RunCard[]
   readonly authority: number
   /**
    * Relics earned so far. Unlike the deck they are not read back out of the
@@ -312,7 +324,10 @@ export interface RunCarry {
 
 export function runStartCarry(): RunCarry {
   return {
-    deck: [...Array<CardDefId>(8).fill(SCOUT), ...Array<CardDefId>(2).fill(VIPER)],
+    deck: [
+      ...Array.from({ length: 8 }, () => ({ def: SCOUT, up: 0 })),
+      ...Array.from({ length: 2 }, () => ({ def: VIPER, up: 0 })),
+    ],
     bases: [],
     authority: RUN_START_AUTHORITY,
     relics: [],
@@ -331,15 +346,16 @@ export function harvestRun(
   state: GameState, hero: PlayerId = RUN_HERO, prev?: RunCarry,
 ): RunCarry {
   const p = state.players[hero]
-  const deck: CardDefId[] = []
-  const bases: CardDefId[] = []
-  for (const c of p.deck) deck.push(c.def)
-  for (const c of p.hand) deck.push(c.def)
-  for (const c of p.discard) deck.push(c.def)
+  const deck: RunCard[] = []
+  const bases: RunCard[] = []
+  const take = (c: { def: CardDefId; up?: number }): RunCard => ({ def: c.def, up: c.up ?? 0 })
+  for (const c of p.deck) deck.push(take(c))
+  for (const c of p.hand) deck.push(take(c))
+  for (const c of p.discard) deck.push(take(c))
   for (const c of p.inPlay) {
     const t = cardDef(c.def).type
-    if (t === 'base' || t === 'outpost') bases.push(c.def)
-    else deck.push(c.def)
+    if (t === 'base' || t === 'outpost') bases.push(take(c))
+    else deck.push(take(c))
   }
   // Relic cards stand in the gambit zone, never in play, so the loop above
   // cannot mistake one for a base -- and they come from the run's own list
@@ -358,9 +374,10 @@ export function runSetup(node: RunNode, carry: RunCarry): ScenarioSetup {
   const relics = carry.relics.map((id) => RELIC[id])
   const sum = (f: (r: Relic) => number | undefined): number =>
     relics.reduce((n, r) => n + (f(r) ?? 0), 0)
-  const extraBases = relics
+  const extraBases: RunCard[] = relics
     .map((r) => r.startingBase)
     .filter((b): b is CardDefId => b !== undefined)
+    .map((def) => ({ def, up: 0 }))
   const bases = [...carry.bases, ...extraBases]
   const discount = sum((r) => r.buyDiscount)
   // The largest wins rather than the sum: two hand-size relics would otherwise
@@ -376,20 +393,28 @@ export function runSetup(node: RunNode, carry: RunCarry): ScenarioSetup {
       turnStartCombat: { p1: 0, p2: node.enemyCombat },
       turnStartTrade: { p1: 0, p2: node.enemyTrade },
       ...(discount > 0 ? { buyDiscount: { p1: discount } } : {}),
+      wagers: true,
     },
     authority: {
       p1: carry.authority + sum((r) => r.authority),
       p2: node.enemyAuthority,
     },
     starterDeck: {
-      p1: [...carry.deck],
+      // Улучшения едут в позицию как есть: улучшенная копия — это карта, а не
+      // отдельное правило.
+      p1: carry.deck.map((c) => (c.up > 0 ? { def: c.def, up: c.up } : c.def)),
       ...(node.enemyDeck ? { p2: [...node.enemyDeck] } : {}),
     },
     startingBases: {
-      ...(bases.length ? { p1: bases } : {}),
+      // Стоящие базы улучшений не несут: startingBases говорит определениями,
+      // а улучшенная база, пережившая бой, вернётся улучшенной только если её
+      // уничтожат и она уедет в сброс. Цена простоты, и она озвучена в тексте.
+      ...(bases.length ? { p1: bases.map((b) => b.def) } : {}),
       ...(node.enemyBases.length ? { p2: [...node.enemyBases] } : {}),
     },
     ...(relics.length ? { startingSideCards: { p1: relics.map((r) => r.card) } } : {}),
+    // Ставки — часть забега, и только его: в обычной партии кнопки нет.
+    
     ...(hand === undefined ? {} : { handSize: { p1: hand } }),
     tradeDeckOnly: null,
   }
@@ -400,7 +425,7 @@ export type RunReward =
   /** Add this card to the deck. */
   | { readonly k: 'CARD'; readonly def: CardDefId }
   /** Remove one copy of this card from the deck, for good. */
-  | { readonly k: 'SCRAP'; readonly def: CardDefId }
+  | { readonly k: 'SCRAP'; readonly def: CardDefId; readonly up: number }
   | { readonly k: 'REPAIR'; readonly n: number }
 
 /** How many cards a win offers to choose between. */
@@ -458,8 +483,8 @@ export function applyRelic(carry: RunCarry, id: RelicId): RunCarry {
 
 export function applyReward(carry: RunCarry, r: RunReward): RunCarry {
   if (r.k === 'REPAIR') return { ...carry, authority: carry.authority + r.n }
-  if (r.k === 'CARD') return { ...carry, deck: [...carry.deck, r.def] }
-  const at = carry.deck.indexOf(r.def)
+  if (r.k === 'CARD') return { ...carry, deck: [...carry.deck, { def: r.def, up: 0 }] }
+  const at = carry.deck.findIndex((c) => c.def === r.def && c.up === r.up)
   if (at < 0) return carry
   return { ...carry, deck: [...carry.deck.slice(0, at), ...carry.deck.slice(at + 1)] }
 }
@@ -472,8 +497,13 @@ export function applyReward(carry: RunCarry, r: RunReward): RunCarry {
  * deck may not be emptied: a deck of nothing draws nothing and the fight would
  * never end.
  */
-export function scrappable(carry: RunCarry): CardDefId[] {
+export function scrappable(carry: RunCarry): RunCard[] {
   if (carry.deck.length <= 1) return []
   const seen = new Set<string>()
-  return carry.deck.filter((id) => (seen.has(id) ? false : (seen.add(id), true)))
+  // Улучшенная копия — отдельная строка выбора: расставаться с гадюкой и с
+  // дважды улучшенной гадюкой это разные решения.
+  return carry.deck.filter((c) => {
+    const key = `${c.def}:${c.up}`
+    return seen.has(key) ? false : (seen.add(key), true)
+  })
 }

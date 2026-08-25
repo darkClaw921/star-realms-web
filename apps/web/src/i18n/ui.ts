@@ -464,5 +464,8 @@ export function promptTitle(c: PendingChoiceView, sourceName: string | null): st
       return `Утилизируйте до ${n} карт — награда зависит от их числа`
     case 'DISCARD_FOR_TRADE_OR_COMBAT':
       return `Сбросьте до ${n} карт — по 2 очка торговли или боя за каждую`
+    // ── Забег ──────────────────────────────────────────────────────────────
+    case 'UPGRADE_CARD':
+      return n === 1 ? 'Улучшите карту' : `Улучшите ${n} карты`
   }
 }

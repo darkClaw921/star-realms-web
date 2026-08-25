@@ -1,4 +1,4 @@
-import type { FeatSpec, RunNodeKind } from '@sr/engine'
+import type { FeatSpec, RunNodeKind, Wager } from '@sr/engine'
 
 export interface RunNodeRu {
   readonly name: string
@@ -72,6 +72,17 @@ export function featProgressRu(f: FeatSpec, have: number): string {
   return f.k === 'BY_TURN' ? `ход ${have} из ${f.n}` : `${have} / ${f.n}`
 }
 
+/** Ставка одной строкой — тем же тоном, что и задача узла. */
+export function wagerRu(w: Wager): string {
+  switch (w.k) {
+    case 'DAMAGE': return `Нанести ${w.n} урона за этот ход`
+    case 'BUYS': return `Купить ${w.n} карты за этот ход`
+    case 'PLAYED': return `Разыграть ${w.n} карты за этот ход`
+    case 'SCRAPPED': return `Утилизировать ${w.n} карты за этот ход`
+    case 'TRADE': return `Получить ${w.n} торговли за этот ход`
+  }
+}
+
 export const RUN_RU = {
   eyebrow: 'Одна колода · восемь боёв',
   titleTop: 'Забег',
@@ -135,4 +146,15 @@ export const RUN_RU = {
   relicNone: 'Все артефакты уже собраны.',
   relicTake: 'Взять',
   featMissed: 'Задача не выполнена — артефакта в этот раз не будет.',
+
+  wagerTake: 'Заключить пари',
+  wagerWon: 'Пари выиграно',
+  wagerHint: (stake: number): string =>
+    `Выполните — улучшите карту навсегда. Не выполните — потеряете ${stake} авторитета.`,
+  wagerHintTaken: (stake: number): string =>
+    `Пари в силе. Не выполните до конца хода — потеряете ${stake} авторитета.`,
+  wagerName: 'Пари',
+  upgrades: 'Улучшения',
+  upgradeHint: 'Улучшенная карта даёт на единицу больше того же, что даёт сама. ' +
+    'Улучшение принадлежит копии и остаётся с ней до конца забега.',
 } as const

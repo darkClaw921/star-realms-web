@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, memo, useCallback, useRef, useState } from 'react'
-import { cardDef, RELIC_DEFS, type CardDefId, type Effect } from '@sr/engine'
+import { cardDef, RELIC_DEFS, upgradeGain, type CardDefId, type Effect } from '@sr/engine'
 import { ART_MANIFEST } from '@/cards/artManifest.gen'
 
 /** Размер иллюстраций артефактов. Тот же 4:3, что у остального арта. */
@@ -60,13 +60,20 @@ export interface CardFrameProps {
    * the printed price stands.
    */
   cost?: number | undefined
+  /**
+   * Забег: сколько раз улучшали ЭТУ копию. Ноль или отсутствие — обычная карта.
+   *
+   * Карта — единственное место, где улучшение вообще видно: игрок выбирает,
+   * что улучшать, и что покупать, глядя на карты, а не на счётчик где-то сбоку.
+   */
+  up?: number | undefined
 }
 
 /**
  * The pure card. Knows only which card it is -- no game state -- so it is cheap
  * to re-render with 30+ on screen and reusable in the gallery and rules screens.
  */
-export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrameProps): React.JSX.Element {
+export const CardFrame = memo(function CardFrame({ def, quiet, cost, up }: CardFrameProps): React.JSX.Element {
   const c = cardDef(def)
   // Russian is the only locale shipped; the engine's English text is the fallback
   // so a card can never render nameless if a translation is missing.
@@ -84,6 +91,18 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
   const markLoaded = useCallback((el: HTMLImageElement | null) => {
     if (el?.complete && el.naturalWidth > 0) setLoaded(true)
   }, [])
+  /**
+   * Улучшение видно в самих цифрах, а не только в печати «+N» у имени.
+   *
+   * Иначе игрок каждый раз считает в уме: карта говорит «1 очко боя», рядом
+   * стоит «+2», а даёт она три. Прибавка идёт ровно в тот значок, в который её
+   * кладёт движок (upgradeGain), и подсвечивается — чтобы было видно, что это
+   * не печатное число.
+   */
+  const boosted: IconName | null = (up ?? 0) > 0
+    ? (upgradeGain(c) === 'trade' ? 'trade' : upgradeGain(c) === 'combat' ? 'combat' : 'authority')
+    : null
+
   const entry = ART_MANIFEST[def]
   /**
    * Арт артефакта лежит в репозитории, а не в гитигнорной папке издателя.
@@ -97,7 +116,9 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
   const art = entry ? `/cards/art/${def}-320.webp`
     : isRelic ? `/cards/relics/${def}.svg`
       : null
-  const chips = [...chipsFor(c.primary).entries()].filter(([, n]) => n !== 0)
+  const chipMap = chipsFor(c.primary)
+  if (boosted) chipMap.set(boosted, (chipMap.get(boosted) ?? 0) + (up ?? 0))
+  const chips = [...chipMap.entries()].filter(([, n]) => n !== 0)
 
   return (
     <>
@@ -146,6 +167,9 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
             </span>
           )}
           <span className="card__name">{name}</span>
+          {/* Печать улучшения. Рядом с именем, а не поверх иллюстрации: имя —
+            * то, чем карту называют, и «Гадюка +2» это уже другая карта. */}
+          {(up ?? 0) > 0 && <span className="card__up">+{up}</span>}
           {c.defense !== null && (
             <span className={`card__defense ${c.type === 'outpost' ? 'is-outpost' : 'is-base'}`}>
               {c.defense}
@@ -157,13 +181,21 @@ export const CardFrame = memo(function CardFrame({ def, quiet, cost }: CardFrame
           <span className="card__text">
             <span className="card__chips">
               {chips.map(([icon, n]) => (
-                <span key={icon} className={`chip glyph--${icon}`}>
+                <span
+                  key={icon}
+                  className={`chip glyph--${icon}${icon === boosted ? ' is-up' : ''}`}
+                >
                   <Icon name={icon} /> {n}
                 </span>
               ))}
             </span>
             <span className="card__prose">
-              {text.primary && <CardText src={text.primary} />}
+              {text.primary && (
+                <CardText
+                  src={text.primary}
+                  {...(boosted ? { boost: { icon: boosted, n: up ?? 0 } } : {})}
+                />
+              )}
               {text.ally && (
                 <>
                   <span className="card__rule" />
@@ -229,6 +261,8 @@ export interface CardProps {
    * предпросмотре карты экземпляра нет и атрибута тоже.
    */
   iid?: string | undefined
+  /** Забег: улучшения этой копии. */
+  up?: number | undefined
 }
 
 /**
@@ -285,12 +319,13 @@ export function isLandscape(def: CardDefId): boolean {
 }
 
 export function Card({
-  def, onClick, playable, selected, dimmed, title, quiet, cost, iid,
+  def, onClick, playable, selected, dimmed, title, quiet, cost, iid, up,
 }: CardProps): React.JSX.Element {
   const c = cardDef(def)
   const isBase = isLandscape(def)
   const cls = [
     'card',
+    (up ?? 0) > 0 ? 'is-upgraded' : '',
     isBase ? 'is-base' : '',
     playable ? 'is-playable' : '',
     selected ? 'is-selected' : '',
@@ -335,12 +370,14 @@ export function Card({
         // Never disabled: a card with no move still has something to show, and a
         // disabled button receives no pointer events at all, so holding it would
         // silently do nothing.
-        aria-label={label}
+        // Улучшение произносится: печатное число в озвучке осталось печатным,
+        // и без этой добавки карта звучала бы слабее, чем она есть.
+        aria-label={(up ?? 0) > 0 ? `${label}, улучшена +${up}` : label}
         aria-haspopup="dialog"
         title={title ?? (ru?.name ?? c.name)}
         {...hold.handlers}
       >
-        <CardFrame def={def} quiet={quiet} cost={cost} />
+        <CardFrame def={def} quiet={quiet} cost={cost} up={up} />
         {/* The fill is the whole affordance: without it a hold that has not
           * completed yet is indistinguishable from a click that did nothing. */}
         <span className="card__hold" aria-hidden="true" />

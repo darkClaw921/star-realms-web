@@ -1,4 +1,5 @@
 import { cardDef } from './cards/registry'
+import type { Effect } from './effects'
 import type { CardDef, MissionObjective } from './cards/types'
 import type { ScenarioRules } from './scenario'
 import type { VariantState } from './variants'
@@ -384,4 +385,38 @@ export function defenseAgainst(
   def: number,
 ): number {
   return Math.max(1, def + defenseBonus(defenderGambits) - defenseBonus(attackerGambits))
+}
+
+/**
+ * What an upgrade adds to a card, and of what.
+ *
+ * Read off the card's own primary rather than chosen by the player: an
+ * upgraded Scout should be a better Scout, not a Scout with a combat point
+ * stapled to it. SEQ is looked through because plenty of abilities are a
+ * sequence whose first step is the payout; CHOOSE_ONE is not, because its
+ * branches are alternatives and the card has no single "its own" resource
+ * until the player picks one -- those default to combat.
+ */
+export function upgradeGain(def: CardDef): 'trade' | 'combat' | 'authority' {
+  const walk = (es: readonly Effect[]): 'trade' | 'combat' | 'authority' | null => {
+    for (const e of es) {
+      if (e.k === 'GAIN_TRADE') return 'trade'
+      if (e.k === 'GAIN_COMBAT') return 'combat'
+      if (e.k === 'GAIN_AUTHORITY') return 'authority'
+      if (e.k === 'SEQ') {
+        const inner = walk(e.effects)
+        if (inner) return inner
+      }
+    }
+    return null
+  }
+  return walk(def.primary) ?? 'combat'
+}
+
+/** The extra effects an upgraded copy adds to its own primary. */
+export function upgradeBonus(def: CardDef, n: number): Effect[] {
+  if (n <= 0) return []
+  const what = upgradeGain(def)
+  const k = what === 'trade' ? 'GAIN_TRADE' : what === 'combat' ? 'GAIN_COMBAT' : 'GAIN_AUTHORITY'
+  return [{ k, n } as Effect]
 }

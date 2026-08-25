@@ -58,4 +58,9 @@ export type GameEvent =
   | { e: 'ELIMINATED'; player: PlayerId }
   /** Co-op: a teammate handed over part of their Trade or Combat pool. */
   | { e: 'TRANSFER'; from: PlayerId; to: PlayerId; what: 'trade' | 'combat'; n: number }
+  // ── Забег ─────────────────────────────────────────────────────────────────
+  | { e: 'WAGER_TAKEN'; player: PlayerId; id: string }
+  | { e: 'WAGER_WON'; player: PlayerId; id: string }
+  | { e: 'WAGER_LOST'; player: PlayerId; id: string; n: number }
+  | { e: 'CARD_UPGRADED'; player: PlayerId; iid: CardIid; def: CardDefId; level: number }
   | { e: 'GAME_OVER'; winner: PlayerId }

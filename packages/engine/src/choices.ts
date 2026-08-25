@@ -39,10 +39,20 @@ export type PromptKind =
   // ── Command Decks ─────────────────────────────────────────────────────────
   | 'SCRAP_THEN_GAIN'
   | 'DISCARD_FOR_TRADE_OR_COMBAT'
+  // ── Забег ─────────────────────────────────────────────────────────────────
+  | 'UPGRADE_CARD'
 
 export type ChoiceOption =
   /** `owner` is null for shared zones (the trade row), which belong to nobody. */
-  | { o: 'CARD'; iid: CardIid; def: CardDefId; zone: Zone; owner: PlayerId | null }
+  | {
+      o: 'CARD'; iid: CardIid; def: CardDefId; zone: Zone; owner: PlayerId | null
+      /**
+       * Забег: улучшения на этой копии. Нужны именно в выборе — улучшать уже
+       * улучшенную карту или взять новую это решение, которое принимают
+       * глазами.
+       */
+      up?: number
+    }
   | { o: 'BRANCH'; index: number; label: string }
   | { o: 'EXPLORER' }
   | { o: 'CONFIRM' }

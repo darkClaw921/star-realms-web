@@ -47,6 +47,14 @@ export interface ScenarioRules {
    * a different game.
    */
   readonly buyDiscount?: Partial<Record<PlayerId, number>>
+  /**
+   * Пари: разрешены ли в этой партии ставки на собственный ход.
+   *
+   * Флагом, а не набором ставок: какие они и что стоят — данные забега, а
+   * движку нужно знать ровно одно — можно ли вообще брать. В обычной партии
+   * нельзя, и кнопки там нет.
+   */
+  readonly wagers?: boolean
 }
 
 /** The opening position. Applied once, by createGame, and then forgotten. */
@@ -54,8 +62,14 @@ export interface ScenarioSetup {
   readonly rules: ScenarioRules
   /** Overrides STARTING_AUTHORITY per side. */
   readonly authority: Partial<Record<PlayerId, number>>
-  /** Replaces the 8 Scout / 2 Viper starting deck. */
-  readonly starterDeck: Partial<Record<PlayerId, readonly CardDefId[]>>
+  /**
+   * Replaces the 8 Scout / 2 Viper starting deck.
+   *
+   * An entry may name a card or a card with upgrades on it: a run carries
+   * improved copies from fight to fight, and the copy is what was improved,
+   * not the card type.
+   */
+  readonly starterDeck: Partial<Record<PlayerId, readonly StarterCard[]>>
   /** Bases already standing when the game opens. */
   readonly startingBases: Partial<Record<PlayerId, readonly CardDefId[]>>
   /**
@@ -81,6 +95,17 @@ export interface ScenarioSetup {
    * them, they are never destroyed, and they never occupy the play area.
    */
   readonly startingSideCards?: Partial<Record<PlayerId, readonly CardDefId[]>>
+}
+
+/** Карта в стартовой колоде: сама по себе или с улучшениями на этой копии. */
+export type StarterCard = CardDefId | { readonly def: CardDefId; readonly up: number }
+
+export function starterDef(c: StarterCard): CardDefId {
+  return typeof c === 'string' ? c : c.def
+}
+
+export function starterUp(c: StarterCard): number {
+  return typeof c === 'string' ? 0 : c.up
 }
 
 export function noScenarioCounters(): Partial<Record<PlayerId, number>> {

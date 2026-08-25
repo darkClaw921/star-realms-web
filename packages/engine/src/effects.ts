@@ -124,6 +124,13 @@ export type Effect =
    * the reshuffled discard pile already contains the cards just discarded.
    */
   | { k: 'DISCARD_THEN_DRAW'; max: number }
+  /**
+   * Забег: улучшить одну свою карту навсегда.
+   *
+   * Выбор идёт по руке, сбросу и столу, но не по колоде: колода закрыта даже
+   * от владельца, и выбирать из неё значило бы её показать.
+   */
+  | { k: 'UPGRADE_CARD'; n: number }
 
   // ---- acquisition ----------------------------------------------------------
   /**
